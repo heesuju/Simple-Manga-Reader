@@ -169,7 +169,7 @@ class MangaReader(QMainWindow):
             return
         
         self.view.resetTransform()  # remove any previous zoom
-        self.view._zoom_factor = 1.0
+        self.view.reset_zoom_state()
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
