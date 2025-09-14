@@ -29,10 +29,11 @@ python reg.py
 5. Skips to next chapter without needing to open another folder (e.g. ch1. last page -> ch1. first page)
 
 ### To Do:
-[X] Simple grid layout to show chapters
-[ ] Grid view for pages
-[ ] View zip files
-[ ] Bookmarks
+- [X] Simple grid layout to show chapters
+- [X] Support for vertical scrolling comics
+- [ ] Grid view for pages
+- [ ] View zip files
+- [ ] Bookmarks
 
 ### Disclaimer:
 - Ignores `vol` in chapter folders. (e.g. `Vol 1. Ch2` and `Vol 0. Ch3` are ordered `Ch2` and `Ch3`)

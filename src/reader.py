@@ -4,13 +4,28 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QGraphicsView, QGraphicsScene,
     QGraphicsPixmapItem, QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
-    QMessageBox, QFrame
+    QMessageBox, QFrame, QScrollArea, QSizePolicy
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QEvent
 from src.image_view import ImageView
 from src.page_input import PageInput
 import math
+from PyQt6.QtCore import QThread, pyqtSignal
+
+class ImageLoader(QThread):
+    imageLoaded = pyqtSignal(QPixmap, int)
+
+    def __init__(self, paths: list[str]):
+        super().__init__()
+        self.paths = paths
+
+    def run(self):
+        for i, p in enumerate(self.paths):
+            pix = QPixmap(p)
+            self.imageLoaded.emit(pix, i)
+            # small sleep to let UI breathe; optional
+            self.msleep(8)
 
 class MangaReader(QMainWindow):
     def __init__(self, manga_dirs: List[str], index:int):
@@ -18,7 +33,20 @@ class MangaReader(QMainWindow):
         self.setWindowTitle("Manga Reader")
         if index > len(manga_dirs) - 1:
             return
-        
+
+        self.page_labels: list[QLabel] = []
+        self.page_pixmaps: dict[int, QPixmap] = {}  # store loaded pixmaps by index
+
+
+        self.vertical_mode = False
+        self.scroll_area = None
+        self.vertical_container = None
+        self.vbox = None
+        self.v_labels: list[QLabel] = []
+        self.vertical_pixmaps: list[QPixmap] = []
+        self.loader: ImageLoader | None = None
+
+
         self.chapter_index = index
         self.chapters = manga_dirs
         self.manga_dir = Path(manga_dirs[index])
@@ -42,6 +70,10 @@ class MangaReader(QMainWindow):
         self.back_btn = QPushButton("⬅ Back to Grid")
         self.back_btn.clicked.connect(self.back_to_grid)
 
+        self.layout_btn = QPushButton("Vertical")
+        self.layout_btn.clicked.connect(self.toggle_layout)
+        
+
         # Shortcuts
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, activated=self.show_prev)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
@@ -53,6 +85,7 @@ class MangaReader(QMainWindow):
         top_layout.setSpacing(0)
         top_layout.addWidget(self.back_btn)
         top_layout.addWidget(self.ch_label, 1, Qt.AlignmentFlag.AlignCenter)
+        top_layout.addWidget(self.layout_btn)
         top_layout.addStretch()
 
         btn_layout = QHBoxLayout()
@@ -104,14 +137,26 @@ class MangaReader(QMainWindow):
         
         self.refresh()
 
+    def eventFilter(self, obj, event):
+        # catch scroll viewport resize events to rescale vertical images
+        if self.vertical_mode and self.scroll_area and obj is self.scroll_area.viewport():
+            if event.type() == QEvent.Type.Resize:
+                QTimer.singleShot(0, self._resize_vertical_images)
+        return super().eventFilter(obj, event)
+
     def _update_overlay_size(self, event=None):
-        # Match overlay container to view
-        geo = self.view.geometry()
+        # Choose target geometry depending on mode
+        if self.vertical_mode and self.scroll_area is not None:
+            target = self.scroll_area
+        else:
+            target = self.view
+
+        geo = target.geometry()
         self.overlay_container.setGeometry(geo)
 
         w, h = geo.width(), geo.height()
-        self.prev_btn.setGeometry(0, 0, w // 2, h)     # Left half
-        self.next_btn.setGeometry(w // 2, 0, w // 2, h) # Right half
+        self.prev_btn.setGeometry(0, 0, w // 2, h)
+        self.next_btn.setGeometry(w // 2, 0, w - (w // 2), h)
 
     def refresh(self, start_from_end:bool=False):
         # Load images
@@ -162,12 +207,17 @@ class MangaReader(QMainWindow):
         """Zoom the view using GPU-accelerated transformation."""
         self.view.resetTransform()  # reset previous zoom
         self.view.scale(factor, factor)
-
+    
     def _fit_current_image(self):
-        """Fit image to view and reset zoom factor."""
+        """Fit image to view and reset zoom factor (handles single-image and vertical modes)."""
+        if self.vertical_mode:
+            # In vertical mode we want all labels resized to viewport width
+            QTimer.singleShot(0, self._resize_vertical_images)
+            return
+
+        # single-image behavior (unchanged)
         if not hasattr(self, "pixmap_item"):
             return
-        
         self.view.resetTransform()  # remove any previous zoom
         self.view.reset_zoom_state()
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
@@ -243,3 +293,131 @@ class MangaReader(QMainWindow):
             self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         else:
             self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+
+    def toggle_layout(self):
+        self.vertical_mode = not self.vertical_mode
+        if self.vertical_mode:
+            self.layout_btn.setText("Single")
+            self._show_vertical_layout()
+        else:
+            self.layout_btn.setText("Vertical")
+            self._show_single_layout()
+        # ensure overlay and fit are updated
+        QTimer.singleShot(0, self._update_overlay_size)
+        QTimer.singleShot(0, self._fit_current_image)
+
+    def _show_vertical_layout(self):
+        self.view.hide()
+
+        if self.scroll_area is None:
+            self.scroll_area = QScrollArea(self.centralWidget())
+            self.scroll_area.setWidgetResizable(True)
+            self.vertical_container = QWidget()
+            self.vbox = QVBoxLayout(self.vertical_container)
+            self.vbox.setSpacing(8)
+            self.vbox.setContentsMargins(8, 8, 8, 8)
+            self.scroll_area.setWidget(self.vertical_container)
+
+            main_layout = self.centralWidget().layout()
+            main_layout.insertWidget(1, self.scroll_area)
+
+            # react to scrolling
+            self.scroll_area.verticalScrollBar().valueChanged.connect(self._update_visible_images)
+            self.scroll_area.viewport().installEventFilter(self)
+
+        # clear previous
+        while self.vbox.count():
+            item = self.vbox.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.page_labels.clear()
+        self.page_pixmaps.clear()
+
+        # placeholders for each page
+        for i in range(len(self.images)):
+            lbl = QLabel("Loading...")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setFixedHeight(300)  # rough placeholder
+            self.vbox.addWidget(lbl)
+            self.page_labels.append(lbl)
+
+        QTimer.singleShot(0, self._update_visible_images)
+
+    def _update_visible_images(self):
+        """Load & resize only images currently visible in viewport."""
+        if not self.scroll_area:
+            return
+        viewport_rect = self.scroll_area.viewport().rect()
+        viewport_top = self.scroll_area.verticalScrollBar().value()
+        viewport_bottom = viewport_top + viewport_rect.height()
+
+        for i, lbl in enumerate(self.page_labels):
+            lbl_top = lbl.y()
+            lbl_bottom = lbl.y() + lbl.height()
+
+            # check if label is within viewport + some margin
+            if lbl_bottom >= viewport_top - 500 and lbl_top <= viewport_bottom + 500:
+                if i not in self.page_pixmaps:
+                    # load original image
+                    orig = QPixmap(self.images[i])
+                    self.page_pixmaps[i] = orig
+                else:
+                    orig = self.page_pixmaps[i]
+
+                self._resize_single_label(lbl, orig)
+            else:
+                # optional: unload pixmap to save memory
+                lbl.clear()
+
+    def _add_vertical_image(self, pixmap: QPixmap, idx: int):
+        """Slot called from loader thread (via signal). Keep original pixmap for future resizes."""
+        lbl = QLabel()
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.vbox.addWidget(lbl)
+        self.v_labels.append(lbl)
+        self.vertical_pixmaps.append(pixmap)
+
+        # scale it immediately to current viewport width (use QTimer to run in main loop)
+        QTimer.singleShot(0, lambda l=lbl, p=pixmap: self._resize_single_label(l, p))
+
+    def _resize_single_label(self, label: QLabel, orig_pix: QPixmap):
+        if not self.scroll_area:
+            return
+        w = self.scroll_area.viewport().width() - (self.vbox.contentsMargins().left() + self.vbox.contentsMargins().right())
+        if w <= 0 or orig_pix.isNull():
+            return
+        scaled = orig_pix.scaledToWidth(w, Qt.TransformationMode.SmoothTransformation)
+        label.setPixmap(scaled)
+        # set widget height so vertical layout sizes correctly
+        label.setFixedHeight(scaled.height())
+
+    def _resize_vertical_images(self):
+        """Rescale only visible images instead of all pages."""
+        if not self.scroll_area:
+            return
+        viewport_rect = self.scroll_area.viewport().rect()
+        viewport_top = self.scroll_area.verticalScrollBar().value()
+        viewport_bottom = viewport_top + viewport_rect.height()
+
+        for i, lbl in enumerate(self.page_labels):
+            lbl_top = lbl.y()
+            lbl_bottom = lbl.y() + lbl.height()
+            if lbl_bottom >= viewport_top - 500 and lbl_top <= viewport_bottom + 500:
+                if i in self.page_pixmaps:
+                    self._resize_single_label(lbl, self.page_pixmaps[i])
+
+    def _show_single_layout(self):
+        # remove scroll area and restore graphics view
+        if self.scroll_area:
+            main_layout = self.centralWidget().layout()
+            main_layout.removeWidget(self.scroll_area)
+            self.scroll_area.deleteLater()
+            self.scroll_area = None
+            self.vertical_container = None
+            self.vbox = None
+            self.v_labels = []
+            self.vertical_pixmaps = []
+        self.view.show()
+        # reload current image into scene
+        self._load_image(self.images[self.current_index])

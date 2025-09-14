@@ -56,4 +56,3 @@ class ImageView(QGraphicsView):
         super().resizeEvent(event)
         if self.manga_reader and not self._user_scaled:
             QTimer.singleShot(0, self.manga_reader._fit_current_image)
-        

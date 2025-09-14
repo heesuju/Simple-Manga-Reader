@@ -11,17 +11,8 @@ from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, 
 from src.reader import MangaReader
 from src.clickable_label import ClickableLabel
 from src.flow_layout import FlowLayout
-import re
-
-def load_thumbnail(path, width=150, height=200):
-    reader = QImageReader(str(path))
-    reader.setScaledSize(QSize(width, height))
-    image = reader.read()
-    if image.isNull():
-        pix = QPixmap(width, height)
-        pix.fill(Qt.GlobalColor.gray)
-        return pix
-    return QPixmap.fromImage(image)
+from src.image_grid import ImageGrid
+from src.utils import is_image_folder, get_chapter_number, load_thumbnail
 
 class FolderLoaderSignals(QObject):
     finished = pyqtSignal()
@@ -51,15 +42,6 @@ class FolderLoader(QRunnable):
             self.signals.add_label.emit(pix, folder, idx)
 
         self.signals.finished.emit()
-
-
-def get_chapter_number(path: Path):
-    """Extract the chapter number as integer from the folder name."""
-    name = path.name
-    match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
-    if match:
-        return int(match.group(1))
-    return -1  # folders without 'Ch.' come first (optional)
 
 class FolderGrid(QWidget):
     """Shows a grid of manga folders with responsive thumbnails."""
