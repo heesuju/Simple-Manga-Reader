@@ -1,11 +1,4 @@
-from typing import List
-import sys
-from pathlib import Path
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QGraphicsView, QGraphicsScene,
-    QGraphicsPixmapItem, QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
-    QMessageBox
-)
+from PyQt6.QtWidgets import QGraphicsView
 from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut
 from PyQt6.QtCore import Qt, QTimer
 
@@ -61,3 +54,4 @@ class ImageView(QGraphicsView):
         super().resizeEvent(event)
         if self.manga_reader and not self._user_scaled:
             QTimer.singleShot(0, self.manga_reader._fit_current_image)
+        

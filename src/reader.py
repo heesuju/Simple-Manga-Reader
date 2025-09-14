@@ -9,6 +9,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut
 from PyQt6.QtCore import Qt, QTimer
 from src.image_view import ImageView
+from src.page_input import PageInput
+import math
 
 class MangaReader(QMainWindow):
     def __init__(self, manga_dirs: List[str], index:int):
@@ -22,7 +24,6 @@ class MangaReader(QMainWindow):
         self.manga_dir = Path(manga_dirs[index])
         self.back_to_grid_callback = None  # Will be set from grid
 
-
         self.showFullScreen()
 
         # Scene and view
@@ -30,12 +31,13 @@ class MangaReader(QMainWindow):
         self.view = ImageView(manga_reader=self)
         self.view.setScene(self.scene)
 
-        # Controls
-        self.prev_btn = QPushButton("◀ Prev")
-        self.next_btn = QPushButton("Next ▶")
-        self.page_label = QLabel("0 / 0")
-        self.prev_btn.clicked.connect(self.show_prev)
-        self.next_btn.clicked.connect(self.show_next)
+        
+
+        self.page_label = PageInput("Page", 0,0)
+        self.ch_label = PageInput("Chapter", 0,0)
+
+        self.page_label.enterPressed.connect(self.change_page)
+        self.ch_label.enterPressed.connect(self.change_chapter)
 
         # **Back button**
         self.back_btn = QPushButton("⬅ Back to Grid")
@@ -50,12 +52,12 @@ class MangaReader(QMainWindow):
         # Layout
         top_layout = QHBoxLayout()
         top_layout.addWidget(self.back_btn)
+        top_layout.addWidget(self.ch_label, 1, Qt.AlignmentFlag.AlignCenter)
         top_layout.addStretch()
 
         btn_layout = QHBoxLayout()
-        btn_layout.addWidget(self.prev_btn)
         btn_layout.addWidget(self.page_label, 1, Qt.AlignmentFlag.AlignCenter)
-        btn_layout.addWidget(self.next_btn)
+        
 
         main_layout = QVBoxLayout()
         main_layout.addLayout(top_layout)
@@ -65,7 +67,49 @@ class MangaReader(QMainWindow):
         container = QWidget()
         container.setLayout(main_layout)
         self.setCentralWidget(container)
+
+
+        # Overlay container
+        self.overlay_container = QWidget(self.centralWidget())
+        self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.overlay_container.setStyleSheet("background: transparent;")
+        self.overlay_container.raise_()  # ensure it is on top
+                
+
+        # Left/right overlay buttons
+        self.prev_btn = QPushButton("", self.overlay_container)
+        self.next_btn = QPushButton("", self.overlay_container)
+        for btn in (self.prev_btn, self.next_btn):
+            btn.setStyleSheet("background-color: rgba(0,0,0,0.0); color: white; font-size: 32px; border: none;")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.prev_btn.clicked.connect(self.show_prev)
+        self.next_btn.clicked.connect(self.show_next)
+        # Layout for overlay container
+        overlay_layout = QHBoxLayout(self.overlay_container)
+        overlay_layout.setContentsMargins(0, 0, 0, 0)
+        overlay_layout.addWidget(self.prev_btn)
+        overlay_layout.addWidget(self.next_btn)
+        overlay_layout.setStretch(0, 1)
+        overlay_layout.setStretch(1, 1)
+
+        original_resize = self.view.resizeEvent
+        def resizeEvent(event):
+            self._update_overlay_size(event)
+            if original_resize:
+                original_resize(event)
+        self.view.resizeEvent = resizeEvent
+        
         self.refresh()
+
+    def _update_overlay_size(self, event=None):
+        # Match overlay container to view
+        geo = self.view.geometry()
+        self.overlay_container.setGeometry(geo)
+
+        w, h = geo.width(), geo.height()
+        self.prev_btn.setGeometry(0, 0, w // 2, h)     # Left half
+        self.next_btn.setGeometry(w // 2, 0, w // 2, h) # Right half
 
     def refresh(self, start_from_end:bool=False):
         # Load images
@@ -102,7 +146,11 @@ class MangaReader(QMainWindow):
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
 
         self.view.reset_zoom_state()
-        self.page_label.setText(f"{self.current_index + 1} / {len(self.images)}")
+        self.page_label.set_total(len(self.images))
+        self.ch_label.set_total(len(self.chapters))
+        
+        self.page_label.set_value(self.current_index + 1)
+        self.ch_label.set_value(self.chapter_index + 1)
 
         QTimer.singleShot(0, self._fit_current_image)
 
@@ -128,6 +176,7 @@ class MangaReader(QMainWindow):
         self.pixmap_item.setPixmap(self.original_pixmap)
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
     def show_next(self):
         if not self.images: return
@@ -152,6 +201,29 @@ class MangaReader(QMainWindow):
                 self.manga_dir = self.chapters[self.chapter_index]
                 self.refresh(True)
 
+    def change_page(self, page:int):
+        index = page - 1
+        if index < 0:
+            index = 0
+        elif index > len(self.images) - 1:
+            index = len(self.images) - 1
+            
+        self.current_index = index
+        self._load_image(self.images[self.current_index])
+
+    def change_chapter(self, chapter:int):
+        index = chapter - 1
+        total_chapters = len(self.chapters)
+        
+        if index < 0:
+            index = 0
+        elif index > total_chapters - 1:
+            index = total_chapters - 1
+        
+        self.chapter_index = index
+        self.manga_dir = self.chapters[self.chapter_index]
+        self.refresh()
+
     def toggle_fullscreen(self):
         if self.isFullScreen():
             self.showNormal()
@@ -167,16 +239,12 @@ class MangaReader(QMainWindow):
     def showEvent(self, ev):
         super().showEvent(ev)
         QTimer.singleShot(0, self._fit_current_image)
+        QTimer.singleShot(50, self._update_overlay_size)
 
-
-# if __name__ == "__main__":
-#     import argparse
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("manga_dir", nargs="?", default="C:/Utils/mangadex-dl_x64_v3.1.4/mangadex-dl/Chichi Chichi/Vol. 1 Ch. 1", help="Path to manga image folder")
-#     args = parser.parse_args()
-
-#     app = QApplication(sys.argv)
-#     reader = MangaReader(args.manga_dir)
-#     reader.show()
-#     sys.exit(app.exec())
-
+    def wheelEvent(self, event):
+        # Forward to view for zooming
+        self.view.wheelEvent(event)
+        if not math.isclose(self.view._zoom_factor, 1.0):
+            self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        else:
+            self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)

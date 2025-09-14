@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sys
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -19,7 +18,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "manga_root", nargs="?", default="C:/Utils/mangadex-dl_x64_v3.1.4/mangadex-dl/Anta to Osananajimitte dake demo Iyananoni! ~Zekkou kara Hajimaru S-kyuu Bishoujo to no Gakuen Nariagari Seikatsu~", help="Root manga directory containing folders"
+        "manga_root", nargs="?", default=""
     )
     args = parser.parse_args()
 
