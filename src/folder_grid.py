@@ -90,7 +90,7 @@ class FolderGrid(QWidget):
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll_content = QWidget()
-        self.flow_layout = FlowLayout(spacing=15)
+        self.flow_layout = FlowLayout(spacing=0)
         self.scroll_content.setLayout(self.flow_layout)
         self.scroll.setWidget(self.scroll_content)
         main_layout.addWidget(self.scroll)

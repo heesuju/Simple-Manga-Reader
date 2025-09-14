@@ -30,7 +30,6 @@ class MangaReader(QMainWindow):
         self.scene = QGraphicsScene()
         self.view = ImageView(manga_reader=self)
         self.view.setScene(self.scene)
-
         
 
         self.page_label = PageInput("Page", 0,0)
@@ -51,15 +50,18 @@ class MangaReader(QMainWindow):
 
         # Layout
         top_layout = QHBoxLayout()
+        top_layout.setSpacing(0)
         top_layout.addWidget(self.back_btn)
         top_layout.addWidget(self.ch_label, 1, Qt.AlignmentFlag.AlignCenter)
         top_layout.addStretch()
 
         btn_layout = QHBoxLayout()
         btn_layout.addWidget(self.page_label, 1, Qt.AlignmentFlag.AlignCenter)
+        btn_layout.setSpacing(0)
         
 
         main_layout = QVBoxLayout()
+        main_layout.setSpacing(0)
         main_layout.addLayout(top_layout)
         main_layout.addWidget(self.view)
         main_layout.addLayout(btn_layout)
@@ -142,6 +144,8 @@ class MangaReader(QMainWindow):
         self.original_pixmap = QPixmap(path)
         self.scene.clear()
         self.pixmap_item = QGraphicsPixmapItem(self.original_pixmap)
+        self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+
         self.scene.addItem(self.pixmap_item)
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
 
@@ -155,26 +159,17 @@ class MangaReader(QMainWindow):
         QTimer.singleShot(0, self._fit_current_image)
 
     def _update_zoom(self, factor: float):
-        """Update pixmap based on original to keep it sharp."""
-        if not hasattr(self, "original_pixmap") or not hasattr(self, "pixmap_item"):
-            return
-
-        original = self.original_pixmap
-        new_width = int(original.width() * factor)
-        new_height = int(original.height() * factor)
-        scaled = original.scaled(new_width, new_height, Qt.AspectRatioMode.KeepAspectRatio,
-                                 Qt.TransformationMode.SmoothTransformation)
-        self.pixmap_item.setPixmap(scaled)
-        self.scene.setSceneRect(self.pixmap_item.boundingRect())
+        """Zoom the view using GPU-accelerated transformation."""
+        self.view.resetTransform()  # reset previous zoom
+        self.view.scale(factor, factor)
 
     def _fit_current_image(self):
         """Fit image to view and reset zoom factor."""
         if not hasattr(self, "pixmap_item"):
             return
-        self.view.reset_zoom_state()
+        
+        self.view.resetTransform()  # remove any previous zoom
         self.view._zoom_factor = 1.0
-        self.pixmap_item.setPixmap(self.original_pixmap)
-        self.scene.setSceneRect(self.pixmap_item.boundingRect())
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
