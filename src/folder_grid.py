@@ -3,8 +3,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QPushButton,
     QVBoxLayout, QScrollArea, QMessageBox, QFileDialog
 )
-from PyQt6.QtGui import QPixmap, QMouseEvent, QCursor, QKeySequence, QShortcut
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPixmap, QMouseEvent, QCursor, QKeySequence, QShortcut, QImageReader
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize
 
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QHBoxLayout, QLineEdit
 
@@ -13,8 +13,15 @@ from src.clickable_label import ClickableLabel
 from src.flow_layout import FlowLayout
 import re
 
-from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, QThreadPool
-from PyQt6.QtWidgets import QFileDialog
+def load_thumbnail(path, width=150, height=200):
+    reader = QImageReader(str(path))
+    reader.setScaledSize(QSize(width, height))
+    image = reader.read()
+    if image.isNull():
+        pix = QPixmap(width, height)
+        pix.fill(Qt.GlobalColor.gray)
+        return pix
+    return QPixmap.fromImage(image)
 
 class FolderLoaderSignals(QObject):
     finished = pyqtSignal()
@@ -36,11 +43,7 @@ class FolderLoader(QRunnable):
             thumb_path = folder / first_page if first_page else None
 
             if thumb_path and thumb_path.exists():
-                pix = QPixmap(str(thumb_path)).scaled(
-                    150, 200,
-                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                    Qt.TransformationMode.SmoothTransformation
-                )
+                pix = load_thumbnail(str(thumb_path), 150, 200)
             else:
                 pix = QPixmap(150, 200)
                 pix.fill(QColor("gray"))
