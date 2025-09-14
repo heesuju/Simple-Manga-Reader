@@ -63,11 +63,11 @@ def get_chapter_number(path: Path):
 
 class FolderGrid(QWidget):
     """Shows a grid of manga folders with responsive thumbnails."""
-    def __init__(self, manga_root: str = "manga"):
+    def __init__(self, manga_root: str = ""):
         super().__init__()
-        self.manga_root = Path(manga_root)
-        self.folders = [p for p in sorted(self.manga_root.iterdir()) if p.is_dir()]
-        self.folders = sorted(self.folders, key=get_chapter_number)
+        
+        self.manga_root = Path(manga_root) if manga_root else None
+        
         self.threadpool = QThreadPool()
 
         self.init_ui()
@@ -95,8 +95,8 @@ class FolderGrid(QWidget):
         self.scroll.setWidget(self.scroll_content)
         main_layout.addWidget(self.scroll)
 
-        # Load folders initially
-        self.load_folders()
+        if self.manga_root:
+            self.load_folders()
     
     def load_folders(self):
         """Load manga folders asynchronously."""
