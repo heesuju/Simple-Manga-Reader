@@ -3,9 +3,10 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QGraphicsView, QGraphicsScene,
     QGraphicsPixmapItem, QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
-    QMessageBox, QFrame, QScrollArea, QSizePolicy
+    QMessageBox, QFrame, QScrollArea, QSizePolicy, QPinchGesture
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut
+
 from PyQt6.QtCore import Qt, QTimer, QEvent
 from src.image_view import ImageView
 from src.page_input import PageInput
@@ -17,8 +18,10 @@ class MangaReader(QMainWindow):
     def __init__(self, manga_dirs: List[str], index:int):
         super().__init__()
         self.setWindowTitle("Manga Reader")
+        self.grabGesture(Qt.GestureType.PinchGesture)
         if index > len(manga_dirs) - 1:
             return
+        
 
         self.view_mode = ViewMode.SINGLE
         self.scroll_area = None
@@ -30,6 +33,7 @@ class MangaReader(QMainWindow):
         self.vertical_pixmaps: list[QPixmap] = []
         self.loader: ImageLoader | None = None
 
+        self._last_total_scale = 1.0
         self.chapter_index = index
         self.chapters = manga_dirs
         self.manga_dir = Path(manga_dirs[index])
@@ -119,6 +123,14 @@ class MangaReader(QMainWindow):
         self.view.resizeEvent = resizeEvent
         
         self.refresh()
+
+    def event(self, e):
+        if e.type() == QEvent.Type.Gesture:
+            gesture = e.gesture(Qt.GestureType.PinchGesture)
+            if gesture:
+                self.handle_pinch(gesture)
+                return True
+        return super().event(e)
 
     def eventFilter(self, obj, event):
         # catch scroll viewport resize events to rescale vertical images
@@ -329,6 +341,27 @@ class MangaReader(QMainWindow):
             self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         else:
             self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+
+    def handle_pinch(self, gesture: QPinchGesture):
+        if gesture.state() == Qt.GestureState.GestureStarted:
+            # Remember the zoom at the start of this pinch
+            self._gesture_start_zoom = self.view._zoom_factor
+
+        if gesture.changeFlags() & QPinchGesture.ChangeFlag.ScaleFactorChanged:
+            new_zoom = self._gesture_start_zoom * gesture.totalScaleFactor()
+            scale_delta = new_zoom / self.view._zoom_factor
+
+            # Deadzone: ignore tiny changes (e.g. ±2%)
+            if abs(scale_delta - 1.0) < 0.02:
+                return
+
+            self.view.scale(scale_delta, scale_delta)
+            self.view._zoom_factor = new_zoom
+
+            if not math.isclose(self.view._zoom_factor, 1.0, rel_tol=1e-2):
+                self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            else:
+                self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
     def toggle_layout(self):
         if self.view_mode == ViewMode.SINGLE:
