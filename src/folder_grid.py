@@ -12,7 +12,7 @@ from src.flow_layout import FlowLayout
 from src.utils import is_image_folder, get_chapter_number, load_thumbnail
 
 class ItemLoaderSignals(QObject):
-    item_loaded = pyqtSignal(QPixmap, object, int, int)  # pix, path, idx, gen
+    item_loaded = pyqtSignal(QPixmap, object, int, int, str)  # pix, path, idx, gen, item_type
     item_invalid = pyqtSignal(int, int)  # idx, gen
     loading_finished = pyqtSignal(int) # gen
 
@@ -47,10 +47,14 @@ class ItemLoader(QRunnable):
     def run(self):
         from PyQt6.QtGui import QPixmap, QColor
         for idx, item_path in enumerate(self.items):
+            item_type = ''
             if item_path.is_dir():
                 if not ItemLoader._folder_is_valid(item_path):
                     self.signals.item_invalid.emit(idx, self.generation)
                     continue
+                item_type = 'folder'
+            elif item_path.is_file():
+                item_type = 'image'
             
             pix = None
             if item_path.is_dir():
@@ -67,7 +71,7 @@ class ItemLoader(QRunnable):
                 pix = QPixmap(150, 200)
                 pix.fill(QColor("gray"))
 
-            self.signals.item_loaded.emit(pix, item_path, idx, self.generation)
+            self.signals.item_loaded.emit(pix, item_path, idx, self.generation, item_type)
         
         self.signals.loading_finished.emit(self.generation)
 
@@ -157,10 +161,10 @@ class FolderGrid(QWidget):
         loader.signals.item_invalid.connect(self.on_item_invalid)
         self.threadpool.start(loader)
 
-    def on_item_loaded(self, pix, path, idx, generation):
+    def on_item_loaded(self, pix, path, idx, generation, item_type):
         if generation != self.loading_generation:
             return
-        self.received_items[idx] = (pix, path)
+        self.received_items[idx] = (pix, path, item_type)
         self._display_pending_items()
 
     def on_item_invalid(self, idx, generation):
@@ -176,8 +180,8 @@ class FolderGrid(QWidget):
             item_data = self.received_items.pop(self.next_item_to_display)
             
             if item_data is not None:
-                pix, path = item_data
-                label = ClickableLabel(path, self.next_item_to_display)
+                pix, path, item_type = item_data
+                label = ClickableLabel(path, self.next_item_to_display, item_type)
                 label.setPixmap(pix)
                 label.clicked.connect(self.item_selected)
                 self.flow_layout.addWidget(label)
