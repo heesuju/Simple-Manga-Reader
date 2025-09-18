@@ -4,15 +4,20 @@ from PyQt6.QtGui import QPixmap, QMouseEvent, QPainter, QColor, QFont
 from pathlib import Path
 
 class ClickableLabel(QWidget):
-    clicked = pyqtSignal(Path, int)
+    clicked = pyqtSignal(object, int)
 
-    def __init__(self, path: Path, index: int, item_type: str):
+    def __init__(self, path: object, index: int, item_type: str):
         super().__init__()
         self.path = path
         self.index = index
         self.item_type = item_type
         self.pixmap = None
         self.hovered = False
+
+        if isinstance(path, str) and '|' in path:
+            self.display_name = Path(path.split('|')[1]).name
+        else:
+            self.display_name = Path(path).name
 
         self.setFixedSize(150, 200)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -49,7 +54,7 @@ class ClickableLabel(QWidget):
             font.setPointSize(10)
             painter.setFont(font)
             painter.setPen(Qt.GlobalColor.white)
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.path.name)
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.display_name)
 
         # Draw icon
         self._draw_icon(painter)
@@ -72,6 +77,8 @@ class ClickableLabel(QWidget):
             self._draw_folder_icon(painter, icon_rect)
         elif self.item_type == 'image':
             self._draw_image_icon(painter, icon_rect)
+        elif self.item_type == 'zip':
+            self._draw_zip_icon(painter, icon_rect)
 
     def _draw_folder_icon(self, painter: QPainter, rect):
         # A simple folder shape
@@ -104,3 +111,16 @@ class ClickableLabel(QWidget):
             rect.bottomRight()
         ]
         painter.drawPolygon(poly1)
+
+    def _draw_zip_icon(self, painter: QPainter, rect):
+        # A simple zip file icon
+        painter.setPen(Qt.GlobalColor.white)
+        painter.setBrush(QColor(150, 150, 150)) # Gray
+        painter.drawRect(rect)
+
+        # Zipper
+        painter.setPen(Qt.GlobalColor.black)
+        zipper_rect = rect.adjusted(rect.width() // 2 - 2, 2, -(rect.width() // 2 - 2), -2)
+        painter.drawRect(zipper_rect)
+        for i in range(4, rect.height() - 4, 4):
+            painter.drawLine(zipper_rect.left(), rect.top() + i, zipper_rect.right(), rect.top() + i)

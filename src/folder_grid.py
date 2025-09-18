@@ -1,3 +1,4 @@
+import zipfile
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QPushButton,
@@ -9,7 +10,7 @@ from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool
 from src.reader import MangaReader
 from src.clickable_label import ClickableLabel
 from src.flow_layout import FlowLayout
-from src.utils import is_image_folder, get_chapter_number, load_thumbnail
+from src.utils import is_image_folder, get_chapter_number, load_thumbnail, load_thumbnail_from_zip
 
 class ItemLoaderSignals(QObject):
     item_loaded = pyqtSignal(QPixmap, object, int, int, str)  # pix, path, idx, gen, item_type
@@ -48,24 +49,32 @@ class ItemLoader(QRunnable):
         from PyQt6.QtGui import QPixmap, QColor
         for idx, item_path in enumerate(self.items):
             item_type = ''
-            if item_path.is_dir():
+            pix = None
+            
+            if isinstance(item_path, str) and '|' in item_path:
+                # Handle virtual paths
+                item_type = 'image'
+                # This function will be created in utils.py later
+                from src.utils import load_thumbnail_from_virtual_path
+                pix = load_thumbnail_from_virtual_path(item_path, 150, 200)
+            elif item_path.is_dir():
                 if not ItemLoader._folder_is_valid(item_path):
                     self.signals.item_invalid.emit(idx, self.generation)
                     continue
                 item_type = 'folder'
-            elif item_path.is_file():
-                item_type = 'image'
-            
-            pix = None
-            if item_path.is_dir():
                 try:
                     first_image = next(f for f in item_path.iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
                     if first_image:
                         pix = load_thumbnail(str(first_image), 150, 200)
                 except (StopIteration, PermissionError):
-                    pass  # No images in folder or permission error
+                    pass
             elif item_path.is_file():
-                pix = load_thumbnail(str(item_path), 150, 200)
+                if item_path.suffix.lower() == '.zip':
+                    item_type = 'zip'
+                    pix = load_thumbnail_from_zip(str(item_path), 150, 200)
+                else:
+                    item_type = 'image'
+                    pix = load_thumbnail(str(item_path), 150, 200)
 
             if not pix:
                 pix = QPixmap(150, 200)
@@ -110,7 +119,6 @@ class FolderGrid(QWidget):
         top_layout.addWidget(browse_btn)
         main_layout.addLayout(top_layout)
 
-        # --- Scrollable grid ---
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll_content = QWidget()
@@ -123,10 +131,9 @@ class FolderGrid(QWidget):
             self.load_items()
     
     def load_items(self):
-        """Load folders and images asynchronously, filtering out covers."""
+        """Load items from a directory or a zip file."""
         self.loading_generation += 1
 
-        # Clear previous widgets
         while self.flow_layout.count():
             item = self.flow_layout.takeAt(0)
             if item.widget():
@@ -135,34 +142,49 @@ class FolderGrid(QWidget):
         if not self.manga_root.exists():
             return
 
-        try:
-            all_items = list(self.manga_root.iterdir())
-        except PermissionError:
-            QMessageBox.warning(self, "Permission Denied", f"Cannot access the directory: {self.manga_root}")
-            self.go_up()
-            return
+        items = []
+        if self.manga_root.is_file() and self.manga_root.suffix.lower() == '.zip':
+            # Load items from zip file
+            try:
+                with zipfile.ZipFile(self.manga_root, 'r') as zf:
+                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
+                    for image_name in image_files:
+                        items.append(f"{self.manga_root}|{image_name}")
+            except zipfile.BadZipFile:
+                QMessageBox.warning(self, "Error", "Could not read the zip file.")
+                self.go_up()
+                return
+        else:
+            # Load items from directory
+            try:
+                all_items = list(self.manga_root.iterdir())
+            except PermissionError:
+                QMessageBox.warning(self, "Permission Denied", f"Cannot access the directory: {self.manga_root}")
+                self.go_up()
+                return
 
-        subdirs = [p for p in all_items if p.is_dir()]
-        image_files = [p for p in all_items if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
+            subdirs = [p for p in all_items if p.is_dir()]
+            files = [p for p in all_items if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.zip'}]
 
-        # Cover filtering logic
-        filtered_images = []
-        is_implicit_cover_present = (len(image_files) == 1 and len(subdirs) > 0)
+            image_files = [f for f in files if f.suffix.lower() != '.zip']
+            zip_files = [f for f in files if f.suffix.lower() == '.zip']
+            
+            filtered_images = []
+            is_implicit_cover_present = (len(image_files) == 1 and len(subdirs) > 0)
 
-        for img in image_files:
-            is_explicit_cover = img.name.lower().startswith('cover.')
-            if is_explicit_cover or is_implicit_cover_present:
-                continue  # Hide cover
-            filtered_images.append(img)
+            for img in image_files:
+                is_explicit_cover = img.name.lower().startswith('cover.')
+                if is_explicit_cover or is_implicit_cover_present:
+                    continue
+                filtered_images.append(img)
 
-        items = subdirs + filtered_images
-        items = sorted(items, key=get_chapter_number)
+            items = subdirs + zip_files + filtered_images
+            items = sorted(items, key=get_chapter_number)
 
         self.total_items_to_load = len(items)
         self.received_items.clear()
         self.next_item_to_display = 0
 
-        # Start async loading
         loader = ItemLoader(items, self.loading_generation)
         if self.loader:
             try:
@@ -170,7 +192,7 @@ class FolderGrid(QWidget):
                 self.loader.signals.item_invalid.disconnect()
                 self.loader.signals.loading_finished.disconnect()
             except TypeError:
-                pass # was not connected
+                pass
         self.loader = loader
         loader.signals.item_loaded.connect(self.on_item_loaded)
         loader.signals.item_invalid.connect(self.on_item_invalid)
@@ -203,27 +225,35 @@ class FolderGrid(QWidget):
             
             self.next_item_to_display += 1
 
-    def item_selected(self, path: Path, selected_index: int):
-        if path.is_dir():
+    def item_selected(self, path: object, selected_index: int):
+        if isinstance(path, Path) and path.is_dir():
             self.manga_root = path
             self.path_input.setText(str(self.manga_root))
             self.load_items()
-        elif path.is_file():
-            image_dir = path.parent
-            series_dir = image_dir.parent
+        elif isinstance(path, Path) and path.suffix.lower() == '.zip':
+            self.manga_root = path
+            self.path_input.setText(str(self.manga_root))
+            self.load_items()
+        elif (isinstance(path, Path) and path.is_file()) or (isinstance(path, str) and '|' in path):
+            # This is either a regular image file or a virtual path to an image in a zip
+            if isinstance(path, str):
+                # Virtual path
+                zip_path_str = path.split('|')[0]
+                zip_path = Path(zip_path_str)
+                series_dir = zip_path.parent
+                chapter_files = [str(p) for p in series_dir.iterdir() if p.suffix.lower() == '.zip']
+                chapter_index = chapter_files.index(zip_path_str)
+                start_file = path
+            else:
+                # Regular image file
+                image_dir = path.parent
+                series_dir = image_dir.parent
+                chapter_files = [d for d in series_dir.iterdir() if d.is_dir()]
+                chapter_files = sorted(chapter_files, key=get_chapter_number)
+                chapter_index = chapter_files.index(image_dir)
+                start_file = str(path)
 
-            # Get all directories in the series_dir, and sort them
-            chapter_dirs = [d for d in series_dir.iterdir() if d.is_dir()]
-            chapter_dirs = sorted(chapter_dirs, key=get_chapter_number)
-
-            try:
-                chapter_index = chapter_dirs.index(image_dir)
-            except ValueError:
-                chapter_index = 0
-
-            chapter_dirs_str = [d for d in chapter_dirs]
-
-            self.reader = MangaReader(chapter_dirs_str, chapter_index, start_file=str(path))
+            self.reader = MangaReader(chapter_files, chapter_index, start_file=start_file)
             self.reader.back_to_grid_callback = self.show
             self.reader.show()
             self.close()
@@ -239,13 +269,12 @@ class FolderGrid(QWidget):
     def path_entered(self):
         path_text = self.path_input.text()
         path = Path(path_text)
-        if path.exists() and path.is_dir():
+        if path.exists() and (path.is_dir() or path.suffix.lower() == '.zip'):
             self.manga_root = path
             self.load_items()
         else:
-            QMessageBox.warning(self, "Invalid Path", "The entered path does not exist or is not a directory.")
+            QMessageBox.warning(self, "Invalid Path", "The entered path does not exist or is not a directory/zip file.")
             self.path_input.setText(str(self.manga_root))
-
 
     def exit_program(self):
         self.close()
