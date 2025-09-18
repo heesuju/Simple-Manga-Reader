@@ -19,6 +19,7 @@ def get_chapter_number(path: Path):
 def load_thumbnail(path, width=150, height=200):
     reader = QImageReader(str(path))
     reader.setScaledSize(QSize(width, height))
+    reader.setQuality(50)  # Lower quality for faster loading
     image = reader.read()
     if image.isNull():
         pix = QPixmap(width, height)
