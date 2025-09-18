@@ -123,7 +123,7 @@ class FolderGrid(QWidget):
             self.load_items()
     
     def load_items(self):
-        """Load folders and images asynchronously."""
+        """Load folders and images asynchronously, filtering out covers."""
         self.loading_generation += 1
 
         # Clear previous widgets
@@ -136,12 +136,27 @@ class FolderGrid(QWidget):
             return
 
         try:
-            items = [p for p in self.manga_root.iterdir() if p.is_dir() or p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
-            items = sorted(items, key=get_chapter_number)
+            all_items = list(self.manga_root.iterdir())
         except PermissionError:
             QMessageBox.warning(self, "Permission Denied", f"Cannot access the directory: {self.manga_root}")
             self.go_up()
             return
+
+        subdirs = [p for p in all_items if p.is_dir()]
+        image_files = [p for p in all_items if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
+
+        # Cover filtering logic
+        filtered_images = []
+        is_implicit_cover_present = (len(image_files) == 1 and len(subdirs) > 0)
+
+        for img in image_files:
+            is_explicit_cover = img.name.lower().startswith('cover.')
+            if is_explicit_cover or is_implicit_cover_present:
+                continue  # Hide cover
+            filtered_images.append(img)
+
+        items = subdirs + filtered_images
+        items = sorted(items, key=get_chapter_number)
 
         self.total_items_to_load = len(items)
         self.received_items.clear()
