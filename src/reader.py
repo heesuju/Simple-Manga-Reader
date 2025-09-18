@@ -15,14 +15,14 @@ from src.enums import ViewMode
 from src.core.image_loader import ImageLoader
 
 class MangaReader(QMainWindow):
-    def __init__(self, manga_dirs: List[str], index:int):
+    def __init__(self, manga_dirs: List[Path], index:int, start_file: str = None):
         super().__init__()
         self.setWindowTitle("Manga Reader")
         self.grabGesture(Qt.GestureType.PinchGesture)
         if index > len(manga_dirs) - 1:
             return
         
-
+        self.start_file = start_file
         self.view_mode = ViewMode.SINGLE
         self.scroll_area = None
         self.vertical_container = None
@@ -156,7 +156,13 @@ class MangaReader(QMainWindow):
     def refresh(self, start_from_end:bool=False):
         # Load images
         self.images = self._scan_images(self.manga_dir)
-        if start_from_end:
+        if hasattr(self, 'start_file') and self.start_file:
+            try:
+                self.current_index = self.images.index(self.start_file)
+            except (ValueError, IndexError):
+                self.current_index = 0
+            self.start_file = None  # Use it only once
+        elif start_from_end:
             self.current_index = len(self.images) - 1
         else:
             self.current_index = 0
