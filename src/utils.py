@@ -20,7 +20,9 @@ def get_chapter_number(path):
     match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
     if match:
         return int(match.group(1))
-    return -1
+    else:
+        numbers = re.findall(r'\d+', name)
+        return int(numbers[0]) if numbers else float('inf') 
 
 def load_thumbnail(path, width=150, height=200):
     reader = QImageReader(str(path))
