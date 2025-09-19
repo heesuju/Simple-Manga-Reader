@@ -91,3 +91,12 @@ def get_image_data_from_zip(virtual_path):
                 return f.read()
     except (zipfile.BadZipFile, KeyError):
         return None
+
+def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
+    if pixmap.isNull():
+        return pixmap
+    
+    scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+    x = (scaled_pixmap.width() - width) // 2
+    y = (scaled_pixmap.height() - height) // 2
+    return scaled_pixmap.copy(x, y, width, height)

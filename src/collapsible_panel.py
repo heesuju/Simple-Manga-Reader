@@ -40,9 +40,11 @@ class CollapsiblePanel(QWidget):
     def show_content(self):
         self.hide_timer.stop()
         self.content_area.setVisible(True)
+        self.setVisible(True)
 
     def hide_content(self):
         self.content_area.setVisible(False)
+        self.setVisible(False)
 
     def enterEvent(self, event):
         self.hide_timer.stop()

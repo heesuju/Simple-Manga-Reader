@@ -30,9 +30,11 @@ python reg.py
 
 ### To Do:
 - [X] Simple grid layout to show chapters
-- [X] Support for vertical scrolling comics
-- [ ] Grid view for pages
-- [ ] View zip files
+- [X] Support for long strip viewing mode
+- [X] Support for double page viewing mode
+- [X] Grid view for pages
+- [ ] Use uniform ratio for double mode
+- [X] View zip files
 - [ ] Bookmarks
 
 ### Disclaimer:

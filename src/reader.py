@@ -31,53 +31,7 @@ import math
 from src.enums import ViewMode
 from src.core.image_loader import ImageLoader
 from src.utils import get_image_data_from_zip, get_chapter_number, load_thumbnail, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
-
-def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
-    if pixmap.isNull():
-        return pixmap
-    
-    scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-    x = (scaled_pixmap.width() - width) // 2
-    y = (scaled_pixmap.height() - height) // 2
-    return scaled_pixmap.copy(x, y, width, height)
-
-class ThumbnailWidget(QWidget):
-    clicked = pyqtSignal(int)
-
-    def __init__(self, index, text, parent=None):
-        super().__init__(parent)
-        self.index = index
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(2, 2, 2, 2)
-        self.layout.setSpacing(2)
-
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setFixedSize(100, 140)
-
-        self.text_label = QLabel(text)
-        self.text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.text_label.setWordWrap(True)
-
-        self.layout.addWidget(self.image_label)
-        self.layout.addWidget(self.text_label)
-        self.set_selected(False)
-
-    def set_pixmap(self, pixmap: QPixmap):
-        if not pixmap.isNull():
-            cropped = crop_pixmap(pixmap, 100, 140)
-            self.image_label.setPixmap(cropped)
-
-    def mousePressEvent(self, ev: QMouseEvent) -> None:
-        if ev.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit(self.index)
-        return super().mousePressEvent(ev)
-
-    def set_selected(self, selected: bool):
-        if selected:
-            self.setStyleSheet("background-color: #4a86e8; border-radius: 4px;")
-        else:
-            self.setStyleSheet("background-color: none; border-radius: 4px;")
+from src.ui.thumbnail_widget import ThumbnailWidget
 
 def _get_first_image_path(chapter_dir):
     if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
@@ -126,8 +80,8 @@ class MangaReader(QMainWindow):
         self.current_chapter_thumbnail = None
         self.current_page_thumbnail = None
 
-        self.showFullScreen()
         self._setup_ui()
+        self.showFullScreen()
         self.refresh()
         self._update_chapter_selection()
 
@@ -178,9 +132,6 @@ class MangaReader(QMainWindow):
         self.chapter_panel.raise_()
         self.page_panel.raise_()
 
-        self.chapter_panel.show()
-        self.page_panel.show()
-
         self.setMouseTracking(True)
         self.centralWidget().setMouseTracking(True)
         self.view.setMouseTracking(True)
@@ -206,13 +157,11 @@ class MangaReader(QMainWindow):
         overlay_layout.setStretch(0, 1)
         overlay_layout.setStretch(1, 1)
 
-        original_resize = self.view.resizeEvent
-        def resizeEvent(event):
-            self._update_overlay_size(event)
-            self._update_panel_geometries()
-            if original_resize:
-                original_resize(event)
-        self.view.resizeEvent = resizeEvent
+        self.view.resizeEvent = self.resizeEvent
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_panel_geometries()
 
     def _update_panel_geometries(self):
         chapter_panel_height = 170 if self.chapter_panel.content_area.isVisible() else 0
@@ -264,7 +213,7 @@ class MangaReader(QMainWindow):
 
         for i, chapter in enumerate(self.chapters):
             chapter_name = Path(str(chapter)).name
-            widget = ThumbnailWidget(i, f"{i+1}. {chapter_name}")
+            widget = ThumbnailWidget(i, chapter_name)
             widget.clicked.connect(self._change_chapter_by_thumbnail)
             self.chapter_thumbnails_layout.insertWidget(i, widget)
             self.chapter_thumbnail_widgets.append(widget)
@@ -286,7 +235,7 @@ class MangaReader(QMainWindow):
 
         for i, image_path in enumerate(self.images):
             page_name = Path(image_path).name
-            widget = ThumbnailWidget(i, f"{i+1}. {page_name}")
+            widget = ThumbnailWidget(i, str(i+1))
             widget.clicked.connect(self._change_page_by_thumbnail)
             self.page_thumbnails_layout.insertWidget(i, widget)
             self.page_thumbnail_widgets.append(widget)
@@ -337,18 +286,7 @@ class MangaReader(QMainWindow):
                 QTimer.singleShot(0, self._resize_vertical_images)
         return super().eventFilter(obj, event)
 
-    def _update_overlay_size(self, event=None):
-        if self.view_mode == ViewMode.STRIP and self.scroll_area is not None:
-            target = self.scroll_area
-        else:
-            target = self.view
 
-        geo = target.geometry()
-        self.overlay_container.setGeometry(geo)
-
-        w, h = geo.width(), geo.height()
-        self.prev_btn.setGeometry(0, 0, w // 2, h)
-        self.next_btn.setGeometry(w // 2, 0, w - (w // 2), h)
 
     def refresh(self, start_from_end:bool=False):
         self.images = self._get_image_list()
@@ -561,7 +499,6 @@ class MangaReader(QMainWindow):
     def showEvent(self, ev):
         super().showEvent(ev)
         QTimer.singleShot(0, self._fit_current_image)
-        QTimer.singleShot(50, self._update_overlay_size)
 
     def wheelEvent(self, event):
         self.view.wheelEvent(event)
@@ -603,7 +540,6 @@ class MangaReader(QMainWindow):
             self.layout_btn.setText("Single")
             self._show_single_layout()
 
-        QTimer.singleShot(0, self._update_overlay_size)
         QTimer.singleShot(0, self._fit_current_image)
 
     def _show_double_layout(self):
