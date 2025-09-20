@@ -43,29 +43,37 @@ class ItemLoader(QRunnable):
             item_type = ''
             pix = None
             
-            if isinstance(item_path, str) and '|' in item_path:
+            path_str = str(item_path)
+            crop = None
+            if path_str.endswith("_left"):
+                path_str = path_str[:-5]
+                crop = "left"
+            elif path_str.endswith("_right"):
+                path_str = path_str[:-6]
+                crop = "right"
+
+            if '|' in path_str:
                 # Handle virtual paths
                 item_type = 'image'
-                # This function will be created in utils.py later
-                pix = load_thumbnail_from_virtual_path(item_path, 150, 200)
-            elif item_path.is_dir():
-                if not ItemLoader._folder_is_valid(item_path):
+                pix = load_thumbnail_from_virtual_path(path_str, 150, 200, crop)
+            elif Path(path_str).is_dir():
+                if not ItemLoader._folder_is_valid(Path(path_str)):
                     self.signals.item_invalid.emit(idx, self.generation)
                     continue
                 item_type = 'folder'
                 try:
-                    first_image = next(f for f in item_path.iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
+                    first_image = next(f for f in Path(path_str).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
                     if first_image:
                         pix = load_thumbnail_from_path(str(first_image), 150, 200)
                 except (StopIteration, PermissionError):
                     pass
-            elif item_path.is_file():
-                if item_path.suffix.lower() == '.zip':
+            elif Path(path_str).is_file():
+                if Path(path_str).suffix.lower() == '.zip':
                     item_type = 'zip'
-                    pix = load_thumbnail_from_zip(str(item_path), 150, 200)
+                    pix = load_thumbnail_from_zip(path_str, 150, 200)
                 else:
                     item_type = 'image'
-                    pix = load_thumbnail_from_path(str(item_path), 150, 200)
+                    pix = load_thumbnail_from_path(path_str, 150, 200, crop)
 
             if not pix:
                 pix = QPixmap(150, 200)

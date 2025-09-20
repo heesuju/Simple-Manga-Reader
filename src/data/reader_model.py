@@ -1,0 +1,170 @@
+from typing import List
+from pathlib import Path
+import zipfile
+
+from PyQt6.QtCore import QObject, pyqtSignal
+
+from src.enums import ViewMode
+from src.utils.img_utils import get_chapter_number
+from src.core.thumbnail_worker import get_default_view_mode
+
+def _get_first_image_path(chapter_dir):
+    if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
+        try:
+            with zipfile.ZipFile(chapter_dir, 'r') as zf:
+                image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
+                if image_files:
+                    return f"{chapter_dir}|{image_files[0]}"
+        except zipfile.BadZipFile:
+            return None
+    elif isinstance(chapter_dir, Path) and chapter_dir.is_dir():
+        exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+        image_files = [p for p in sorted(chapter_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
+        if image_files:
+            return str(image_files[0])
+    return None
+
+class ReaderModel(QObject):
+    refreshed = pyqtSignal()
+    image_loaded = pyqtSignal(str)
+    double_image_loaded = pyqtSignal(str, str)
+    layout_updated = pyqtSignal(ViewMode)
+
+    def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
+        super().__init__()
+        if index > len(manga_dirs) - 1:
+            return
+        
+        self.start_file = start_file
+        self.view_mode = ViewMode.SINGLE
+        self.chapter_index = index
+        self.chapters = manga_dirs
+        self.manga_dir = self.chapters[index]
+        self.images: List[str] = images if images else []
+        self.current_index = 0
+
+        self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
+
+    def refresh(self, start_from_end:bool=False):
+        if not self.images:
+            self.images = self._get_image_list()
+            self.images = sorted(self.images, key=get_chapter_number)
+        self.view_mode = get_default_view_mode(self.images)
+
+        if hasattr(self, 'start_file') and self.start_file:
+            try:
+                self.current_index = self.images.index(self.start_file)
+            except (ValueError, IndexError):
+                self.current_index = 0
+            self.start_file = None
+        elif start_from_end:
+            self.current_index = len(self.images) - 1
+        else:
+            self.current_index = 0
+
+        self.refreshed.emit()
+
+        if self.images:
+            self.load_image()
+
+    def _get_image_list(self):
+        if isinstance(self.manga_dir, str) and self.manga_dir.endswith('.zip'):
+            try:
+                with zipfile.ZipFile(self.manga_dir, 'r') as zf:
+                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
+                    return [f"{self.manga_dir}|{name}" for name in image_files]
+            except zipfile.BadZipFile:
+                return []
+        elif isinstance(self.manga_dir, Path) and self.manga_dir.is_dir():
+            exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+            return [str(p) for p in sorted(self.manga_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
+        return []
+
+    def load_image(self):
+        self.update_layout()
+
+    def show_next(self):
+        if not self.images: 
+            return
+        if self.view_mode == ViewMode.DOUBLE:
+            step = 2
+        else:
+            step = 1
+
+        if self.current_index + step < len(self.images):
+            self.current_index += step
+            self.load_image()
+        else:
+            total_chapters = len(self.chapters)
+            if self.chapter_index < total_chapters - 1:
+                self.chapter_index += 1
+                self.manga_dir = self.chapters[self.chapter_index]
+                self.images = [] # force reload
+                self.refresh()
+
+    def show_prev(self):
+        if not self.images: 
+            return
+        if self.view_mode == ViewMode.DOUBLE:
+            step = 2
+        else:
+            step = 1
+
+        if self.current_index - step >= 0:
+            self.current_index -= step
+            self.load_image()
+        else:
+            if self.chapter_index - 1 >= 0:
+                self.chapter_index -= 1
+                self.manga_dir = self.chapters[self.chapter_index]
+                self.images = [] # force reload
+                self.refresh(True)
+
+    def change_page(self, page:int):
+        if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
+            page -=1
+
+        img_count = len(self.images)
+        index = page - 1
+        
+        if index < 0:
+            index = 0
+        elif index > img_count - 1:
+            index = img_count - 1
+            
+        self.current_index = index
+        self.load_image()
+
+    def change_chapter(self, chapter:int):
+        index = chapter - 1
+        total_chapters = len(self.chapters)
+        
+        if index < 0:
+            index = 0
+        elif index > total_chapters - 1:
+            index = total_chapters - 1
+        
+        self.chapter_index = index
+        self.manga_dir = self.chapters[self.chapter_index]
+        self.images = [] # force reload
+        self.refresh()
+
+    def toggle_layout(self, mode:ViewMode=None):
+        if isinstance(mode, ViewMode):
+            self.view_mode = mode
+        elif self.view_mode.value + 1 < len(list(ViewMode)):
+            self.view_mode = ViewMode(self.view_mode.value + 1)
+        else:
+            self.view_mode = ViewMode(0)
+
+        self.update_layout()
+
+    def update_layout(self):
+        if self.view_mode == ViewMode.SINGLE:
+            self.image_loaded.emit(self.images[self.current_index])
+        elif self.view_mode == ViewMode.DOUBLE:
+            pix1 = self.images[self.current_index]
+            pix2 = self.images[self.current_index + 1] if self.current_index + 1 < len(self.images) else None
+            self.double_image_loaded.emit(pix1, pix2)
+        
+        self.layout_updated.emit(self.view_mode)

@@ -7,11 +7,13 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QMouseEvent, QCursor, QKeySequence, QShortcut, QImageReader
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize
 
-from src.reader import MangaReader
+from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
 from src.ui.flow_layout import FlowLayout
 from src.core.item_loader import ItemLoader
-from src.utils.img_utils import get_chapter_number
+from src.utils.img_utils import get_chapter_number, get_image_size
+from src.core.thumbnail_worker import get_common_size_ratio
+from src.enums import ViewMode
 
 class FolderGrid(QWidget):
     """Shows a grid of folders and images."""
@@ -77,8 +79,7 @@ class FolderGrid(QWidget):
             try:
                 with zipfile.ZipFile(self.root_dir, 'r') as zf:
                     image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                    for image_name in image_files:
-                        items.append(f"{self.root_dir}|{image_name}")
+                    items = [f"{self.root_dir}|{image_name}" for image_name in image_files]
             except zipfile.BadZipFile:
                 QMessageBox.warning(self, "Error", "Could not read the zip file.")
                 self.go_up()
@@ -109,6 +110,22 @@ class FolderGrid(QWidget):
 
             items = subdirs + zip_files + filtered_images
             items = sorted(items, key=get_chapter_number)
+
+        # Split wide images
+        common_size, _, _, _ = get_common_size_ratio(items)
+        if common_size[0] > 0:
+            new_items = []
+            for item in items:
+                if isinstance(item, (Path, str)):
+                    size = get_image_size(item)
+                    if size and size[0] > common_size[0] * 1.9:
+                        new_items.append(str(item) + "_right")
+                        new_items.append(str(item) + "_left")
+                    else:
+                        new_items.append(item)
+                else:
+                    new_items.append(item)
+            items = new_items
 
         self.total_items_to_load = len(items)
         self.received_items.clear()
@@ -163,26 +180,28 @@ class FolderGrid(QWidget):
             self.root_dir = path
             self.path_input.setText(str(self.root_dir))
             self.load_items()
-        elif (isinstance(path, Path) and path.is_file()) or (isinstance(path, str) and '|' in path):
+        elif (isinstance(path, Path) and path.is_file()) or (isinstance(path, str)):
             # This is either a regular image file or a virtual path to an image in a zip
-            if isinstance(path, str):
+            if '|' in str(path):
                 # Virtual path
-                zip_path_str = path.split('|')[0]
+                zip_path_str = str(path).split('|')[0]
                 zip_path = Path(zip_path_str)
                 series_dir = zip_path.parent
                 chapter_files = [str(p) for p in series_dir.iterdir() if p.suffix.lower() == '.zip']
+                images = [item for item in self.loader.items if isinstance(item, str) and item.startswith(zip_path_str)]
                 chapter_index = chapter_files.index(zip_path_str)
                 start_file = path
             else:
                 # Regular image file
-                image_dir = path.parent
+                image_dir = Path(path).parent
                 series_dir = image_dir.parent
                 chapter_files = [d for d in series_dir.iterdir() if d.is_dir()]
                 chapter_files = sorted(chapter_files, key=get_chapter_number)
+                images = [str(item) for item in self.loader.items if isinstance(item, (str, Path)) and str(item).startswith(str(image_dir))]
                 chapter_index = chapter_files.index(image_dir)
                 start_file = str(path)
 
-            self.reader = MangaReader(chapter_files, chapter_index, start_file=start_file)
+            self.reader = ReaderView(chapter_files, chapter_index, start_file=start_file, images=images)
             self.reader.back_to_grid_callback = self.show
             self.reader.show()
             self.close()

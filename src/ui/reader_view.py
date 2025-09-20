@@ -1,7 +1,7 @@
-from typing import List
+import math
 from pathlib import Path
 import zipfile
-import math
+from typing import List
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene,QGraphicsPixmapItem, 
@@ -12,40 +12,28 @@ from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
 
 from src.enums import ViewMode
-from src.core.image_loader import ImageLoader
-from src.core.thumbnail_worker import ThumbnailWorker, get_default_view_mode
+from src.core.thumbnail_worker import ThumbnailWorker
 from src.ui.collapsible_panel import CollapsiblePanel
 from src.ui.image_view import ImageView
 from src.ui.input_label import InputLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
-from src.utils.img_utils import get_image_data_from_zip, get_chapter_number, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
+from src.utils.img_utils import get_image_data_from_zip, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
+from src.data.reader_model import ReaderModel, _get_first_image_path
 
-def _get_first_image_path(chapter_dir):
-    if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
-        try:
-            with zipfile.ZipFile(chapter_dir, 'r') as zf:
-                image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                if image_files:
-                    return f"{chapter_dir}|{image_files[0]}"
-        except zipfile.BadZipFile:
-            return None
-    elif isinstance(chapter_dir, Path) and chapter_dir.is_dir():
-        exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-        image_files = [p for p in sorted(chapter_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
-        if image_files:
-            return str(image_files[0])
-    return None
-
-class MangaReader(QMainWindow):
-    def __init__(self, manga_dirs: List[object], index:int, start_file: str = None):
+class ReaderView(QMainWindow):
+    def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
         super().__init__()
         self.setWindowTitle("Manga Reader")
         self.grabGesture(Qt.GestureType.PinchGesture)
-        if index > len(manga_dirs) - 1:
-            return
-        
-        self.start_file = start_file
-        self.view_mode = ViewMode.SINGLE
+
+        self.model = ReaderModel(manga_dirs, index, start_file, images)
+        self.model.refreshed.connect(self.on_model_refreshed)
+        self.model.image_loaded.connect(self._load_image)
+        self.model.double_image_loaded.connect(self._load_double_images)
+        self.model.layout_updated.connect(self.on_layout_updated)
+
+        self.back_to_grid_callback = None
+
         self.scroll_area = None
         self.vertical_container = None
         self.vbox = None
@@ -53,13 +41,8 @@ class MangaReader(QMainWindow):
         self.page_pixmaps: dict[int, QPixmap] = {}
         self.v_labels: list[QLabel] = []
         self.vertical_pixmaps: list[QPixmap] = []
-        self.loader: ImageLoader | None = None
 
         self._last_total_scale = 1.0
-        self.chapter_index = index
-        self.chapters = manga_dirs
-        self.manga_dir = self.chapters[index]
-        self.back_to_grid_callback = None
 
         self.thread_pool = QThreadPool()
         self.chapter_thumbnail_widgets = []
@@ -69,7 +52,7 @@ class MangaReader(QMainWindow):
 
         self._setup_ui()
         self.showFullScreen()
-        self.refresh()
+        self.model.refresh()
         self._update_chapter_selection()
 
     def _setup_ui(self):
@@ -149,6 +132,24 @@ class MangaReader(QMainWindow):
 
         self.view.resizeEvent = self.resizeEvent
 
+    def on_model_refreshed(self):
+        if not self.model.images:
+            QMessageBox.information(self, "No images", f"No images found in: {self.model.manga_dir}")
+        self._update_page_thumbnails()
+
+    def on_layout_updated(self, view_mode):
+        if view_mode == ViewMode.SINGLE:
+            self.layout_btn.setText("Single")
+            self._show_single_layout()
+        elif view_mode == ViewMode.DOUBLE:
+            self.layout_btn.setText("Double")
+            self._show_double_layout()
+        else:
+            self.layout_btn.setText("Strip")
+            self._show_vertical_layout()
+
+        QTimer.singleShot(0, self._fit_current_image)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_panel_geometries()
@@ -197,9 +198,7 @@ class MangaReader(QMainWindow):
             self.chapter_thumbnails_layout.itemAt(i).widget().setParent(None)
         self.chapter_thumbnail_widgets.clear()
 
-        self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
-
-        for i, chapter in enumerate(self.chapters):
+        for i, chapter in enumerate(self.model.chapters):
             chapter_name = Path(str(chapter)).name
             widget = ThumbnailWidget(i, chapter_name)
             widget.clicked.connect(self._change_chapter_by_thumbnail)
@@ -221,8 +220,7 @@ class MangaReader(QMainWindow):
             self.page_thumbnails_layout.itemAt(i).widget().setParent(None)
         self.page_thumbnail_widgets.clear()
 
-        for i, image_path in enumerate(self.images):
-            page_name = Path(image_path).name
+        for i, image_path in enumerate(self.model.images):
             widget = ThumbnailWidget(i, str(i+1))
             widget.clicked.connect(self._change_page_by_thumbnail)
             self.page_thumbnails_layout.insertWidget(i, widget)
@@ -242,16 +240,16 @@ class MangaReader(QMainWindow):
         if self.current_chapter_thumbnail:
             self.current_chapter_thumbnail.set_selected(False)
         
-        if self.chapter_index < len(self.chapter_thumbnail_widgets):
-            self.current_chapter_thumbnail = self.chapter_thumbnail_widgets[self.chapter_index]
+        if self.model.chapter_index < len(self.chapter_thumbnail_widgets):
+            self.current_chapter_thumbnail = self.chapter_thumbnail_widgets[self.model.chapter_index]
             self.current_chapter_thumbnail.set_selected(True)
 
     def _update_page_selection(self):
         if self.current_page_thumbnail:
             self.current_page_thumbnail.set_selected(False)
 
-        if self.current_index < len(self.page_thumbnail_widgets):
-            self.current_page_thumbnail = self.page_thumbnail_widgets[self.current_index]
+        if self.model.current_index < len(self.page_thumbnail_widgets):
+            self.current_page_thumbnail = self.page_thumbnail_widgets[self.model.current_index]
             self.current_page_thumbnail.set_selected(True)
 
     def _change_chapter_by_thumbnail(self, index: int):
@@ -269,55 +267,38 @@ class MangaReader(QMainWindow):
         return super().event(e)
 
     def eventFilter(self, obj, event):
-        if self.view_mode == ViewMode.STRIP and self.scroll_area and obj is self.scroll_area.viewport():
+        if self.model.view_mode == ViewMode.STRIP and self.scroll_area and obj is self.scroll_area.viewport():
             if event.type() == QEvent.Type.Resize:
                 QTimer.singleShot(0, self._resize_vertical_images)
         return super().eventFilter(obj, event)
 
-    def refresh(self, start_from_end:bool=False):
-        self.images = self._get_image_list()
-        self.images = sorted(self.images, key=get_chapter_number)
-        self.view_mode = get_default_view_mode(self.images)
-
-        if hasattr(self, 'start_file') and self.start_file:
-            try:
-                self.current_index = self.images.index(self.start_file)
-            except (ValueError, IndexError):
-                self.current_index = 0
-            self.start_file = None
-        elif start_from_end:
-            self.current_index = len(self.images) - 1
-        else:
-            self.current_index = 0
-
-        if not self.images:
-            QMessageBox.information(self, "No images", f"No images found in: {self.manga_dir}")
-        else:
-            self.load_image()
-            
-        self._update_page_thumbnails()
-
-    def _get_image_list(self):
-        if isinstance(self.manga_dir, str) and self.manga_dir.endswith('.zip'):
-            try:
-                with zipfile.ZipFile(self.manga_dir, 'r') as zf:
-                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                    return [f"{self.manga_dir}|{name}" for name in image_files]
-            except zipfile.BadZipFile:
-                return []
-        elif isinstance(self.manga_dir, Path) and self.manga_dir.is_dir():
-            exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-            return [str(p) for p in sorted(self.manga_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
-        return []
-
     def _load_pixmap(self, path: str) -> QPixmap:
         pixmap = QPixmap()
-        if '|' in path:
-            image_data = get_image_data_from_zip(path)
+        
+        path_str = str(path)
+        crop = None
+        if path_str.endswith("_left"):
+            path_str = path_str[:-5]
+            crop = "left"
+        elif path_str.endswith("_right"):
+            path_str = path_str[:-6]
+            crop = "right"
+
+        if '|' in path_str:
+            image_data = get_image_data_from_zip(path_str)
             if image_data:
                 pixmap.loadFromData(image_data)
         else:
-            pixmap.load(path)
+            pixmap.load(path_str)
+
+        if crop and not pixmap.isNull():
+            width = pixmap.width()
+            height = pixmap.height()
+            if crop == 'left':
+                return pixmap.copy(0, 0, width // 2, height)
+            elif crop == 'right':
+                return pixmap.copy(width // 2, 0, width // 2, height)
+
         return pixmap
 
     def _load_thumbnail(self, path: str) -> QPixmap | None:
@@ -338,24 +319,21 @@ class MangaReader(QMainWindow):
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
 
         self.view.reset_zoom_state()
-        self.page_label.set_total(len(self.images))
-        self.ch_label.set_total(len(self.chapters))
+        self.page_label.set_total(len(self.model.images))
+        self.ch_label.set_total(len(self.model.chapters))
         
-        self.page_label.set_value(self.current_index + 1)
-        self.ch_label.set_value(self.chapter_index + 1)
+        self.page_label.set_value(self.model.current_index + 1)
+        self.ch_label.set_value(self.model.chapter_index + 1)
 
         self._update_page_selection()
 
         QTimer.singleShot(0, self._fit_current_image)
     
-    def _load_double_images(self):
+    def _load_double_images(self, image1_path, image2_path):
         self.scene.clear()
 
-        pix1 = self._load_pixmap(self.images[self.current_index])
-        if self.current_index + 1 < len(self.images):
-            pix2 = self._load_pixmap(self.images[self.current_index + 1])
-        else:
-            pix2 = None
+        pix1 = self._load_pixmap(image1_path)
+        pix2 = self._load_pixmap(image2_path) if image2_path else None
 
         item1 = QGraphicsPixmapItem(pix1)
         item1.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
@@ -378,18 +356,18 @@ class MangaReader(QMainWindow):
 
         self.scene.setSceneRect(0, 0, total_width, total_height)
         self.view.reset_zoom_state()
-        self.page_label.set_total(len(self.images))
-        self.page_label.set_value(self.current_index + 1)
+        self.page_label.set_total(len(self.model.images))
+        self.page_label.set_value(self.model.current_index + 1)
         QTimer.singleShot(0, self._fit_current_image)
 
     def _update_zoom(self, factor: float):
-        """Zoom the view using GPU-accelerated transformation."""
+        """Zoom the view using GPU-accelerated transformation.""" 
         self.view.resetTransform()  # reset previous zoom
         self.view.scale(factor, factor)
     
     def _fit_current_image(self):
         """Fit image to view and reset zoom factor (handles single-image and vertical modes)."""
-        if self.view_mode == ViewMode.STRIP:
+        if self.model.view_mode == ViewMode.STRIP:
             # In vertical mode we want all labels resized to viewport width
             QTimer.singleShot(0, self._resize_vertical_images)
             return
@@ -402,74 +380,20 @@ class MangaReader(QMainWindow):
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
-    def load_image(self):
-        self.update_layout()
-
     def show_next(self):
-        if not self.images: 
-            return
-        if self.view_mode == ViewMode.DOUBLE:
-            step = 2
-        else:
-            step = 1
-
-        if self.current_index + step < len(self.images):
-            self.current_index += step
-            self.load_image()
-            self._update_page_selection()
-        else:
-            total_chapters = len(self.chapters)
-            if self.chapter_index < total_chapters - 1:
-                self.chapter_index += 1
-                self.manga_dir = self.chapters[self.chapter_index]
-                self.refresh()
+        self.model.show_next()
+        self._update_page_selection()
 
     def show_prev(self):
-        if not self.images: 
-            return
-        if self.view_mode == ViewMode.DOUBLE:
-            step = 2
-        else:
-            step = 1
-
-        if self.current_index - step >= 0:
-            self.current_index -= step
-            self.load_image()
-            self._update_page_selection()
-        else:
-            if self.chapter_index - 1 >= 0:
-                self.chapter_index -= 1
-                self.manga_dir = self.chapters[self.chapter_index]
-                self.refresh(True)
+        self.model.show_prev()
+        self._update_page_selection()
 
     def change_page(self, page:int):
-        if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
-            page -=1
-
-        img_count = len(self.images)
-        index = page - 1
-        
-        if index < 0:
-            index = 0
-        elif index > img_count - 1:
-            index = img_count - 1
-            
-        self.current_index = index
-        self.load_image()
+        self.model.change_page(page)
         self._update_page_selection()
 
     def change_chapter(self, chapter:int):
-        index = chapter - 1
-        total_chapters = len(self.chapters)
-        
-        if index < 0:
-            index = 0
-        elif index > total_chapters - 1:
-            index = total_chapters - 1
-        
-        self.chapter_index = index
-        self.manga_dir = self.chapters[self.chapter_index]
-        self.refresh()
+        self.model.change_chapter(chapter)
         self._update_chapter_selection()
 
     def toggle_fullscreen(self):
@@ -515,27 +439,7 @@ class MangaReader(QMainWindow):
                 self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
     def toggle_layout(self, mode:ViewMode=None):
-        if isinstance(mode, ViewMode):
-            self.view_mode = mode
-        elif self.view_mode.value + 1 < len(list(ViewMode)):
-            self.view_mode = ViewMode(self.view_mode.value + 1)
-        else:
-            self.view_mode = ViewMode(0)
-
-        self.update_layout()
-
-    def update_layout(self):
-        if self.view_mode == ViewMode.SINGLE:
-            self.layout_btn.setText("Single")
-            self._show_single_layout()
-        elif self.view_mode == ViewMode.DOUBLE:
-            self.layout_btn.setText("Double")
-            self._show_double_layout()
-        else:
-            self.layout_btn.setText("Strip")
-            self._show_vertical_layout()
-
-        QTimer.singleShot(0, self._fit_current_image)
+        self.model.toggle_layout(mode)
 
     def _show_double_layout(self):
         for n, widget in enumerate(self.page_thumbnail_widgets):
@@ -547,7 +451,6 @@ class MangaReader(QMainWindow):
         self.view.show()
         if self.scroll_area:
             self.scroll_area.hide()
-        self._load_double_images()
 
     def _show_vertical_layout(self):
         self.view.hide()
@@ -574,7 +477,7 @@ class MangaReader(QMainWindow):
         self.page_labels.clear()
         self.page_pixmaps.clear()
 
-        for i in range(len(self.images)):
+        for i in range(len(self.model.images)):
             lbl = QLabel("Loading...")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setFixedHeight(300)
@@ -597,7 +500,7 @@ class MangaReader(QMainWindow):
             if lbl_bottom >= viewport_top - 500 and lbl_top <= viewport_bottom + 500:
                 if i not in self.page_pixmaps:
                     # load original image
-                    orig = self._load_pixmap(self.images[i])
+                    orig = self._load_pixmap(self.model.images[i])
                     self.page_pixmaps[i] = orig
                 else:
                     orig = self.page_pixmaps[i]
@@ -655,7 +558,6 @@ class MangaReader(QMainWindow):
             self.v_labels = []
             self.vertical_pixmaps = []
         self.view.show()
-        self._load_image(self.images[self.current_index])
 
     def back_to_grid(self):
         if self.back_to_grid_callback:

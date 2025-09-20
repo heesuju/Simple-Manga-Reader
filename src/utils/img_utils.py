@@ -2,7 +2,7 @@ import re
 from typing import List
 from pathlib import Path
 from PyQt6.QtGui import QPixmap, QImageReader
-from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray
+from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray, QRect
 import zipfile
 from src.utils.str_utils import find_number
 
@@ -14,7 +14,7 @@ def is_image_folder(folder: Path) -> bool:
 
 def get_image_size(path: str) -> tuple[int,int]:
     """Return width/height ratio of image."""
-    reader = QImageReader(path)
+    reader = QImageReader(str(path))
     size = reader.size()
     height = size.height()
     width = size.width()
@@ -35,8 +35,17 @@ def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
     y = (scaled_pixmap.height() - height) // 2
     return scaled_pixmap.copy(x, y, width, height)
 
-def load_thumbnail_from_path(path, width=150, height=200):
+def load_thumbnail_from_path(path, width=150, height=200, crop=None):
     reader = QImageReader(str(path))
+    original_size = reader.size()
+    
+    if crop:
+        if original_size.width() > original_size.height():
+            if crop == 'left':
+                reader.setClipRect(QRect(0, 0, original_size.width() // 2, original_size.height()))
+            elif crop == 'right':
+                reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
+
     reader.setScaledSize(QSize(width, height))
     reader.setQuality(50)  # Lower quality for faster loading
     image = reader.read()
@@ -72,7 +81,7 @@ def load_thumbnail_from_zip(path, width=150, height=200):
     except zipfile.BadZipFile:
         return None
 
-def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200):
+def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=None):
     try:
         zip_path, image_name = virtual_path.split('|', 1)
         with zipfile.ZipFile(zip_path, 'r') as zf:
@@ -84,6 +93,15 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200):
                 buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 
                 reader = QImageReader(buffer, QByteArray())
+                original_size = reader.size()
+
+                if crop:
+                    if original_size.width() > original_size.height():
+                        if crop == 'left':
+                            reader.setClipRect(QRect(0, 0, original_size.width() // 2, original_size.height()))
+                        elif crop == 'right':
+                            reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
+
                 reader.setScaledSize(QSize(width, height))
                 reader.setQuality(50)
                 
