@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QWidget, QLineEdit, QLabel, QHBoxLayout
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QIntValidator
 
-class PageInput(QWidget):
+class InputLabel(QWidget):
     """
     A widget showing an input box for the current number and a read-only label for the total.
     Emits `enterPressed` signal when Enter is pressed in the input.

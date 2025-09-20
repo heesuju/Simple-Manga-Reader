@@ -1,30 +1,41 @@
 import re
-import zipfile
-import io
+from typing import List
 from pathlib import Path
 from PyQt6.QtGui import QPixmap, QImageReader
 from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray
+import zipfile
+from src.utils.str_utils import find_number
+
+IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
 
 def is_image_folder(folder: Path) -> bool:
-    image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
     files = [f for f in folder.iterdir() if f.is_file()]
-    return bool(files) and all(f.suffix.lower() in image_exts for f in files)
+    return bool(files) and all(f.suffix.lower() in IMG_EXTS for f in files)
 
-def get_chapter_number(path):
-    """Extract the chapter number as integer from the folder or file name."""
-    if isinstance(path, str) and '|' in path:
-        name = Path(path.split('|')[1]).name
-    else:
-        name = Path(path).name
+def get_image_size(path: str) -> tuple[int,int]:
+    """Return width/height ratio of image."""
+    reader = QImageReader(path)
+    size = reader.size()
+    height = size.height()
+    width = size.width()
+    if height == 0:
+        return width, height, 0
     
-    match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
-    if match:
-        return int(match.group(1))
-    else:
-        numbers = re.findall(r'\d+', name)
-        return int(numbers[0]) if numbers else float('inf') 
+    return width, height
 
-def load_thumbnail(path, width=150, height=200):
+def get_image_ratio(w:int,h:int):
+    return round(w / h, 2) if h != 0 else 0.0
+
+def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
+    if pixmap.isNull():
+        return pixmap
+    
+    scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+    x = (scaled_pixmap.width() - width) // 2
+    y = (scaled_pixmap.height() - height) // 2
+    return scaled_pixmap.copy(x, y, width, height)
+
+def load_thumbnail_from_path(path, width=150, height=200):
     reader = QImageReader(str(path))
     reader.setScaledSize(QSize(width, height))
     reader.setQuality(50)  # Lower quality for faster loading
@@ -92,11 +103,15 @@ def get_image_data_from_zip(virtual_path):
     except (zipfile.BadZipFile, KeyError):
         return None
 
-def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
-    if pixmap.isNull():
-        return pixmap
+def get_chapter_number(path):
+    """Extract the chapter number as integer from the folder or file name."""
+    if isinstance(path, str) and '|' in path:
+        name = Path(path.split('|')[1]).name
+    else:
+        name = Path(path).name
     
-    scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-    x = (scaled_pixmap.width() - width) // 2
-    y = (scaled_pixmap.height() - height) // 2
-    return scaled_pixmap.copy(x, y, width, height)
+    match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    else:
+        return find_number(name)

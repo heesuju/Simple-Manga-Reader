@@ -33,8 +33,8 @@ python reg.py
 - [X] Support for long strip viewing mode
 - [X] Support for double page viewing mode
 - [X] Grid view for pages
-- [ ] Use uniform ratio for double mode
 - [X] View zip files
+- [ ] Use uniform ratio for single/double mode
 - [ ] Bookmarks
 
 ### Disclaimer:

@@ -2,9 +2,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel
 )
 from PyQt6.QtGui import QPixmap, QMouseEvent
-from PyQt6.QtCore import Qt, pyqtSignal
-from src.utils import crop_pixmap
-
+from PyQt6.QtCore import Qt, pyqtSignal, QMargins
+from src.utils.img_utils import crop_pixmap
 
 class ThumbnailWidget(QWidget):
     clicked = pyqtSignal(int)
@@ -13,8 +12,8 @@ class ThumbnailWidget(QWidget):
         super().__init__(parent)
         self.index = index
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(2, 2, 2, 2)
-        self.layout.setSpacing(2)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
 
         # Container for image + overlay
         self.image_container = QWidget()
@@ -35,6 +34,9 @@ class ThumbnailWidget(QWidget):
         self._update_style()
 
         self.layout.addWidget(self.image_container)
+
+    def _update_margins(self, margins:QMargins):
+        self.layout.setContentsMargins(margins)
 
     # --- Styles ---
     def _update_style(self):

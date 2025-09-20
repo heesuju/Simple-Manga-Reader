@@ -8,88 +8,17 @@ from PyQt6.QtGui import QPixmap, QMouseEvent, QCursor, QKeySequence, QShortcut, 
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize
 
 from src.reader import MangaReader
-from src.clickable_label import ClickableLabel
-from src.flow_layout import FlowLayout
-from src.utils import is_image_folder, get_chapter_number, load_thumbnail, load_thumbnail_from_zip
-
-class ItemLoaderSignals(QObject):
-    item_loaded = pyqtSignal(QPixmap, object, int, int, str)  # pix, path, idx, gen, item_type
-    item_invalid = pyqtSignal(int, int)  # idx, gen
-    loading_finished = pyqtSignal(int) # gen
-
-class ItemLoader(QRunnable):
-    """Load thumbnails for folders and images in a separate thread."""
-    def __init__(self, items, generation):
-        super().__init__()
-        self.items = items
-        self.generation = generation
-        self.signals = ItemLoaderSignals()
-
-    @staticmethod
-    def _folder_is_valid(folder_path: Path) -> bool:
-        """Checks if a folder contains images or subfolders with images (1 level deep)."""
-        try:
-            # Check for images in the folder itself
-            if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} for f in folder_path.iterdir()):
-                return True
-
-            # Check subfolders for images
-            for subfolder in folder_path.iterdir():
-                if subfolder.is_dir():
-                    try:
-                        if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} for f in subfolder.iterdir()):
-                            return True
-                    except PermissionError:
-                        continue
-        except PermissionError:
-            return False
-        return False
-
-    def run(self):
-        from PyQt6.QtGui import QPixmap, QColor
-        for idx, item_path in enumerate(self.items):
-            item_type = ''
-            pix = None
-            
-            if isinstance(item_path, str) and '|' in item_path:
-                # Handle virtual paths
-                item_type = 'image'
-                # This function will be created in utils.py later
-                from src.utils import load_thumbnail_from_virtual_path
-                pix = load_thumbnail_from_virtual_path(item_path, 150, 200)
-            elif item_path.is_dir():
-                if not ItemLoader._folder_is_valid(item_path):
-                    self.signals.item_invalid.emit(idx, self.generation)
-                    continue
-                item_type = 'folder'
-                try:
-                    first_image = next(f for f in item_path.iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
-                    if first_image:
-                        pix = load_thumbnail(str(first_image), 150, 200)
-                except (StopIteration, PermissionError):
-                    pass
-            elif item_path.is_file():
-                if item_path.suffix.lower() == '.zip':
-                    item_type = 'zip'
-                    pix = load_thumbnail_from_zip(str(item_path), 150, 200)
-                else:
-                    item_type = 'image'
-                    pix = load_thumbnail(str(item_path), 150, 200)
-
-            if not pix:
-                pix = QPixmap(150, 200)
-                pix.fill(QColor("gray"))
-
-            self.signals.item_loaded.emit(pix, item_path, idx, self.generation, item_type)
-        
-        self.signals.loading_finished.emit(self.generation)
+from src.ui.clickable_label import ClickableLabel
+from src.ui.flow_layout import FlowLayout
+from src.core.item_loader import ItemLoader
+from src.utils.img_utils import get_chapter_number
 
 class FolderGrid(QWidget):
     """Shows a grid of folders and images."""
-    def __init__(self, manga_root: str = ""):
+    def __init__(self, root_dir: str = ""):
         super().__init__()
         
-        self.manga_root = Path(manga_root) if manga_root else Path.home()
+        self.root_dir = Path(root_dir) if root_dir else Path.home()
         self.loading_generation = 0
         self.loader = None
         self.received_items = {}
@@ -107,7 +36,7 @@ class FolderGrid(QWidget):
         main_layout = QVBoxLayout(self)
 
         top_layout = QHBoxLayout()
-        self.path_input = QLineEdit(str(self.manga_root))
+        self.path_input = QLineEdit(str(self.root_dir))
         self.path_input.returnPressed.connect(self.path_entered)
         up_btn = QPushButton("Up")
         up_btn.clicked.connect(self.go_up)
@@ -127,7 +56,7 @@ class FolderGrid(QWidget):
         self.scroll.setWidget(self.scroll_content)
         main_layout.addWidget(self.scroll)
 
-        if self.manga_root:
+        if self.root_dir:
             self.load_items()
     
     def load_items(self):
@@ -139,17 +68,17 @@ class FolderGrid(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-        if not self.manga_root.exists():
+        if not self.root_dir.exists():
             return
 
         items = []
-        if self.manga_root.is_file() and self.manga_root.suffix.lower() == '.zip':
+        if self.root_dir.is_file() and self.root_dir.suffix.lower() == '.zip':
             # Load items from zip file
             try:
-                with zipfile.ZipFile(self.manga_root, 'r') as zf:
+                with zipfile.ZipFile(self.root_dir, 'r') as zf:
                     image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
                     for image_name in image_files:
-                        items.append(f"{self.manga_root}|{image_name}")
+                        items.append(f"{self.root_dir}|{image_name}")
             except zipfile.BadZipFile:
                 QMessageBox.warning(self, "Error", "Could not read the zip file.")
                 self.go_up()
@@ -157,9 +86,9 @@ class FolderGrid(QWidget):
         else:
             # Load items from directory
             try:
-                all_items = list(self.manga_root.iterdir())
+                all_items = list(self.root_dir.iterdir())
             except PermissionError:
-                QMessageBox.warning(self, "Permission Denied", f"Cannot access the directory: {self.manga_root}")
+                QMessageBox.warning(self, "Permission Denied", f"Cannot access the directory: {self.root_dir}")
                 self.go_up()
                 return
 
@@ -227,12 +156,12 @@ class FolderGrid(QWidget):
 
     def item_selected(self, path: object, selected_index: int):
         if isinstance(path, Path) and path.is_dir():
-            self.manga_root = path
-            self.path_input.setText(str(self.manga_root))
+            self.root_dir = path
+            self.path_input.setText(str(self.root_dir))
             self.load_items()
         elif isinstance(path, Path) and path.suffix.lower() == '.zip':
-            self.manga_root = path
-            self.path_input.setText(str(self.manga_root))
+            self.root_dir = path
+            self.path_input.setText(str(self.root_dir))
             self.load_items()
         elif (isinstance(path, Path) and path.is_file()) or (isinstance(path, str) and '|' in path):
             # This is either a regular image file or a virtual path to an image in a zip
@@ -259,29 +188,29 @@ class FolderGrid(QWidget):
             self.close()
 
     def go_up(self):
-        if self.manga_root:
-            parent = self.manga_root.parent
-            if parent.exists() and parent != self.manga_root:
-                self.manga_root = parent
-                self.path_input.setText(str(self.manga_root))
+        if self.root_dir:
+            parent = self.root_dir.parent
+            if parent.exists() and parent != self.root_dir:
+                self.root_dir = parent
+                self.path_input.setText(str(self.root_dir))
                 self.load_items()
 
     def path_entered(self):
         path_text = self.path_input.text()
         path = Path(path_text)
         if path.exists() and (path.is_dir() or path.suffix.lower() == '.zip'):
-            self.manga_root = path
+            self.root_dir = path
             self.load_items()
         else:
             QMessageBox.warning(self, "Invalid Path", "The entered path does not exist or is not a directory/zip file.")
-            self.path_input.setText(str(self.manga_root))
+            self.path_input.setText(str(self.root_dir))
 
     def exit_program(self):
         self.close()
 
     def browse_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Folder", str(self.manga_root))
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder", str(self.root_dir))
         if folder:
             self.path_input.setText(folder)
-            self.manga_root = Path(folder)
+            self.root_dir = Path(folder)
             self.load_items()

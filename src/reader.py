@@ -1,37 +1,24 @@
 from typing import List
-import zipfile
 from pathlib import Path
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QGraphicsView, QGraphicsScene,
-    QGraphicsPixmapItem, QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
-    QMessageBox, QFrame, QScrollArea, QSizePolicy, QPinchGesture
-)
-from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut, QMouseEvent
-from PyQt6.QtCore import Qt, QTimer, QEvent, pyqtSignal, QRunnable, QObject, QThreadPool
-from src.collapsible_panel import CollapsiblePanel
-from src.image_view import ImageView
-
-class ThumbnailWorker(QRunnable):
-    class Signals(QObject):
-        finished = pyqtSignal(int, QPixmap)
-
-    def __init__(self, index, path, load_thumb_func):
-        super().__init__()
-        self.index = index
-        self.path = path
-        self.load_thumb = load_thumb_func
-        self.signals = self.Signals()
-
-    def run(self):
-        thumb = self.load_thumb(self.path)
-        if thumb:
-            self.signals.finished.emit(self.index, thumb)
-from src.page_input import PageInput
+import zipfile
 import math
+
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QGraphicsScene,QGraphicsPixmapItem, 
+    QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
+    QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
+)
+from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
+
 from src.enums import ViewMode
 from src.core.image_loader import ImageLoader
-from src.utils import get_image_data_from_zip, get_chapter_number, load_thumbnail, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
+from src.core.thumbnail_worker import ThumbnailWorker, get_default_view_mode
+from src.ui.collapsible_panel import CollapsiblePanel
+from src.ui.image_view import ImageView
+from src.ui.input_label import InputLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
+from src.utils.img_utils import get_image_data_from_zip, get_chapter_number, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
 
 def _get_first_image_path(chapter_dir):
     if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
@@ -90,8 +77,8 @@ class MangaReader(QMainWindow):
         self.view = ImageView(manga_reader=self)
         self.view.setScene(self.scene)
         
-        self.page_label = PageInput("Page", 0,0)
-        self.ch_label = PageInput("Chapter", 0,0)
+        self.page_label = InputLabel("Page", 0,0)
+        self.ch_label = InputLabel("Chapter", 0,0)
 
         self.page_label.enterPressed.connect(self.change_page)
         self.ch_label.enterPressed.connect(self.change_chapter)
@@ -108,6 +95,7 @@ class MangaReader(QMainWindow):
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.back_to_grid)
 
         top_layout = QHBoxLayout()
+        top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(0)
         top_layout.addWidget(self.back_btn)
         top_layout.addWidget(self.ch_label, 1, Qt.AlignmentFlag.AlignCenter)
@@ -115,12 +103,14 @@ class MangaReader(QMainWindow):
         top_layout.addStretch()
 
         main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addLayout(top_layout)
         main_layout.addWidget(self.view, 1)
 
         container = QWidget()
         container.setLayout(main_layout)
+        container.setContentsMargins(0, 0, 0, 0)
         self.setCentralWidget(container)
 
         self.chapter_panel = CollapsiblePanel(self)
@@ -185,8 +175,6 @@ class MangaReader(QMainWindow):
         self._update_panel_geometries()
         super().mouseMoveEvent(event)
 
-
-
     def _setup_chapter_panel(self):
         self.chapter_thumbnails_widget = QWidget()
         self.chapter_thumbnails_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.7);")
@@ -200,7 +188,7 @@ class MangaReader(QMainWindow):
         self.page_thumbnails_widget = QWidget()
         self.page_thumbnails_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.7);")
         self.page_thumbnails_layout = QHBoxLayout(self.page_thumbnails_widget)
-        self.page_thumbnails_layout.setSpacing(10)
+        self.page_thumbnails_layout.setSpacing(0)
         self.page_thumbnails_layout.addStretch()
         self.page_panel.set_content_widget(self.page_thumbnails_widget)
 
@@ -286,11 +274,11 @@ class MangaReader(QMainWindow):
                 QTimer.singleShot(0, self._resize_vertical_images)
         return super().eventFilter(obj, event)
 
-
-
     def refresh(self, start_from_end:bool=False):
         self.images = self._get_image_list()
         self.images = sorted(self.images, key=get_chapter_number)
+        self.view_mode = get_default_view_mode(self.images)
+
         if hasattr(self, 'start_file') and self.start_file:
             try:
                 self.current_index = self.images.index(self.start_file)
@@ -305,8 +293,8 @@ class MangaReader(QMainWindow):
         if not self.images:
             QMessageBox.information(self, "No images", f"No images found in: {self.manga_dir}")
         else:
-            self._load_image(self.images[self.current_index])
-        
+            self.load_image()
+            
         self._update_page_thumbnails()
 
     def _get_image_list(self):
@@ -338,7 +326,7 @@ class MangaReader(QMainWindow):
         elif path.endswith('.zip'):
             return load_thumbnail_from_zip(path)
         else:
-            return load_thumbnail(path)
+            return load_thumbnail_from_path(path)
 
     def _load_image(self, path: str):
         self.original_pixmap = self._load_pixmap(path)
@@ -414,6 +402,9 @@ class MangaReader(QMainWindow):
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
+    def load_image(self):
+        self.update_layout()
+
     def show_next(self):
         if not self.images: 
             return
@@ -424,10 +415,7 @@ class MangaReader(QMainWindow):
 
         if self.current_index + step < len(self.images):
             self.current_index += step
-            if self.view_mode == ViewMode.SINGLE:
-                self._load_image(self.images[self.current_index])
-            elif self.view_mode == ViewMode.DOUBLE:
-                self._load_double_images()
+            self.load_image()
             self._update_page_selection()
         else:
             total_chapters = len(self.chapters)
@@ -446,10 +434,7 @@ class MangaReader(QMainWindow):
 
         if self.current_index - step >= 0:
             self.current_index -= step
-            if self.view_mode == ViewMode.SINGLE:
-                self._load_image(self.images[self.current_index])
-            elif self.view_mode == ViewMode.DOUBLE:
-                self._load_double_images()
+            self.load_image()
             self._update_page_selection()
         else:
             if self.chapter_index - 1 >= 0:
@@ -458,6 +443,9 @@ class MangaReader(QMainWindow):
                 self.refresh(True)
 
     def change_page(self, page:int):
+        if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
+            page -=1
+
         img_count = len(self.images)
         index = page - 1
         
@@ -467,7 +455,7 @@ class MangaReader(QMainWindow):
             index = img_count - 1
             
         self.current_index = index
-        self._load_image(self.images[self.current_index])
+        self.load_image()
         self._update_page_selection()
 
     def change_chapter(self, chapter:int):
@@ -526,23 +514,36 @@ class MangaReader(QMainWindow):
             else:
                 self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
-    def toggle_layout(self):
-        if self.view_mode == ViewMode.SINGLE:
-            self.view_mode = ViewMode.DOUBLE
-            self.layout_btn.setText("Double")
-            self._show_double_layout()
-        elif self.view_mode == ViewMode.DOUBLE:
-            self.view_mode = ViewMode.STRIP
-            self.layout_btn.setText("Strip")
-            self._show_vertical_layout()
+    def toggle_layout(self, mode:ViewMode=None):
+        if isinstance(mode, ViewMode):
+            self.view_mode = mode
+        elif self.view_mode.value + 1 < len(list(ViewMode)):
+            self.view_mode = ViewMode(self.view_mode.value + 1)
         else:
-            self.view_mode = ViewMode.SINGLE
+            self.view_mode = ViewMode(0)
+
+        self.update_layout()
+
+    def update_layout(self):
+        if self.view_mode == ViewMode.SINGLE:
             self.layout_btn.setText("Single")
             self._show_single_layout()
+        elif self.view_mode == ViewMode.DOUBLE:
+            self.layout_btn.setText("Double")
+            self._show_double_layout()
+        else:
+            self.layout_btn.setText("Strip")
+            self._show_vertical_layout()
 
         QTimer.singleShot(0, self._fit_current_image)
 
     def _show_double_layout(self):
+        for n, widget in enumerate(self.page_thumbnail_widgets):
+            if n % 2 == 0:
+                widget._update_margins(QMargins(0,0,0,0))
+            else:
+                widget._update_margins(QMargins(0,0,10,0))
+
         self.view.show()
         if self.scroll_area:
             self.scroll_area.hide()
@@ -556,8 +557,8 @@ class MangaReader(QMainWindow):
             self.scroll_area.setWidgetResizable(True)
             self.vertical_container = QWidget()
             self.vbox = QVBoxLayout(self.vertical_container)
-            self.vbox.setSpacing(8)
-            self.vbox.setContentsMargins(8, 8, 8, 8)
+            self.vbox.setSpacing(0)
+            self.vbox.setContentsMargins(0, 0, 0, 0)
             self.scroll_area.setWidget(self.vertical_container)
 
             main_layout = self.centralWidget().layout()
@@ -640,6 +641,10 @@ class MangaReader(QMainWindow):
                     self._resize_single_label(lbl, self.page_pixmaps[i])
 
     def _show_single_layout(self):
+        if len(self.page_thumbnail_widgets) > 0:
+            for widget in self.page_thumbnail_widgets:
+                widget._update_margins(QMargins(0,0,10,0))
+
         if self.scroll_area:
             main_layout = self.centralWidget().layout()
             main_layout.removeWidget(self.scroll_area)
