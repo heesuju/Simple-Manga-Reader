@@ -80,6 +80,39 @@ class ReaderModel(QObject):
             return [str(p) for p in sorted(self.manga_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
         return []
 
+    def _get_double_view_images(self, right_to_left:bool=True):
+        new_images = list(self.images)
+        i = 0
+        last_pair_end = -1
+        while i < len(new_images):
+            img = new_images[i]
+            if str(img).endswith("_right"):
+                if i % 2 != 0:
+                    if last_pair_end == -1:
+                        new_images.insert(0, "placeholder")
+                    else:
+                        new_images.insert(last_pair_end + 1, "placeholder")
+                    i += 1 # we inserted an element, so we need to increment i to continue from the same image in the next iteration
+                    continue
+                last_pair_end = i + 1
+            i += 1
+        
+        result = [None] * len(new_images)
+        
+        if right_to_left:
+            for i, val in enumerate(new_images):
+                if i % 2 == 0:  # even
+                    new_index = i + 1
+                else:             # odd
+                    new_index = i - 1
+                
+                if 0 <= new_index < len(new_images):  # avoid out-of-range
+                    result[new_index] = val
+                else:
+                    result[i] = val
+
+        return result
+
     def load_image(self):
         self.update_layout()
 
@@ -155,16 +188,20 @@ class ReaderModel(QObject):
         elif self.view_mode.value + 1 < len(list(ViewMode)):
             self.view_mode = ViewMode(self.view_mode.value + 1)
         else:
-            self.view_mode = ViewMode(0)
+            self.view_mode = ViewMode(1)
 
         self.update_layout()
 
     def update_layout(self):
+        images = self.images
+        if self.view_mode == ViewMode.DOUBLE:
+            images = self._get_double_view_images()
+
         if self.view_mode == ViewMode.SINGLE:
-            self.image_loaded.emit(self.images[self.current_index])
+            self.image_loaded.emit(images[self.current_index])
         elif self.view_mode == ViewMode.DOUBLE:
-            pix1 = self.images[self.current_index]
-            pix2 = self.images[self.current_index + 1] if self.current_index + 1 < len(self.images) else None
+            pix1 = images[self.current_index]
+            pix2 = images[self.current_index + 1] if self.current_index + 1 < len(images) else None
             self.double_image_loaded.emit(pix1, pix2)
         
         self.layout_updated.emit(self.view_mode)

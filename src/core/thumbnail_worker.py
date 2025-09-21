@@ -45,7 +45,7 @@ def get_default_view_mode(paths:List)->bool:
     if percentage > 0.7:
         if ratio > 0.6:
             return ViewMode.SINGLE
-        elif ratio > 0.3 and ratio < 0.4:
+        elif ratio > 0.3 and ratio < 0.5:
             return ViewMode.STRIP
     elif w_percentage > 0.7:
         return ViewMode.STRIP

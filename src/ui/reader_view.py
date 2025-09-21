@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
-from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut
+from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
 
 from src.enums import ViewMode
@@ -19,6 +19,7 @@ from src.ui.input_label import InputLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
 from src.utils.img_utils import get_image_data_from_zip, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
 from src.data.reader_model import ReaderModel, _get_first_image_path
+from src.core.thumbnail_worker import get_common_size_ratio
 
 class ReaderView(QMainWindow):
     def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
@@ -136,8 +137,11 @@ class ReaderView(QMainWindow):
         if not self.model.images:
             QMessageBox.information(self, "No images", f"No images found in: {self.model.manga_dir}")
         self._update_page_thumbnails()
+        self.model.update_layout()
 
     def on_layout_updated(self, view_mode):
+        self._update_page_thumbnails()
+
         if view_mode == ViewMode.SINGLE:
             self.layout_btn.setText("Single")
             self._show_single_layout()
@@ -220,15 +224,24 @@ class ReaderView(QMainWindow):
             self.page_thumbnails_layout.itemAt(i).widget().setParent(None)
         self.page_thumbnail_widgets.clear()
 
-        for i, image_path in enumerate(self.model.images):
+        images = self.model.images
+        if self.model.view_mode == ViewMode.DOUBLE:
+            images = self.model._get_double_view_images()
+
+        for i, image_path in enumerate(images):
             widget = ThumbnailWidget(i, str(i+1))
             widget.clicked.connect(self._change_page_by_thumbnail)
             self.page_thumbnails_layout.insertWidget(i, widget)
             self.page_thumbnail_widgets.append(widget)
 
-            worker = ThumbnailWorker(i, image_path, self._load_thumbnail)
-            worker.signals.finished.connect(self._on_page_thumbnail_loaded)
-            self.thread_pool.start(worker)
+            if image_path == "placeholder":
+                pixmap = QPixmap(150, 200)
+                pixmap.fill(QColor("black"))
+                self._on_page_thumbnail_loaded(i, pixmap)
+            else:
+                worker = ThumbnailWorker(i, image_path, self._load_thumbnail)
+                worker.signals.finished.connect(self._on_page_thumbnail_loaded)
+                self.thread_pool.start(worker)
         
         self._update_page_selection()
 
@@ -273,6 +286,12 @@ class ReaderView(QMainWindow):
         return super().eventFilter(obj, event)
 
     def _load_pixmap(self, path: str) -> QPixmap:
+        if path == "placeholder":
+            common_size, _, _, _ = get_common_size_ratio(self.model.images)
+            pixmap = QPixmap(common_size[0], common_size[1])
+            pixmap.fill(QColor("black"))
+            return pixmap
+
         pixmap = QPixmap()
         
         path_str = str(path)
@@ -337,22 +356,19 @@ class ReaderView(QMainWindow):
 
         item1 = QGraphicsPixmapItem(pix1)
         item1.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        total_width = pix1.width()
+        total_height = pix1.height()
+        item1.setPos(0, 0)
+        self.scene.addItem(item1)
 
         if pix2:
             item2 = QGraphicsPixmapItem(pix2)
             item2.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-            item2.setPos(0, 0)
+            item2.setPos(pix1.width(), 0)
             self.scene.addItem(item2)
 
             total_width = pix1.width() + pix2.width()
             total_height = max(pix1.height(), pix2.height())
-            item1.setPos(pix2.width(), 0)
-        else:
-            total_width = pix1.width()
-            total_height = pix1.height()
-            item1.setPos(0, 0)
-
-        self.scene.addItem(item1)
 
         self.scene.setSceneRect(0, 0, total_width, total_height)
         self.view.reset_zoom_state()
