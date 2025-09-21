@@ -17,7 +17,7 @@ from src.ui.collapsible_panel import CollapsiblePanel
 from src.ui.image_view import ImageView
 from src.ui.input_label import InputLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
-from src.utils.img_utils import get_image_data_from_zip, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
+from src.utils.img_utils import get_image_data_from_zip, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path, empty_placeholder
 from src.data.reader_model import ReaderModel, _get_first_image_path
 from src.core.thumbnail_worker import get_common_size_ratio
 
@@ -235,9 +235,7 @@ class ReaderView(QMainWindow):
             self.page_thumbnail_widgets.append(widget)
 
             if image_path == "placeholder":
-                pixmap = QPixmap(150, 200)
-                pixmap.fill(QColor("black"))
-                self._on_page_thumbnail_loaded(i, pixmap)
+                self._on_page_thumbnail_loaded(i, empty_placeholder())
             else:
                 worker = ThumbnailWorker(i, image_path, self._load_thumbnail)
                 worker.signals.finished.connect(self._on_page_thumbnail_loaded)
@@ -288,9 +286,7 @@ class ReaderView(QMainWindow):
     def _load_pixmap(self, path: str) -> QPixmap:
         if path == "placeholder":
             common_size, _, _, _ = get_common_size_ratio(self.model.images)
-            pixmap = QPixmap(common_size[0], common_size[1])
-            pixmap.fill(QColor("black"))
-            return pixmap
+            return empty_placeholder(common_size[0], common_size[1])
 
         pixmap = QPixmap()
         
@@ -321,12 +317,20 @@ class ReaderView(QMainWindow):
         return pixmap
 
     def _load_thumbnail(self, path: str) -> QPixmap | None:
+        crop = None
+        if path.endswith("_left"):
+            path = path[:-5]
+            crop = "left"
+        elif path.endswith("_right"):
+            path = path[:-6]
+            crop = "right"
+
         if '|' in path:
-            return load_thumbnail_from_virtual_path(path)
+            return load_thumbnail_from_virtual_path(path=path, crop=crop)
         elif path.endswith('.zip'):
-            return load_thumbnail_from_zip(path)
+            return load_thumbnail_from_zip(path=path)
         else:
-            return load_thumbnail_from_path(path)
+            return load_thumbnail_from_path(path=path, crop=crop)
 
     def _load_image(self, path: str):
         self.original_pixmap = self._load_pixmap(path)

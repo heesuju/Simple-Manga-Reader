@@ -97,6 +97,9 @@ class ReaderModel(QObject):
                 last_pair_end = i + 1
             i += 1
         
+        if len(new_images) % 2 != 0:
+            new_images.append("placeholder")
+
         result = [None] * len(new_images)
         
         if right_to_left:
@@ -157,13 +160,13 @@ class ReaderModel(QObject):
         if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
             page -=1
 
-        img_count = len(self.images)
+        # img_count = len(self.images)
         index = page - 1
         
-        if index < 0:
-            index = 0
-        elif index > img_count - 1:
-            index = img_count - 1
+        # if index < 0:
+        #     index = 0
+        # elif index > img_count - 1:
+        #     index = img_count - 1
             
         self.current_index = index
         self.load_image()
@@ -188,7 +191,7 @@ class ReaderModel(QObject):
         elif self.view_mode.value + 1 < len(list(ViewMode)):
             self.view_mode = ViewMode(self.view_mode.value + 1)
         else:
-            self.view_mode = ViewMode(1)
+            self.view_mode = ViewMode(0)
 
         self.update_layout()
 

@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 result = find_missing_pages(str(folder))
                 if result:
                     missing+=1
-                results.append(result)
+                    results.append(result)
             print("\n\n---\n\n".join(results))
         else:
             print(find_missing_pages(str(input_path)))
@@ -66,6 +66,6 @@ if __name__ == "__main__":
         print(f"Error: {args.path} is not a valid directory.")
 
 
-    print(len(results), "chapters found")
+    print(len(subfolders), "chapters found")
     print(missing, "chapters missing pages")
     

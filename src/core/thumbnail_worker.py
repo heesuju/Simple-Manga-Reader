@@ -50,7 +50,7 @@ def get_default_view_mode(paths:List)->bool:
     elif w_percentage > 0.7:
         return ViewMode.STRIP
     else:
-        return ViewMode.NONE
+        return ViewMode.SINGLE
     
 class ThumbnailWorker(QRunnable):
     class Signals(QObject):

@@ -12,8 +12,17 @@ from src.ui.clickable_label import ClickableLabel
 from src.ui.flow_layout import FlowLayout
 from src.core.item_loader import ItemLoader
 from src.utils.img_utils import get_chapter_number, get_image_size
-from src.core.thumbnail_worker import get_common_size_ratio
+from src.core.thumbnail_worker import get_common_size_ratio, get_image_ratio
 from src.enums import ViewMode
+import math
+
+def is_double_page(size, common_ratio):
+    ratio = get_image_ratio(size[0]/2, size[1])
+
+    if math.isclose(ratio, common_ratio):
+        return True
+    else:
+        return False
 
 class FolderGrid(QWidget):
     """Shows a grid of folders and images."""
@@ -112,13 +121,14 @@ class FolderGrid(QWidget):
             items = sorted(items, key=get_chapter_number)
 
         # Split wide images
-        common_size, _, _, _ = get_common_size_ratio(items)
+        common_size, ratio, _, _ = get_common_size_ratio(items)
         if common_size[0] > 0:
             new_items = []
             for item in items:
                 if isinstance(item, (Path, str)):
                     size = get_image_size(item)
-                    if size and size[0] > common_size[0] * 1.9:
+                    
+                    if is_double_page(size, ratio):
                         new_items.append(str(item) + "_right")
                         new_items.append(str(item) + "_left")
                     else:

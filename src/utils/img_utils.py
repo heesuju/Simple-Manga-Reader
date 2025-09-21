@@ -1,7 +1,7 @@
 import re
 from typing import List
 from pathlib import Path
-from PyQt6.QtGui import QPixmap, QImageReader
+from PyQt6.QtGui import QPixmap, QImageReader, QColor
 from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray, QRect
 import zipfile
 from src.utils.str_utils import find_number
@@ -35,6 +35,19 @@ def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
     y = (scaled_pixmap.height() - height) // 2
     return scaled_pixmap.copy(x, y, width, height)
 
+def empty_placeholder(width:int=150, height:int=200):
+    pixmap = QPixmap(width, height)
+    pixmap.fill(QColor("black"))
+    return pixmap
+
+def load_thumbnail(reader:QImageReader, width:int, height:int, quality:int=50):
+    reader.setScaledSize(QSize(width, height))
+    reader.setQuality(quality)  # Lower quality for faster loading
+    image = reader.read()
+    if image.isNull():
+        return empty_placeholder(width, height)
+    return QPixmap.fromImage(image)
+
 def load_thumbnail_from_path(path, width=150, height=200, crop=None):
     reader = QImageReader(str(path))
     original_size = reader.size()
@@ -46,14 +59,7 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
             elif crop == 'right':
                 reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
 
-    reader.setScaledSize(QSize(width, height))
-    reader.setQuality(50)  # Lower quality for faster loading
-    image = reader.read()
-    if image.isNull():
-        pix = QPixmap(width, height)
-        pix.fill(Qt.GlobalColor.gray)
-        return pix
-    return QPixmap.fromImage(image)
+    return load_thumbnail(reader, width, height)
 
 def load_thumbnail_from_zip(path, width=150, height=200):
     try:
@@ -71,13 +77,7 @@ def load_thumbnail_from_zip(path, width=150, height=200):
                 buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 
                 reader = QImageReader(buffer, QByteArray())
-                reader.setScaledSize(QSize(width, height))
-                reader.setQuality(50)
-                
-                image = reader.read()
-                if image.isNull():
-                    return None
-                return QPixmap.fromImage(image)
+                return load_thumbnail(reader, width, height)
     except zipfile.BadZipFile:
         return None
 
@@ -102,13 +102,8 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
                         elif crop == 'right':
                             reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
 
-                reader.setScaledSize(QSize(width, height))
-                reader.setQuality(50)
-                
-                image = reader.read()
-                if image.isNull():
-                    return None
-                return QPixmap.fromImage(image)
+                return load_thumbnail(reader, width, height)
+            
     except (zipfile.BadZipFile, KeyError):
         return None
 

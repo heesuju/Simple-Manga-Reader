@@ -1,11 +1,10 @@
 from enum import Enum
 
 class ViewMode(Enum):
-    NONE=0
-    SINGLE=1
-    DOUBLE=2
-    STRIP=3
-    
+    SINGLE=0
+    DOUBLE=1
+    STRIP=2
+
 class ItemType(str, Enum):
     ZIP="zip"
     FOLDER="folder"
