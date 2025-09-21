@@ -117,7 +117,16 @@ class ReaderModel(QObject):
         return result
 
     def load_image(self):
-        self.update_layout()
+        images = self.images
+        if self.view_mode == ViewMode.DOUBLE:
+            images = self._get_double_view_images()
+
+        if self.view_mode == ViewMode.SINGLE:
+            self.image_loaded.emit(images[self.current_index])
+        elif self.view_mode == ViewMode.DOUBLE:
+            pix1 = images[self.current_index]
+            pix2 = images[self.current_index + 1] if self.current_index + 1 < len(images) else None
+            self.double_image_loaded.emit(pix1, pix2)
 
     def show_next(self):
         if not self.images: 
@@ -196,15 +205,5 @@ class ReaderModel(QObject):
         self.update_layout()
 
     def update_layout(self):
-        images = self.images
-        if self.view_mode == ViewMode.DOUBLE:
-            images = self._get_double_view_images()
-
-        if self.view_mode == ViewMode.SINGLE:
-            self.image_loaded.emit(images[self.current_index])
-        elif self.view_mode == ViewMode.DOUBLE:
-            pix1 = images[self.current_index]
-            pix2 = images[self.current_index + 1] if self.current_index + 1 < len(images) else None
-            self.double_image_loaded.emit(pix1, pix2)
-        
+        self.load_image()
         self.layout_updated.emit(self.view_mode)
