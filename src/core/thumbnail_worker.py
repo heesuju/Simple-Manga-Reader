@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 import zipfile
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -23,14 +23,20 @@ from PyQt6.QtGui import QImageReader
 from collections import Counter
 from src.utils.img_utils import get_image_size, get_image_ratio
 
-def get_common_size_ratio(paths:List) -> tuple[float, float]:
+def get_common_size_ratio(paths:List, tolerance: int = 2) -> Tuple[Tuple[int, int], float, float, float]:
     """Return the most common ratio among the list of images(10 max)."""
     sizes = [get_image_size(path) for path in paths[:10]]
     if not sizes:
-        return (0, 0), 0.0, 0.0
-
-    counter = Counter(sizes)
-    w_counter = Counter([w for w, h in sizes])
+        return (0, 0), 0.0, 0.0, 0.0
+    
+    def normalize_size(size):
+        w, h = size
+        return (round(w / tolerance) * tolerance, round(h / tolerance) * tolerance)
+    
+    norm_sizes = [normalize_size(size) for size in sizes]
+    
+    counter = Counter(norm_sizes)
+    w_counter = Counter([w for w, h in norm_sizes])
     most_common_size, count = counter.most_common(1)[0]
     most_common_width, width_count = w_counter.most_common(1)[0]
     w, h = most_common_size
