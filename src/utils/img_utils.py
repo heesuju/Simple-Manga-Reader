@@ -116,6 +116,37 @@ def get_image_data_from_zip(virtual_path):
     except (zipfile.BadZipFile, KeyError):
         return None
 
+def load_pixmap_for_thumbnailing(path: str, target_width: int = 0) -> QPixmap | None:
+    reader = None
+    buffer = None # Keep buffer in scope
+
+    if '|' in path:
+        image_data = get_image_data_from_zip(path)
+        if image_data:
+            byte_array = QByteArray(image_data)
+            buffer = QBuffer(byte_array)
+            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+            reader = QImageReader(buffer)
+    else:
+        reader = QImageReader(path)
+
+    if reader is None or not reader.canRead():
+        return None
+
+    reader.setAutoTransform(True)
+    if target_width > 0:
+        original_size = reader.size()
+        if original_size.width() > target_width:
+            height = int(original_size.height() * (target_width / original_size.width()))
+            reader.setScaledSize(QSize(target_width, height))
+            reader.setQuality(30)
+
+    image = reader.read()
+    if image.isNull():
+        return None
+
+    return QPixmap.fromImage(image)
+
 def get_chapter_number(path):
     """Extract the chapter number as integer from the folder or file name."""
     if isinstance(path, str) and '|' in path:

@@ -8,26 +8,29 @@ from src.utils.img_utils import crop_pixmap
 class ThumbnailWidget(QWidget):
     clicked = pyqtSignal(int)
 
-    def __init__(self, index, text, parent=None):
+    def __init__(self, index, text, show_label=True, fixed_width=None, parent=None):
         super().__init__(parent)
         self.index = index
+        self.fixed_width = fixed_width
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
-        # Container for image + overlay
         self.image_container = QWidget()
-        self.image_container.setFixedSize(100, 140)
+        self.image_container.setObjectName("image_container")
 
-        # Image
         self.image_label = QLabel(self.image_container)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setFixedSize(100, 140)
 
-        # Overlay label (slimmer height)
         self.text_label = QLabel(text, self.image_container)
         self.text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.text_label.setGeometry(0, 120, 100, 20)  # bottom bar
+        if not show_label:
+            self.text_label.hide()
+
+        if self.fixed_width is None:
+            self.image_container.setFixedSize(100, 140)
+            self.image_label.setFixedSize(100, 140)
+            self.text_label.setGeometry(0, 120, 100, 20)
 
         self._hover = False
         self._selected = False
@@ -38,27 +41,33 @@ class ThumbnailWidget(QWidget):
     def _update_margins(self, margins:QMargins):
         self.layout.setContentsMargins(margins)
 
-    # --- Styles ---
     def _update_style(self):
+        border_style = "border: 2px solid transparent;"
         if self._selected:
-            if self._hover:
-                bg = "rgba(74, 134, 232, 220)"  # brighter blue
-            else:
-                bg = "rgba(74, 134, 232, 180)"  # normal blue
-        else:
-            if self._hover:
-                bg = "rgba(0, 0, 0, 180)"       # darker black
-            else:
-                bg = "rgba(0, 0, 0, 120)"       # normal black
+            border_style = "border: 2px solid rgba(74, 134, 232, 180);"
+        elif self._hover:
+            border_style = "border: 2px solid rgba(100, 100, 100, 180);"
+        self.image_container.setStyleSheet(f"QWidget#image_container {{ {border_style} }}")
 
-        self.text_label.setStyleSheet(f"""
-            background-color: {bg};
-            color: white;
-            font-size: 10px;
-            border-radius: 0px;
-        """)
+        if self.text_label.isVisible():
+            if self._selected:
+                if self._hover:
+                    bg = "rgba(74, 134, 232, 220)"  # brighter blue
+                else:
+                    bg = "rgba(74, 134, 232, 180)"  # normal blue
+            else:
+                if self._hover:
+                    bg = "rgba(0, 0, 0, 180)"       # darker black
+                else:
+                    bg = "rgba(0, 0, 0, 120)"       # normal black
 
-    # --- Events ---
+            self.text_label.setStyleSheet(f"""
+                background-color: {bg};
+                color: white;
+                font-size: 10px;
+                border-radius: 0px;
+            """)
+
     def enterEvent(self, event):
         self._hover = True
         self._update_style()
@@ -74,9 +83,16 @@ class ThumbnailWidget(QWidget):
             self.clicked.emit(self.index)
         return super().mousePressEvent(ev)
 
-    # --- Public ---
     def set_pixmap(self, pixmap: QPixmap):
-        if not pixmap.isNull():
+        if pixmap.isNull():
+            return
+        
+        if self.fixed_width is not None:
+            self.image_label.setPixmap(pixmap)
+            self.image_container.setFixedSize(pixmap.size())
+            self.image_label.setFixedSize(pixmap.size())
+            self.text_label.setGeometry(0, pixmap.height() - 20, pixmap.width(), 20)
+        else:
             cropped = crop_pixmap(pixmap, 100, 140)
             self.image_label.setPixmap(cropped)
 
