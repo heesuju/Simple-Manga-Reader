@@ -305,45 +305,38 @@ class ReaderView(QMainWindow):
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def show_next(self):
-        if not self.model.images: 
+        if not self.model.images:
             return
-        if self.model.view_mode == ViewMode.DOUBLE:
-            step = 2
-        else:
-            step = 1
 
+        if self.model.view_mode == ViewMode.STRIP:
+            self._change_chapter(1)  # Go to next chapter
+            return
+
+        # Existing logic for Single/Double mode
+        step = 2 if self.model.view_mode == ViewMode.DOUBLE else 1
         if self.model.current_index + step < len(self.model.images):
             self.model.current_index += step
             self.model.load_image()
         else:
-            total_chapters = len(self.model.chapters)
-            if self.model.chapter_index < total_chapters - 1:
-                self.model.chapter_index += 1
-                self.model.manga_dir = self.model.chapters[self.model.chapter_index]
-                self.model.images = [] # force reload
-                self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-                self.model.refresh(preserve_view_mode=True)
+            self._change_chapter(1)  # Go to next chapter
 
         self.page_panel._update_page_selection(self.model.current_index)
 
     def show_prev(self):
-        if not self.model.images: 
+        if not self.model.images:
             return
-        if self.model.view_mode == ViewMode.DOUBLE:
-            step = 2
-        else:
-            step = 1
 
+        if self.model.view_mode == ViewMode.STRIP:
+            self._change_chapter(-1)  # Go to previous chapter
+            return
+
+        # Existing logic for Single/Double mode
+        step = 2 if self.model.view_mode == ViewMode.DOUBLE else 1
         if self.model.current_index - step >= 0:
             self.model.current_index -= step
             self.model.load_image()
         else:
-            if self.model.chapter_index - 1 >= 0:
-                self.model.chapter_index -= 1
-                self.model.manga_dir = self.model.chapters[self.model.chapter_index]
-                self.model.images = [] # force reload
-                self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-                self.model.refresh(start_from_end=True, preserve_view_mode=True)
+            self._change_chapter(-1)  # Go to previous chapter
 
         self.page_panel._update_page_selection(self.model.current_index)
 
@@ -354,6 +347,20 @@ class ReaderView(QMainWindow):
     def change_chapter(self, chapter:int):
         self.model.change_chapter(chapter)
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+
+    def _change_chapter(self, direction: int):
+        new_index = self.model.chapter_index + direction
+        total_chapters = len(self.model.chapters)
+
+        if 0 <= new_index < total_chapters:
+            self.model.chapter_index = new_index
+            self.model.manga_dir = self.model.chapters[self.model.chapter_index]
+            self.model.images = []  # force reload
+            self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+
+            # For 'prev', start from the end of the chapter
+            start_from_end = (direction == -1)
+            self.model.refresh(start_from_end=start_from_end, preserve_view_mode=True)
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
@@ -427,6 +434,8 @@ class ReaderView(QMainWindow):
 
             self.scroll_area.verticalScrollBar().valueChanged.connect(self._update_visible_images)
             self.scroll_area.viewport().installEventFilter(self)
+
+        self.scroll_area.verticalScrollBar().setValue(0)
 
         while self.vbox.count():
             item = self.vbox.takeAt(0)
