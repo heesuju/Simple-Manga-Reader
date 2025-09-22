@@ -139,7 +139,7 @@ def load_pixmap_for_thumbnailing(path: str, target_width: int = 0) -> QPixmap | 
         if original_size.width() > target_width:
             height = int(original_size.height() * (target_width / original_size.width()))
             reader.setScaledSize(QSize(target_width, height))
-            reader.setQuality(30)
+            reader.setQuality(10)
 
     image = reader.read()
     if image.isNull():

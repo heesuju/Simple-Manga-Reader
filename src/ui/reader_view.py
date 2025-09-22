@@ -109,7 +109,7 @@ class ReaderView(QMainWindow):
         self._setup_page_panel()
 
         self.strip_mode_panel = VerticalCollapsiblePanel(self)
-        self._setup_strip_mode_panel()
+        self.strip_thumbnails_layout = self.strip_mode_panel.layout
 
         self.chapter_panel.raise_()
         self.page_panel.raise_()
@@ -175,7 +175,7 @@ class ReaderView(QMainWindow):
         page_panel_height = 170 if self.page_panel.content_area.isVisible() else 0
         self.page_panel.setGeometry(0, self.height() - page_panel_height - 50, self.width(), page_panel_height)
 
-        strip_panel_width = 170 if self.strip_mode_panel.content_area.isVisible() else 0
+        strip_panel_width = 24 if self.strip_mode_panel.isVisible() else 0
         self.strip_mode_panel.setGeometry(self.width() - strip_panel_width, 0, strip_panel_width, self.height())
 
     def mouseMoveEvent(self, event):
@@ -190,7 +190,8 @@ class ReaderView(QMainWindow):
         if top_rect.contains(pos):
             self.chapter_panel.show_content()
         elif bottom_rect.contains(pos):
-            self.page_panel.show_content()
+            if self.model.view_mode != ViewMode.STRIP:
+                self.page_panel.show_content()
         elif self.model.view_mode == ViewMode.STRIP and right_rect.contains(pos):
             self.strip_mode_panel.show_content()
         
@@ -612,14 +613,6 @@ class ReaderView(QMainWindow):
             self.vertical_pixmaps = []
         self.view.show()
 
-    def _setup_strip_mode_panel(self):
-        self.strip_thumbnails_widget = QWidget()
-        self.strip_thumbnails_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.7);")
-        self.strip_thumbnails_layout = QVBoxLayout(self.strip_thumbnails_widget)
-        self.strip_thumbnails_layout.setSpacing(0)
-        self.strip_thumbnails_layout.addStretch()
-        self.strip_mode_panel.set_content_widget(self.strip_thumbnails_widget)
-
     def _update_strip_mode_thumbnails(self):
         for i in reversed(range(self.strip_thumbnails_layout.count() - 1)):
             self.strip_thumbnails_layout.itemAt(i).widget().setParent(None)
@@ -627,7 +620,8 @@ class ReaderView(QMainWindow):
 
         images = self.model.images
         for i, image_path in enumerate(images):
-            widget = ThumbnailWidget(i, str(i+1), show_label=False, fixed_width=100)
+            
+            widget = ThumbnailWidget(i, str(i+1), show_label=False, fixed_width=24)
             widget.clicked.connect(self._change_page_by_strip_thumbnail)
             self.strip_thumbnails_layout.insertWidget(i, widget)
             self.strip_thumbnail_widgets.append(widget)
@@ -635,7 +629,7 @@ class ReaderView(QMainWindow):
             if image_path == "placeholder":
                 self._on_strip_thumbnail_loaded(i, empty_placeholder())
             else:
-                load_func = lambda path: load_pixmap_for_thumbnailing(path, target_width=100)
+                load_func = lambda path: load_pixmap_for_thumbnailing(path, target_width=24)
                 worker = ThumbnailWorker(i, image_path, load_func)
                 worker.signals.finished.connect(self._on_strip_thumbnail_loaded)
                 self.thread_pool.start(worker)
