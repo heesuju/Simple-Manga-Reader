@@ -49,24 +49,23 @@ class ThumbnailWidget(QWidget):
             border_style = "border: 2px solid rgba(100, 100, 100, 180);"
         self.image_container.setStyleSheet(f"QWidget#image_container {{ {border_style} }}")
 
-        if self.text_label.isVisible():
-            if self._selected:
-                if self._hover:
-                    bg = "rgba(74, 134, 232, 220)"  # brighter blue
-                else:
-                    bg = "rgba(74, 134, 232, 180)"  # normal blue
+        if self._selected:
+            if self._hover:
+                bg = "rgba(74, 134, 232, 220)"  # brighter blue
             else:
-                if self._hover:
-                    bg = "rgba(0, 0, 0, 180)"       # darker black
-                else:
-                    bg = "rgba(0, 0, 0, 120)"       # normal black
+                bg = "rgba(74, 134, 232, 180)"  # normal blue
+        else:
+            if self._hover:
+                bg = "rgba(0, 0, 0, 180)"       # darker black
+            else:
+                bg = "rgba(0, 0, 0, 120)"       # normal black
 
-            self.text_label.setStyleSheet(f"""
-                background-color: {bg};
-                color: white;
-                font-size: 10px;
-                border-radius: 0px;
-            """)
+        self.text_label.setStyleSheet(f"""
+            background-color: {bg};
+            color: white;
+            font-size: 10px;
+            border-radius: 0px;
+        """)
 
     def enterEvent(self, event):
         self._hover = True

@@ -8,22 +8,6 @@ from src.enums import ViewMode
 from src.utils.img_utils import get_chapter_number
 from src.core.thumbnail_worker import get_default_view_mode
 
-def _get_first_image_path(chapter_dir):
-    if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
-        try:
-            with zipfile.ZipFile(chapter_dir, 'r') as zf:
-                image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                if image_files:
-                    return f"{chapter_dir}|{image_files[0]}"
-        except zipfile.BadZipFile:
-            return None
-    elif isinstance(chapter_dir, Path) and chapter_dir.is_dir():
-        exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-        image_files = [p for p in sorted(chapter_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
-        if image_files:
-            return str(image_files[0])
-    return None
-
 class ReaderModel(QObject):
     refreshed = pyqtSignal()
     image_loaded = pyqtSignal(str)

@@ -1,6 +1,4 @@
 import math
-from pathlib import Path
-import zipfile
 from typing import List
 
 from PyQt6.QtWidgets import (
@@ -13,13 +11,13 @@ from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
 
 from src.enums import ViewMode
 from src.core.thumbnail_worker import ThumbnailWorker
-from src.ui.collapsible_panel import CollapsiblePanel
+from src.ui.page_panel import PagePanel
+from src.ui.chapter_panel import ChapterPanel
 from src.ui.vertical_collapsible_panel import VerticalCollapsiblePanel
 from src.ui.image_view import ImageView
-from src.ui.input_label import InputLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
-from src.utils.img_utils import get_image_data_from_zip, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path, empty_placeholder, load_pixmap_for_thumbnailing
-from src.data.reader_model import ReaderModel, _get_first_image_path
+from src.utils.img_utils import get_image_data_from_zip, empty_placeholder, load_pixmap_for_thumbnailing
+from src.data.reader_model import ReaderModel
 from src.core.thumbnail_worker import get_common_size_ratio
 
 class ReaderView(QMainWindow):
@@ -47,10 +45,6 @@ class ReaderView(QMainWindow):
         self._last_total_scale = 1.0
 
         self.thread_pool = QThreadPool()
-        self.chapter_thumbnail_widgets = []
-        self.page_thumbnail_widgets = []
-        self.current_chapter_thumbnail = None
-        self.current_page_thumbnail = None
 
         self.strip_mode_panel = None
         self.strip_thumbnail_widgets = []
@@ -59,18 +53,12 @@ class ReaderView(QMainWindow):
         self._setup_ui()
         self.showFullScreen()
         self.model.refresh()
-        self._update_chapter_selection()
+        self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
     def _setup_ui(self):
         self.scene = QGraphicsScene()
         self.view = ImageView(manga_reader=self)
         self.view.setScene(self.scene)
-        
-        self.page_label = InputLabel("Page", 0,0)
-        self.ch_label = InputLabel("Chapter", 0,0)
-
-        self.page_label.enterPressed.connect(self.change_page)
-        self.ch_label.enterPressed.connect(self.change_chapter)
 
         self.back_btn = QPushButton("⬅ Back to Grid")
         self.back_btn.clicked.connect(self.back_to_grid)
@@ -87,7 +75,6 @@ class ReaderView(QMainWindow):
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(0)
         top_layout.addWidget(self.back_btn)
-        top_layout.addWidget(self.ch_label, 1, Qt.AlignmentFlag.AlignCenter)
         top_layout.addWidget(self.layout_btn)
         top_layout.addStretch()
 
@@ -102,17 +89,13 @@ class ReaderView(QMainWindow):
         container.setContentsMargins(0, 0, 0, 0)
         self.setCentralWidget(container)
 
-        self.chapter_panel = CollapsiblePanel(self)
-        self._setup_chapter_panel()
-
-        self.page_panel = CollapsiblePanel(self)
-        self._setup_page_panel()
+        self.chapter_panel = ChapterPanel(self, self.change_chapter)
+        self.page_panel = PagePanel(self, self.change_page)
+        self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
         self.strip_mode_panel = VerticalCollapsiblePanel(self)
         self.strip_thumbnails_layout = self.strip_mode_panel.layout
 
-        self.chapter_panel.raise_()
-        self.page_panel.raise_()
         self.strip_mode_panel.raise_()
 
         self.setMouseTracking(True)
@@ -145,11 +128,11 @@ class ReaderView(QMainWindow):
     def on_model_refreshed(self):
         if not self.model.images:
             QMessageBox.information(self, "No images", f"No images found in: {self.model.manga_dir}")
-        self._update_page_thumbnails()
+        self.page_panel._update_page_thumbnails(self.model)
         self.model.update_layout()
 
     def on_layout_updated(self, view_mode):
-        self._update_page_thumbnails()
+        self.page_panel._update_page_thumbnails(self.model)
 
         if view_mode == ViewMode.SINGLE:
             self.layout_btn.setText("Single")
@@ -170,11 +153,11 @@ class ReaderView(QMainWindow):
         self._update_panel_geometries()
 
     def _update_panel_geometries(self):
-        chapter_panel_height = 170 if self.chapter_panel.content_area.isVisible() else 0
-        self.chapter_panel.setGeometry(0, 50, self.width(), chapter_panel_height)
+        chapter_panel_height = 200 if self.chapter_panel.content_area.isVisible() else 0
+        self.chapter_panel.setGeometry(0, 0, self.width(), chapter_panel_height)
 
-        page_panel_height = 170 if self.page_panel.content_area.isVisible() else 0
-        self.page_panel.setGeometry(0, self.height() - page_panel_height - 50, self.width(), page_panel_height)
+        page_panel_height = 200 if self.page_panel.content_area.isVisible() else 0
+        self.page_panel.setGeometry(0, self.height() - page_panel_height, self.width(), page_panel_height)
 
         strip_panel_width = 24 if self.strip_mode_panel.is_content_visible else 0
         self.strip_mode_panel.setGeometry(self.width() - strip_panel_width, 0, strip_panel_width, self.height())
@@ -208,96 +191,6 @@ class ReaderView(QMainWindow):
         page_step = scrollbar.pageStep()
         scroll_range = (scrollbar.minimum(), scrollbar.maximum())
         self.strip_mode_panel.set_scroll_properties(value, page_step, scroll_range)
-
-
-    def _setup_chapter_panel(self):
-        self.chapter_thumbnails_widget = QWidget()
-        self.chapter_thumbnails_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.7);")
-        self.chapter_thumbnails_layout = QHBoxLayout(self.chapter_thumbnails_widget)
-        self.chapter_thumbnails_layout.setSpacing(10)
-        self.chapter_thumbnails_layout.addStretch()
-        self.chapter_panel.set_content_widget(self.chapter_thumbnails_widget)
-        self._update_chapter_thumbnails()
-
-    def _setup_page_panel(self):
-        self.page_thumbnails_widget = QWidget()
-        self.page_thumbnails_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.7);")
-        self.page_thumbnails_layout = QHBoxLayout(self.page_thumbnails_widget)
-        self.page_thumbnails_layout.setSpacing(0)
-        self.page_thumbnails_layout.addStretch()
-        self.page_panel.set_content_widget(self.page_thumbnails_widget)
-
-    def _update_chapter_thumbnails(self):
-        for i in reversed(range(self.chapter_thumbnails_layout.count() - 1)):
-            self.chapter_thumbnails_layout.itemAt(i).widget().setParent(None)
-        self.chapter_thumbnail_widgets.clear()
-
-        for i, chapter in enumerate(self.model.chapters):
-            chapter_name = Path(str(chapter)).name
-            widget = ThumbnailWidget(i, chapter_name)
-            widget.clicked.connect(self._change_chapter_by_thumbnail)
-            self.chapter_thumbnails_layout.insertWidget(i, widget)
-            self.chapter_thumbnail_widgets.append(widget)
-
-            first_image_path = _get_first_image_path(chapter)
-            if first_image_path:
-                worker = ThumbnailWorker(i, first_image_path, self._load_thumbnail)
-                worker.signals.finished.connect(self._on_chapter_thumbnail_loaded)
-                self.thread_pool.start(worker)
-
-    def _on_chapter_thumbnail_loaded(self, index, pixmap):
-        if index < len(self.chapter_thumbnail_widgets):
-            self.chapter_thumbnail_widgets[index].set_pixmap(pixmap)
-
-    def _update_page_thumbnails(self):
-        for i in reversed(range(self.page_thumbnails_layout.count() - 1)):
-            self.page_thumbnails_layout.itemAt(i).widget().setParent(None)
-        self.page_thumbnail_widgets.clear()
-
-        images = self.model.images
-        if self.model.view_mode == ViewMode.DOUBLE:
-            images = self.model._get_double_view_images()
-
-        for i, image_path in enumerate(images):
-            widget = ThumbnailWidget(i, str(i+1))
-            widget.clicked.connect(self._change_page_by_thumbnail)
-            self.page_thumbnails_layout.insertWidget(i, widget)
-            self.page_thumbnail_widgets.append(widget)
-
-            if image_path == "placeholder":
-                self._on_page_thumbnail_loaded(i, empty_placeholder())
-            else:
-                worker = ThumbnailWorker(i, image_path, self._load_thumbnail)
-                worker.signals.finished.connect(self._on_page_thumbnail_loaded)
-                self.thread_pool.start(worker)
-        
-        self._update_page_selection()
-
-    def _on_page_thumbnail_loaded(self, index, pixmap):
-        if index < len(self.page_thumbnail_widgets):
-            self.page_thumbnail_widgets[index].set_pixmap(pixmap)
-
-    def _update_chapter_selection(self):
-        if self.current_chapter_thumbnail:
-            self.current_chapter_thumbnail.set_selected(False)
-        
-        if self.model.chapter_index < len(self.chapter_thumbnail_widgets):
-            self.current_chapter_thumbnail = self.chapter_thumbnail_widgets[self.model.chapter_index]
-            self.current_chapter_thumbnail.set_selected(True)
-
-    def _update_page_selection(self):
-        if self.current_page_thumbnail:
-            self.current_page_thumbnail.set_selected(False)
-
-        if self.model.current_index < len(self.page_thumbnail_widgets):
-            self.current_page_thumbnail = self.page_thumbnail_widgets[self.model.current_index]
-            self.current_page_thumbnail.set_selected(True)
-
-    def _change_chapter_by_thumbnail(self, index: int):
-        self.change_chapter(index + 1)
-
-    def _change_page_by_thumbnail(self, index: int):
-        self.change_page(index + 1)
 
     def event(self, e):
         if e.type() == QEvent.Type.Gesture:
@@ -347,40 +240,15 @@ class ReaderView(QMainWindow):
 
         return pixmap
 
-    def _load_thumbnail(self, path: str) -> QPixmap | None:
-        crop = None
-        if path.endswith("_left"):
-            path = path[:-5]
-            crop = "left"
-        elif path.endswith("_right"):
-            path = path[:-6]
-            crop = "right"
-
-        if '|' in path:
-            return load_thumbnail_from_virtual_path(path=path, crop=crop)
-        elif path.endswith('.zip'):
-            return load_thumbnail_from_zip(path=path)
-        else:
-            return load_thumbnail_from_path(path=path, crop=crop)
-
     def _load_image(self, path: str):
         self.original_pixmap = self._load_pixmap(path)
         self.scene.clear()
         self.pixmap_item = QGraphicsPixmapItem(self.original_pixmap)
         self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-
         self.scene.addItem(self.pixmap_item)
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
-
         self.view.reset_zoom_state()
-        self.page_label.set_total(len(self.model.images))
-        self.ch_label.set_total(len(self.model.chapters))
-        
-        self.page_label.set_value(self.model.current_index + 1)
-        self.ch_label.set_value(self.model.chapter_index + 1)
-
-        self._update_page_selection()
-
+        self.page_panel._update_page_selection(self.model.current_index)
         QTimer.singleShot(0, self._fit_current_image)
     
     def _load_double_images(self, image1_path, image2_path):
@@ -407,8 +275,6 @@ class ReaderView(QMainWindow):
 
         self.scene.setSceneRect(0, 0, total_width, total_height)
         self.view.reset_zoom_state()
-        self.page_label.set_total(len(self.model.images))
-        self.page_label.set_value(self.model.current_index + 1)
         QTimer.singleShot(0, self._fit_current_image)
 
     def _update_zoom(self, factor: float):
@@ -433,19 +299,19 @@ class ReaderView(QMainWindow):
 
     def show_next(self):
         self.model.show_next()
-        self._update_page_selection()
+        self.page_panel._update_page_selection(self.model.current_index)
 
     def show_prev(self):
         self.model.show_prev()
-        self._update_page_selection()
+        self.page_panel._update_page_selection(self.model.current_index)
 
     def change_page(self, page:int):
         self.model.change_page(page)
-        self._update_page_selection()
+        self.page_panel._update_page_selection(self.model.current_index)
 
     def change_chapter(self, chapter:int):
         self.model.change_chapter(chapter)
-        self._update_chapter_selection()
+        self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
@@ -494,7 +360,7 @@ class ReaderView(QMainWindow):
 
     def _show_double_layout(self):
         self.strip_mode_panel.hide()
-        for n, widget in enumerate(self.page_thumbnail_widgets):
+        for n, widget in enumerate(self.page_panel.page_thumbnail_widgets):
             if n % 2 == 0:
                 widget._update_margins(QMargins(0,0,0,0))
             else:
@@ -562,7 +428,7 @@ class ReaderView(QMainWindow):
         if topmost_visible_index != -1 and self.model.current_index != topmost_visible_index:
             self.model.current_index = topmost_visible_index
             self._update_strip_selection()
-            self._update_page_selection()
+            self.page_panel._update_page_selection(self.model.current_index)
 
         for i, lbl in enumerate(self.page_labels):
             lbl_top = lbl.y()
@@ -616,8 +482,8 @@ class ReaderView(QMainWindow):
 
     def _show_single_layout(self):
         self.strip_mode_panel.hide()
-        if len(self.page_thumbnail_widgets) > 0:
-            for widget in self.page_thumbnail_widgets:
+        if len(self.page_panel.page_thumbnail_widgets) > 0:
+            for widget in self.page_panel.page_thumbnail_widgets:
                 widget._update_margins(QMargins(0,0,10,0))
 
         if self.scroll_area:

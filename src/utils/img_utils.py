@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import Union, List
 from pathlib import Path
 from PyQt6.QtGui import QPixmap, QImageReader, QColor
 from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray, QRect
@@ -8,11 +8,20 @@ from src.utils.str_utils import find_number
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
 
-def is_image_folder(folder: Path) -> bool:
+def is_image_folder(folder: Union[Path, str]) -> bool:
+    if isinstance(folder, str):
+        folder = Path(folder)
     files = [f for f in folder.iterdir() if f.is_file()]
     return bool(files) and all(f.suffix.lower() in IMG_EXTS for f in files)
 
-def get_image_size(path: str) -> tuple[int,int]:
+def get_image_size(path: Union[str, Path]):
+    path = str(path)
+    if '|' in path:
+        return get_image_size_from_virtual_path(path)
+    else:
+        return get_image_size_from_path(path)
+
+def get_image_size_from_path(path: str) -> tuple[int,int]:
     """Return width/height ratio of image."""
     reader = QImageReader(str(path))
     size = reader.size()
@@ -23,6 +32,29 @@ def get_image_size(path: str) -> tuple[int,int]:
     
     return width, height
 
+def get_image_size_from_virtual_path(path:str):
+    try:
+        zip_path, image_name = path.split('|', 1)
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            with zf.open(image_name) as f:
+                image_data = f.read()
+                
+                byte_array = QByteArray(image_data)
+                buffer = QBuffer(byte_array)
+                buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+
+                reader = QImageReader(buffer, QByteArray())
+                size = reader.size()
+                height = size.height()
+                width = size.width()
+                if height == 0:
+                    return width, height, 0
+                
+                return width, height
+            
+    except (zipfile.BadZipFile, KeyError):
+        return None
+    
 def get_image_ratio(w:int,h:int):
     return round(w / h, 2) if h != 0 else 0.0
 
@@ -159,3 +191,20 @@ def get_chapter_number(path):
         return int(match.group(1))
     else:
         return find_number(name)
+    
+
+def _get_first_image_path(chapter_dir):
+    if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
+        try:
+            with zipfile.ZipFile(chapter_dir, 'r') as zf:
+                image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
+                if image_files:
+                    return f"{chapter_dir}|{image_files[0]}"
+        except zipfile.BadZipFile:
+            return None
+    elif isinstance(chapter_dir, Path) and chapter_dir.is_dir():
+        exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+        image_files = [p for p in sorted(chapter_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
+        if image_files:
+            return str(image_files[0])
+    return None

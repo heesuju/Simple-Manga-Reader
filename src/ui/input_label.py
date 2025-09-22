@@ -16,17 +16,19 @@ class InputLabel(QWidget):
         self.label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         self.input = QLineEdit(str(current))
+        
         self.input.setFixedWidth(50)
         self.input.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.input.setValidator(QIntValidator(1, 10**max_digits))
 
         self.total_label = QLabel(f"/ {total}")
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.total_label.setStyleSheet("""QLabel { color: white; }""")
         
         self.label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.label.setStyleSheet("""QLabel { color: white; }""")
         self.input.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        
 
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
