@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
-from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor
+from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
 
 from src.enums import ViewMode
@@ -249,16 +249,46 @@ class ReaderView(QMainWindow):
         return pixmap
 
     def _load_image(self, path: str):
-        self.original_pixmap = self._load_pixmap(path)
+        self.movie = None
+        if path.lower().endswith(".gif"):
+            # Use QMovie for animated gif
+            self.movie = QMovie(path)
+            self.movie.frameChanged.connect(self._update_movie_frame)
+            self.movie.start()
+            self.view.reset_zoom_state()
+            QTimer.singleShot(0, self._fit_current_image)
+            self.page_panel._update_page_selection(self.model.current_index)
+        else:
+            self.original_pixmap = self._load_pixmap(path)
+            self._set_pixmap(self.original_pixmap)
+            self.view.reset_zoom_state()
+            QTimer.singleShot(0, self._fit_current_image)
+            self.page_panel._update_page_selection(self.model.current_index)
+            # QTimer.singleShot(0, self._fit_current_image)
+    
+    def _update_movie_frame(self, frame_number: int):
+        if self.movie:
+            pixmap = self.movie.currentPixmap()
+            if pixmap.isNull():
+                return
+
+            # Scale GIF smoothly to match view size
+            target_size = self.view.viewport().size()  # or any QSize you want
+            scaled_pixmap = pixmap.scaled(
+                target_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+
+            self._set_pixmap(scaled_pixmap)
+
+    def _set_pixmap(self, pixmap: QPixmap):
         self.scene.clear()
-        self.pixmap_item = QGraphicsPixmapItem(self.original_pixmap)
+        self.pixmap_item = QGraphicsPixmapItem(pixmap)
         self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         self.scene.addItem(self.pixmap_item)
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
-        self.view.reset_zoom_state()
-        self.page_panel._update_page_selection(self.model.current_index)
-        QTimer.singleShot(0, self._fit_current_image)
-    
+
     def _load_double_images(self, image1_path, image2_path):
         self.scene.clear()
 
