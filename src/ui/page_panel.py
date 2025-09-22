@@ -7,13 +7,14 @@ from src.enums import ViewMode
 from src.utils.img_utils import empty_placeholder
 
 class PagePanel(CollapsiblePanel):
-    def __init__(self, parent=None, on_page_changed=None):
+    def __init__(self, parent=None, model:ReaderModel=None, on_page_changed=None):
         super().__init__(parent, "Page")
         self.thumbnails_layout.setSpacing(0)
         self.thread_pool = QThreadPool()
+        self.model = model
         self.on_page_changed = on_page_changed
         self.page_thumbnail_widgets = []
-        self.current_page_thumbnail = None
+        self.current_page_thumbnails = []
         self.input_label.enterPressed.connect(self.on_page_changed)
         
     def _update_page_thumbnails(self, model:ReaderModel):
@@ -45,16 +46,34 @@ class PagePanel(CollapsiblePanel):
             self.page_thumbnail_widgets[index].set_pixmap(pixmap)
 
     def _update_page_selection(self, index):
-        if self.current_page_thumbnail:
-            self.current_page_thumbnail.set_selected(False)
+        for thumbnail in self.current_page_thumbnails:
+            thumbnail.set_selected(False)
+        self.current_page_thumbnails.clear()
 
-        if index < len(self.page_thumbnail_widgets):
-            self.current_page_thumbnail = self.page_thumbnail_widgets[index]
-            self.current_page_thumbnail.set_selected(True)
-            self.content_area.ensureWidgetVisible(self.current_page_thumbnail)
+        if index >= len(self.page_thumbnail_widgets):
+            return
+
+        # Select new thumbnail(s)
+        if self.model.view_mode == ViewMode.DOUBLE:
+            # Select current page
+            current_thumb = self.page_thumbnail_widgets[index]
+            current_thumb.set_selected(True)
+            self.current_page_thumbnails.append(current_thumb)
+            self.content_area.ensureWidgetVisible(current_thumb)
+
+            # Select next page if it exists
+            if index + 1 < len(self.page_thumbnail_widgets):
+                next_thumb = self.page_thumbnail_widgets[index + 1]
+                next_thumb.set_selected(True)
+                self.current_page_thumbnails.append(next_thumb)
+        else:  # Single or Strip mode
+            current_thumb = self.page_thumbnail_widgets[index]
+            current_thumb.set_selected(True)
+            self.current_page_thumbnails.append(current_thumb)
+            self.content_area.ensureWidgetVisible(current_thumb)
 
         self.input_label.set_total(len(self.page_thumbnail_widgets))
-        self.input_label.set_value(index+1)
+        self.input_label.set_value(index + 1)
 
     def _change_page_by_thumbnail(self, index: int):
         self.on_page_changed(index + 1)

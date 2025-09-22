@@ -80,7 +80,7 @@ class ReaderView(QMainWindow):
         self.chapter_panel = ChapterPanel(self, self.change_chapter)
         self.chapter_panel.add_control_widget(self.back_btn, 0)
         self.chapter_panel.add_control_widget(self.layout_btn)
-        self.page_panel = PagePanel(self, self.change_page)
+        self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
         self.chapter_panel.raise_()
@@ -322,7 +322,7 @@ class ReaderView(QMainWindow):
                 self.model.manga_dir = self.model.chapters[self.model.chapter_index]
                 self.model.images = [] # force reload
                 self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-                self.model.refresh()
+                self.model.refresh(preserve_view_mode=True)
 
         self.page_panel._update_page_selection(self.model.current_index)
 
@@ -343,7 +343,7 @@ class ReaderView(QMainWindow):
                 self.model.manga_dir = self.model.chapters[self.model.chapter_index]
                 self.model.images = [] # force reload
                 self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-                self.model.refresh(True)
+                self.model.refresh(start_from_end=True, preserve_view_mode=True)
 
         self.page_panel._update_page_selection(self.model.current_index)
 

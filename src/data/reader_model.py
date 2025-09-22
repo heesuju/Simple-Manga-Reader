@@ -41,7 +41,7 @@ class ReaderModel(QObject):
 
         self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
 
-    def refresh(self, start_from_end:bool=False):
+    def refresh(self, start_from_end:bool=False, preserve_view_mode:bool=False):
         if not self.images:
             self.images = self._get_image_list()
             self.images = sorted(self.images, key=get_chapter_number)
@@ -59,8 +59,9 @@ class ReaderModel(QObject):
                     else:
                         new_items.append(item)
                 self.images = new_items
-
-        self.view_mode = get_default_view_mode(self.images)
+        
+        if not preserve_view_mode:
+            self.view_mode = get_default_view_mode(self.images)
 
         if hasattr(self, 'start_file') and self.start_file:
             try:
@@ -159,7 +160,7 @@ class ReaderModel(QObject):
         self.chapter_index = index
         self.manga_dir = self.chapters[self.chapter_index]
         self.images = [] # force reload
-        self.refresh()
+        self.refresh(preserve_view_mode=True)
 
     def toggle_layout(self, mode:ViewMode=None):
         if isinstance(mode, ViewMode):
