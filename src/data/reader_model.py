@@ -116,14 +116,7 @@ class ReaderModel(QObject):
         if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
             page -=1
 
-        # img_count = len(self.images)
-        index = page - 1
-        
-        # if index < 0:
-        #     index = 0
-        # elif index > img_count - 1:
-        #     index = img_count - 1
-            
+        index = page - 1            
         self.current_index = index
         self.load_image()
 

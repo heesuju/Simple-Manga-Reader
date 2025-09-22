@@ -51,6 +51,7 @@ class PagePanel(CollapsiblePanel):
         if index < len(self.page_thumbnail_widgets):
             self.current_page_thumbnail = self.page_thumbnail_widgets[index]
             self.current_page_thumbnail.set_selected(True)
+            self.content_area.ensureWidgetVisible(self.current_page_thumbnail)
 
         self.input_label.set_total(len(self.page_thumbnail_widgets))
         self.input_label.set_value(index+1)
