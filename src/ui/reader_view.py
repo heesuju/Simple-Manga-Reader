@@ -76,8 +76,6 @@ class ReaderView(QMainWindow):
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(0)
-        top_layout.addWidget(self.back_btn)
-        top_layout.addWidget(self.layout_btn)
         top_layout.addStretch()
 
         main_layout = QVBoxLayout()
@@ -92,6 +90,8 @@ class ReaderView(QMainWindow):
         self.setCentralWidget(container)
 
         self.chapter_panel = ChapterPanel(self, self.change_chapter)
+        self.chapter_panel.add_control_widget(self.back_btn, 0)
+        self.chapter_panel.add_control_widget(self.layout_btn)
         self.page_panel = PagePanel(self, self.change_page)
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 

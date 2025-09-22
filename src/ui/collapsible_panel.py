@@ -59,6 +59,10 @@ class CollapsiblePanel(QWidget):
 
         self.raise_()
 
+    def add_control_widget(self, widget, index=-1):
+        self.input_layout.insertWidget(index, widget)
+
+
     def show_content(self):
         self.hide_timer.stop()
         self.content_area.setVisible(True)
