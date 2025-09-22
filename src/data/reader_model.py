@@ -1,12 +1,24 @@
 from typing import List
 from pathlib import Path
 import zipfile
+import math
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from src.enums import ViewMode
-from src.utils.img_utils import get_chapter_number
-from src.core.thumbnail_worker import get_default_view_mode
+from src.utils.img_utils import get_chapter_number, get_image_size
+from src.core.thumbnail_worker import get_default_view_mode, get_common_size_ratio, get_image_ratio
+
+def is_double_page(size, common_ratio):
+    if size[0] == 0 or size[1] == 0:
+        return False
+    ratio = get_image_ratio(size[0]/2, size[1])
+
+    if math.isclose(ratio, common_ratio):
+        return True
+    else:
+        return False
+
 
 class ReaderModel(QObject):
     refreshed = pyqtSignal()
@@ -33,6 +45,21 @@ class ReaderModel(QObject):
         if not self.images:
             self.images = self._get_image_list()
             self.images = sorted(self.images, key=get_chapter_number)
+
+            # Split wide images
+            common_size, ratio, _, _ = get_common_size_ratio(self.images)
+            if common_size[0] > 0:
+                new_items = []
+                for item in self.images:
+                    size = get_image_size(item)
+                    
+                    if is_double_page(size, ratio):
+                        new_items.append(str(item) + "_right")
+                        new_items.append(str(item) + "_left")
+                    else:
+                        new_items.append(item)
+                self.images = new_items
+
         self.view_mode = get_default_view_mode(self.images)
 
         if hasattr(self, 'start_file') and self.start_file:
