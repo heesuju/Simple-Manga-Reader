@@ -1,5 +1,5 @@
 import math
-from PyQt6.QtWidgets import QGraphicsView
+from PyQt6.QtWidgets import QGraphicsView, QFrame
 from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut
 from PyQt6.QtCore import Qt, QTimer
 
@@ -7,6 +7,9 @@ class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
     def __init__(self, manga_reader=None):
         super().__init__()
+        self.setFrameStyle(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.manga_reader = manga_reader
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)

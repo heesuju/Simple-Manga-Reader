@@ -10,13 +10,10 @@ from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
 
 from src.enums import ViewMode
-from src.core.thumbnail_worker import ThumbnailWorker
 from src.ui.page_panel import PagePanel
 from src.ui.chapter_panel import ChapterPanel
-from src.ui.vertical_collapsible_panel import VerticalCollapsiblePanel
 from src.ui.image_view import ImageView
-from src.ui.thumbnail_widget import ThumbnailWidget
-from src.utils.img_utils import get_image_data_from_zip, empty_placeholder, load_pixmap_for_thumbnailing
+from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.core.thumbnail_worker import get_common_size_ratio
 
@@ -46,9 +43,6 @@ class ReaderView(QMainWindow):
 
         self.thread_pool = QThreadPool()
 
-        self.strip_mode_panel = None
-        self.strip_thumbnail_widgets = []
-        self.current_strip_thumbnail = None
         self.original_view_mouse_press = None
         self.is_zoomed = False
 
@@ -73,15 +67,9 @@ class ReaderView(QMainWindow):
         QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.back_to_grid)
 
-        top_layout = QHBoxLayout()
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(0)
-        top_layout.addStretch()
-
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        main_layout.addLayout(top_layout)
         main_layout.addWidget(self.view, 1)
 
         container = QWidget()
@@ -95,14 +83,17 @@ class ReaderView(QMainWindow):
         self.page_panel = PagePanel(self, self.change_page)
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
-        self.strip_mode_panel = VerticalCollapsiblePanel(self)
-        self.strip_thumbnails_layout = self.strip_mode_panel.layout
+        self.chapter_panel.raise_()
+        self.page_panel.raise_()
 
-        self.strip_mode_panel.raise_()
-
+        self.chapter_panel.installEventFilter(self)
+        self.page_panel.installEventFilter(self)
+        
         self.setMouseTracking(True)
         self.centralWidget().setMouseTracking(True)
         self.view.setMouseTracking(True)
+        self.view.viewport().setMouseTracking(True)
+        self.view.viewport().installEventFilter(self)
         self.original_view_mouse_press = self.view.mousePressEvent
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.resizeEvent = self.resizeEvent
@@ -125,8 +116,6 @@ class ReaderView(QMainWindow):
         else:
             self.layout_btn.setText("Strip")
             self._show_vertical_layout()
-            self._update_strip_mode_thumbnails()
-            QTimer.singleShot(0, self._update_strip_scrollbar)
 
         QTimer.singleShot(0, self._fit_current_image)
 
@@ -141,29 +130,35 @@ class ReaderView(QMainWindow):
         page_panel_height = 200 if self.page_panel.content_area.isVisible() else 0
         self.page_panel.setGeometry(0, self.height() - page_panel_height, self.width(), page_panel_height)
 
-        strip_panel_width = 24 if self.strip_mode_panel.is_content_visible else 0
-        self.strip_mode_panel.setGeometry(self.width() - strip_panel_width, 0, strip_panel_width, self.height())
-
     def mouseMoveEvent(self, event):
-        pos = event.pos()
-        top_rect = self.rect()
-        top_rect.setHeight(50)
-        bottom_rect = self.rect()
-        bottom_rect.setTop(self.height() - 50)
-        right_rect = self.rect()
-        right_rect.setLeft(self.width() - 50)
+        self._handle_panel_visibility(event.pos())
+        super().mouseMoveEvent(event)
 
-        if top_rect.contains(pos):
+    def _handle_panel_visibility(self, pos):
+        y = pos.y()
+        height = self.height()
+
+        top_area_height = height * 0.15
+        bottom_area_start = height * 0.85
+        
+        right_rect = self.rect()
+        right_rect.setLeft(int(self.width() * 0.85))
+
+        show_chapter = y <= top_area_height
+        show_page = (y >= bottom_area_start) and (self.model.view_mode != ViewMode.STRIP)
+        show_strip = (self.model.view_mode == ViewMode.STRIP) and right_rect.contains(pos)
+
+        if show_chapter:
             self.chapter_panel.show_content()
-        elif bottom_rect.contains(pos):
-            if self.model.view_mode != ViewMode.STRIP:
-                self.page_panel.show_content()
-        elif self.model.view_mode == ViewMode.STRIP and right_rect.contains(pos):
-            self.strip_mode_panel.show_content()
-            self._update_strip_scrollbar()
+        else:
+            self.chapter_panel.hide_content()
+
+        if show_page:
+            self.page_panel.show_content()
+        else:
+            self.page_panel.hide_content()
         
         self._update_panel_geometries()
-        super().mouseMoveEvent(event)
 
     
     def _overlay_mouse_press(self, event):
@@ -190,15 +185,6 @@ class ReaderView(QMainWindow):
         else:
             self.original_view_mouse_press(event)
 
-    def _update_strip_scrollbar(self):
-        if not self.scroll_area:
-            return
-        scrollbar = self.scroll_area.verticalScrollBar()
-        value = scrollbar.value()
-        page_step = scrollbar.pageStep()
-        scroll_range = (scrollbar.minimum(), scrollbar.maximum())
-        self.strip_mode_panel.set_scroll_properties(value, page_step, scroll_range)
-
     def event(self, e):
         if e.type() == QEvent.Type.Gesture:
             gesture = e.gesture(Qt.GestureType.PinchGesture)
@@ -208,10 +194,25 @@ class ReaderView(QMainWindow):
         return super().event(e)
 
     def eventFilter(self, obj, event):
+        # Unified mouse move handling using global coordinates
+        if event.type() == QEvent.Type.MouseMove and obj in (
+            self.chapter_panel, self.page_panel,
+            self.view.viewport(), 
+            self.scroll_area.viewport() if self.scroll_area else None
+        ):
+            global_pos = event.globalPosition().toPoint()
+            window_pos = self.mapFromGlobal(global_pos)
+            
+            if self.rect().contains(window_pos):
+                self._handle_panel_visibility(window_pos)
+            
+            return False # Pass event to original widget
+
+        # Handle resize for strip mode (existing logic)
         if self.model.view_mode == ViewMode.STRIP and self.scroll_area and obj is self.scroll_area.viewport():
             if event.type() == QEvent.Type.Resize:
                 QTimer.singleShot(0, self._resize_vertical_images)
-                QTimer.singleShot(0, self._update_strip_scrollbar)
+                
         return super().eventFilter(obj, event)
 
     def _load_pixmap(self, path: str) -> QPixmap:
@@ -393,7 +394,7 @@ class ReaderView(QMainWindow):
         self.model.toggle_layout(mode)
 
     def _show_double_layout(self):
-        self.strip_mode_panel.hide()
+        # self.strip_mode_panel.hide()
         for n, widget in enumerate(self.page_panel.page_thumbnail_widgets):
             if n % 2 == 0:
                 widget._update_margins(QMargins(0,0,0,0))
@@ -406,13 +407,15 @@ class ReaderView(QMainWindow):
 
     def _show_vertical_layout(self):
         self.page_panel.hide()
-        self.chapter_panel.hide()
         self.view.hide()
 
         if self.scroll_area is None:
             self.scroll_area = QScrollArea(self.centralWidget())
+            self.scroll_area.setMouseTracking(True)
+            self.scroll_area.viewport().setMouseTracking(True)
             self.scroll_area.setWidgetResizable(True)
             self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.vertical_container = QWidget()
             self.vbox = QVBoxLayout(self.vertical_container)
             self.vbox.setSpacing(0)
@@ -423,9 +426,6 @@ class ReaderView(QMainWindow):
             main_layout.insertWidget(1, self.scroll_area)
 
             self.scroll_area.verticalScrollBar().valueChanged.connect(self._update_visible_images)
-            self.scroll_area.verticalScrollBar().valueChanged.connect(self._update_strip_scrollbar)
-            self.scroll_area.verticalScrollBar().rangeChanged.connect(self._update_strip_scrollbar)
-            self.strip_mode_panel.scrolled.connect(self.scroll_area.verticalScrollBar().setValue)
             self.scroll_area.viewport().installEventFilter(self)
 
         while self.vbox.count():
@@ -443,7 +443,6 @@ class ReaderView(QMainWindow):
             self.page_labels.append(lbl)
 
         QTimer.singleShot(0, self._update_visible_images)
-        QTimer.singleShot(0, self._update_strip_scrollbar)
 
     def _update_visible_images(self):
         if not self.scroll_area:
@@ -461,7 +460,6 @@ class ReaderView(QMainWindow):
         
         if topmost_visible_index != -1 and self.model.current_index != topmost_visible_index:
             self.model.current_index = topmost_visible_index
-            self._update_strip_selection()
             self.page_panel._update_page_selection(self.model.current_index)
 
         for i, lbl in enumerate(self.page_labels):
@@ -515,7 +513,6 @@ class ReaderView(QMainWindow):
                     self._resize_single_label(lbl, self.page_pixmaps[i])
 
     def _show_single_layout(self):
-        self.strip_mode_panel.hide()
         if len(self.page_panel.page_thumbnail_widgets) > 0:
             for widget in self.page_panel.page_thumbnail_widgets:
                 widget._update_margins(QMargins(0,0,10,0))
@@ -530,42 +527,6 @@ class ReaderView(QMainWindow):
             self.v_labels = []
             self.vertical_pixmaps = []
         self.view.show()
-
-    def _update_strip_mode_thumbnails(self):
-        for i in reversed(range(self.strip_thumbnails_layout.count() - 1)):
-            self.strip_thumbnails_layout.itemAt(i).widget().setParent(None)
-        self.strip_thumbnail_widgets.clear()
-
-        images = self.model.images
-        for i, image_path in enumerate(images):
-            
-            widget = ThumbnailWidget(i, str(i+1), show_label=False, fixed_width=24)
-            widget.clicked.connect(self._change_page_by_strip_thumbnail)
-            self.strip_thumbnails_layout.insertWidget(i, widget)
-            self.strip_thumbnail_widgets.append(widget)
-
-            if image_path == "placeholder":
-                self._on_strip_thumbnail_loaded(i, empty_placeholder())
-            else:
-                load_func = lambda path: load_pixmap_for_thumbnailing(path, target_width=24)
-                worker = ThumbnailWorker(i, image_path, load_func)
-                worker.signals.finished.connect(self._on_strip_thumbnail_loaded)
-                self.thread_pool.start(worker)
-        
-        self._update_strip_selection()
-        self.strip_mode_panel.raise_handle()
-
-    def _on_strip_thumbnail_loaded(self, index, pixmap):
-        if index < len(self.strip_thumbnail_widgets):
-            self.strip_thumbnail_widgets[index].set_pixmap(pixmap)
-
-    def _update_strip_selection(self):
-        if self.current_strip_thumbnail:
-            self.current_strip_thumbnail.set_selected(False)
-
-        if self.model.current_index < len(self.strip_thumbnail_widgets):
-            self.current_strip_thumbnail = self.strip_thumbnail_widgets[self.model.current_index]
-            self.current_strip_thumbnail.set_selected(True)
 
     def _change_page_by_strip_thumbnail(self, index: int):
         self._scroll_to_page(index)

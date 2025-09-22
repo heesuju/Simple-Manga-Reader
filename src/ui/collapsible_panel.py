@@ -21,6 +21,7 @@ class HorizontalScrollArea(QScrollArea):
 class CollapsiblePanel(QWidget):
     def __init__(self, parent=None, name:str=""):
         super().__init__(parent)
+        self.setMouseTracking(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("CollapsiblePanel { background-color: rgba(0, 0, 0, 170); }")
 
@@ -64,21 +65,12 @@ class CollapsiblePanel(QWidget):
 
 
     def show_content(self):
-        self.hide_timer.stop()
         self.content_area.setVisible(True)
         self.setVisible(True)
 
     def hide_content(self):
         self.content_area.setVisible(False)
         self.setVisible(False)
-
-    def enterEvent(self, event):
-        self.hide_timer.stop()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.hide_timer.start()
-        super().leaveEvent(event)
 
     def _load_thumbnail(self, path: str) -> QPixmap | None:
         crop = None
