@@ -548,4 +548,4 @@ class ReaderView(QMainWindow):
     def back_to_grid(self):
         if self.back_to_grid_callback:
             self.close()
-            self.back_to_grid_callback()
+            self.back_to_grid_callback(self.model.manga_dir)

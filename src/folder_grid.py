@@ -154,6 +154,12 @@ class FolderGrid(QWidget):
         loader.signals.item_invalid.connect(self.on_item_invalid)
         self.threadpool.start(loader)
 
+    def show_grid_at_path(self, path: Path):
+        self.root_dir = path
+        self.path_input.setText(str(self.root_dir))
+        self.load_items()
+        self.show()
+
     def on_item_loaded(self, pix, path, idx, generation, item_type):
         if generation != self.loading_generation:
             return
@@ -212,7 +218,7 @@ class FolderGrid(QWidget):
                 start_file = str(path)
 
             self.reader = ReaderView(chapter_files, chapter_index, start_file=start_file, images=images)
-            self.reader.back_to_grid_callback = self.show
+            self.reader.back_to_grid_callback = self.show_grid_at_path
             self.reader.show()
             self.close()
 
