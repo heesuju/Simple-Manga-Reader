@@ -304,11 +304,46 @@ class ReaderView(QMainWindow):
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def show_next(self):
-        self.model.show_next()
+        if not self.model.images: 
+            return
+        if self.model.view_mode == ViewMode.DOUBLE:
+            step = 2
+        else:
+            step = 1
+
+        if self.model.current_index + step < len(self.model.images):
+            self.model.current_index += step
+            self.model.load_image()
+        else:
+            total_chapters = len(self.model.chapters)
+            if self.model.chapter_index < total_chapters - 1:
+                self.model.chapter_index += 1
+                self.model.manga_dir = self.model.chapters[self.model.chapter_index]
+                self.model.images = [] # force reload
+                self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+                self.model.refresh()
+
         self.page_panel._update_page_selection(self.model.current_index)
 
     def show_prev(self):
-        self.model.show_prev()
+        if not self.model.images: 
+            return
+        if self.model.view_mode == ViewMode.DOUBLE:
+            step = 2
+        else:
+            step = 1
+
+        if self.model.current_index - step >= 0:
+            self.model.current_index -= step
+            self.model.load_image()
+        else:
+            if self.model.chapter_index - 1 >= 0:
+                self.model.chapter_index -= 1
+                self.model.manga_dir = self.model.chapters[self.model.chapter_index]
+                self.model.images = [] # force reload
+                self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+                self.model.refresh(True)
+
         self.page_panel._update_page_selection(self.model.current_index)
 
     def change_page(self, page:int):

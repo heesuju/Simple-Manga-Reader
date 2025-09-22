@@ -112,43 +112,6 @@ class ReaderModel(QObject):
             pix2 = images[self.current_index + 1] if self.current_index + 1 < len(images) else None
             self.double_image_loaded.emit(pix1, pix2)
 
-    def show_next(self):
-        if not self.images: 
-            return
-        if self.view_mode == ViewMode.DOUBLE:
-            step = 2
-        else:
-            step = 1
-
-        if self.current_index + step < len(self.images):
-            self.current_index += step
-            self.load_image()
-        else:
-            total_chapters = len(self.chapters)
-            if self.chapter_index < total_chapters - 1:
-                self.chapter_index += 1
-                self.manga_dir = self.chapters[self.chapter_index]
-                self.images = [] # force reload
-                self.refresh()
-
-    def show_prev(self):
-        if not self.images: 
-            return
-        if self.view_mode == ViewMode.DOUBLE:
-            step = 2
-        else:
-            step = 1
-
-        if self.current_index - step >= 0:
-            self.current_index -= step
-            self.load_image()
-        else:
-            if self.chapter_index - 1 >= 0:
-                self.chapter_index -= 1
-                self.manga_dir = self.chapters[self.chapter_index]
-                self.images = [] # force reload
-                self.refresh(True)
-
     def change_page(self, page:int):
         if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
             page -=1
