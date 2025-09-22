@@ -49,6 +49,8 @@ class ReaderView(QMainWindow):
         self.strip_mode_panel = None
         self.strip_thumbnail_widgets = []
         self.current_strip_thumbnail = None
+        self.original_view_mouse_press = None
+        self.is_zoomed = False
 
         self._setup_ui()
         self.showFullScreen()
@@ -101,28 +103,8 @@ class ReaderView(QMainWindow):
         self.setMouseTracking(True)
         self.centralWidget().setMouseTracking(True)
         self.view.setMouseTracking(True)
-
-        self.overlay_container = QWidget(self.centralWidget())
-        self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        self.overlay_container.setStyleSheet("background: transparent;")
-        self.overlay_container.raise_()
-                
-        self.prev_btn = QPushButton("", self.overlay_container)
-        self.next_btn = QPushButton("", self.overlay_container)
-        for btn in (self.prev_btn, self.next_btn):
-            btn.setStyleSheet("background-color: rgba(0,0,0,0.0); color: white; font-size: 32px; border: none;")
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.prev_btn.clicked.connect(self.show_prev)
-        self.next_btn.clicked.connect(self.show_next)
-
-        overlay_layout = QHBoxLayout(self.overlay_container)
-        overlay_layout.setContentsMargins(0, 0, 0, 0)
-        overlay_layout.addWidget(self.prev_btn)
-        overlay_layout.addWidget(self.next_btn)
-        overlay_layout.setStretch(0, 1)
-        overlay_layout.setStretch(1, 1)
-
+        self.original_view_mouse_press = self.view.mousePressEvent
+        self.view.mousePressEvent = self._overlay_mouse_press
         self.view.resizeEvent = self.resizeEvent
 
     def on_model_refreshed(self):
@@ -182,6 +164,31 @@ class ReaderView(QMainWindow):
         
         self._update_panel_geometries()
         super().mouseMoveEvent(event)
+
+    
+    def _overlay_mouse_press(self, event):
+        """Trigger prev/next when clicking on left/right 20% of screen."""
+        if not math.isclose(self.view._zoom_factor, 1.0):
+            self.original_view_mouse_press(event)
+            return
+
+        if event.button() == Qt.MouseButton.LeftButton:
+            w = self.view.width()
+            x = event.position().x()
+
+            left_area = w * 0.2
+            right_area = w * 0.8
+
+            if x <= left_area:
+                self.show_prev()
+                event.accept()
+            elif x >= right_area:
+                self.show_next()
+                event.accept()
+            else:
+                self.original_view_mouse_press(event)
+        else:
+            self.original_view_mouse_press(event)
 
     def _update_strip_scrollbar(self):
         if not self.scroll_area:
@@ -295,7 +302,6 @@ class ReaderView(QMainWindow):
         self.view.resetTransform()  # remove any previous zoom
         self.view.reset_zoom_state()
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
     def show_next(self):
         self.model.show_next()
@@ -328,13 +334,6 @@ class ReaderView(QMainWindow):
     def showEvent(self, ev):
         super().showEvent(ev)
         QTimer.singleShot(0, self._fit_current_image)
-
-    def wheelEvent(self, event):
-        self.view.wheelEvent(event)
-        if not math.isclose(self.view._zoom_factor, 1.0):
-            self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        else:
-            self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
 
     def handle_pinch(self, gesture: QPinchGesture):
         if gesture.state() == Qt.GestureState.GestureStarted:

@@ -1,7 +1,7 @@
+import math
 from PyQt6.QtWidgets import QGraphicsView
 from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut
 from PyQt6.QtCore import Qt, QTimer
-
 
 class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
@@ -45,6 +45,8 @@ class ImageView(QGraphicsView):
         self._zoom_factor = 1.0
         self._zoom_steps = 0
         self._user_scaled = False
+        if self.mousePressEvent is None:
+            self.mousePressEvent = self.on_clicked
 
     def mouseDoubleClickEvent(self, event):
         if self.manga_reader:

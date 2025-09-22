@@ -1,13 +1,10 @@
-from typing import List
-from pathlib import Path
-
 from PyQt6.QtCore import QThreadPool
 from src.ui.collapsible_panel import CollapsiblePanel
 from src.ui.thumbnail_widget import ThumbnailWidget
 from src.core.thumbnail_worker import ThumbnailWorker
 from src.data.reader_model import ReaderModel
 from src.enums import ViewMode
-from src.utils.img_utils import get_image_data_from_zip, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path, empty_placeholder, load_pixmap_for_thumbnailing
+from src.utils.img_utils import empty_placeholder
 
 class PagePanel(CollapsiblePanel):
     def __init__(self, parent=None, on_page_changed=None):
