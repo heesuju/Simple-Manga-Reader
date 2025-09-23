@@ -1,12 +1,14 @@
 import re
 from typing import Union, List
 from pathlib import Path
-from PyQt6.QtGui import QPixmap, QImageReader, QColor
+from PyQt6.QtGui import QPixmap, QImageReader, QColor, QImage
 from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray, QRect
 import zipfile
 from src.utils.str_utils import find_number
+import cv2
+import numpy as np
 
-IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
+IMG_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'}
 
 def is_image_folder(folder: Union[Path, str]) -> bool:
     if isinstance(folder, str):
@@ -208,3 +210,88 @@ def _get_first_image_path(chapter_dir):
         if image_files:
             return str(image_files[0])
     return None
+
+def segment_image_by_black_lines(image_path: str) -> List[dict]:
+    """
+    Segments an image into multiple parts based on black lines.
+    Returns a list of dictionaries, each containing the coordinates for each segmented part.
+    """
+    try:
+        # Load the image using OpenCV
+        img = cv2.imread(image_path)
+        if img is None:
+            return []
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # Apply threshold to get a binary image
+        # Black lines will be white, everything else will be black
+        _, thresh = cv2.threshold(gray, 20, 255, cv2.THRESH_BINARY_INV)
+
+        # Find contours
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        panels = []
+        for contour in contours:
+            # Filter out small contours
+            if cv2.contourArea(contour) < 1000:
+                continue
+
+            # Get bounding box for each contour
+            x, y, w, h = cv2.boundingRect(contour)
+
+            cx = x + w // 2
+            cy = y + h // 2
+
+            panels.append({"cx": cx, "cy": cy, "w": w, "h": h})
+
+        return panels
+    except Exception as e:
+        print(f"Error segmenting image: {e}")
+        return []
+
+def detect_manga_panels(image_path: str) -> List[dict]:
+    """
+    Detects rectangular panels in a manga image.
+    Returns a list of dictionaries, each containing the center coordinates and dimensions.
+    """
+    try:
+        # Load the image using OpenCV
+        img = cv2.imread(image_path)
+        if img is None:
+            return []
+
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Adaptive thresholding to handle different lighting conditions
+        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
+        # Find contours
+        contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        panels = []
+        for contour in contours:
+            # Filter out small contours based on area
+            if cv2.contourArea(contour) < 1000:
+                continue
+
+            # Approximate the contour to a polygon
+            peri = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
+
+            # Check if the polygon has 4 vertices (is a quadrilateral)
+            if len(approx) == 4:
+                x, y, w, h = cv2.boundingRect(approx)
+                
+                # Filter out shapes that are not large enough
+                if w > 50 and h > 50:
+                    cx = x + w // 2
+                    cy = y + h // 2
+                    panels.append({"cx": cx, "cy": cy, "w": w, "h": h})
+
+        return panels
+    except Exception as e:
+        print(f"Error detecting panels: {e}")
+        return []

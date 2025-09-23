@@ -1,12 +1,16 @@
 import math
 from typing import List
+import numpy as np
+import cv2
+import os
+import shutil
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene,QGraphicsPixmapItem, 
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
-from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie
+from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
 
 from src.enums import ViewMode
@@ -16,6 +20,7 @@ from src.ui.image_view import ImageView
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.core.thumbnail_worker import get_common_size_ratio
+from src.utils.segmentation import extract_panels_with_gutters as segment_image_into_panels
 
 class ReaderView(QMainWindow):
     def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
@@ -45,6 +50,11 @@ class ReaderView(QMainWindow):
 
         self.original_view_mouse_press = None
         self.is_zoomed = False
+
+        self.slideshow_panels = []
+        self.slideshow_timer = QTimer(self)
+        self.slideshow_timer.timeout.connect(self.show_next_panel)
+        self.current_panel_index = 0
 
         self._setup_ui()
         self.showFullScreen()
@@ -80,6 +90,7 @@ class ReaderView(QMainWindow):
         self.chapter_panel = ChapterPanel(self, self.change_chapter)
         self.chapter_panel.add_control_widget(self.back_btn, 0)
         self.chapter_panel.add_control_widget(self.layout_btn)
+        self.chapter_panel.play_button_clicked.connect(self.start_slideshow)
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
@@ -97,6 +108,47 @@ class ReaderView(QMainWindow):
         self.original_view_mouse_press = self.view.mousePressEvent
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.resizeEvent = self.resizeEvent
+
+    def start_slideshow(self):
+        if self.slideshow_timer.isActive():
+            self.stop_slideshow()
+            return
+
+        current_image_path = self.model.images[self.model.current_index]
+        if '|' in current_image_path:
+            # Not supported for zip files yet
+            return
+
+        cache_dir = "panels_out"
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir)
+
+        self.slideshow_panels = segment_image_into_panels(current_image_path, cache_dir)
+        if self.slideshow_panels:
+            self.current_panel_index = 0
+            self.show_next_panel()
+            self.slideshow_timer.start(2000)
+
+    def show_next_panel(self):
+        if not self.slideshow_panels:
+            return
+
+        if self.current_panel_index >= len(self.slideshow_panels):
+            self.current_panel_index = 0
+
+        panel_path = self.slideshow_panels[self.current_panel_index]
+        pixmap = QPixmap(panel_path)
+        self._set_pixmap(pixmap)
+        self.current_panel_index += 1
+
+    def stop_slideshow(self):
+        self.slideshow_timer.stop()
+        self.slideshow_panels = []
+        self.current_panel_index = 0
+        cache_dir = "panels_out"
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir)
+        self.model.load_image()
 
     def on_model_refreshed(self):
         if not self.model.images:

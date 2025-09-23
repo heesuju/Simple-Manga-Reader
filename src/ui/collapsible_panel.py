@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QPushButton
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from src.ui.input_label import InputLabel
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
@@ -47,6 +47,8 @@ class HorizontalScrollArea(QScrollArea):
         event.accept()
 
 class CollapsiblePanel(QWidget):
+    play_button_clicked = pyqtSignal()
+
     def __init__(self, parent=None, name:str=""):
         super().__init__(parent)
         self.setMouseTracking(True)
@@ -77,6 +79,10 @@ class CollapsiblePanel(QWidget):
         self.input_label = InputLabel(name, 0,0)
         self.input_layout.addWidget(self.input_label, stretch=1, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.input_container.setVisible(True)
+
+        self.play_button = QPushButton("Play")
+        self.play_button.clicked.connect(self.play_button_clicked.emit)
+        self.input_layout.addWidget(self.play_button)
         
         self.thumbnails_widget = QWidget()
         self.thumbnails_widget.setStyleSheet("background: transparent;")
