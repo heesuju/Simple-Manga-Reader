@@ -59,7 +59,7 @@ class PagePanel(CollapsiblePanel):
             current_thumb = self.page_thumbnail_widgets[index]
             current_thumb.set_selected(True)
             self.current_page_thumbnails.append(current_thumb)
-            self.content_area.ensureWidgetVisible(current_thumb)
+            self.content_area.snapToItem(index)
 
             # Select next page if it exists
             if index + 1 < len(self.page_thumbnail_widgets):
@@ -70,7 +70,7 @@ class PagePanel(CollapsiblePanel):
             current_thumb = self.page_thumbnail_widgets[index]
             current_thumb.set_selected(True)
             self.current_page_thumbnails.append(current_thumb)
-            self.content_area.ensureWidgetVisible(current_thumb)
+            self.content_area.snapToItem(index)
 
         self.input_label.set_total(len(self.page_thumbnail_widgets))
         self.input_label.set_value(index + 1)

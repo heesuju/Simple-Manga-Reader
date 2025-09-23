@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QPixmap
 from src.ui.input_label import InputLabel
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
@@ -10,13 +10,41 @@ class HorizontalScrollArea(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.animation = QPropertyAnimation(self.horizontalScrollBar(), b"value")
+        self.animation.setDuration(50)
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+    def snapToItem(self, index:int):
+        item_width = 110
+        current_value = self.horizontalScrollBar().value()
+        target_value = (item_width * index // item_width) * item_width
+        self.animation.setStartValue(current_value)
+        self.animation.setEndValue(target_value)
+        self.animation.start()
 
     def wheelEvent(self, event):
-        if event.angleDelta().y() != 0:
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - event.angleDelta().y())
-            event.accept()
-        else:
+        if self.animation.state() == QPropertyAnimation.State.Running:
+            return
+
+        delta = event.angleDelta().y()
+        if delta == 0:
             super().wheelEvent(event)
+            return
+
+        item_width = 110  # Thumbnail width (100) + spacing (10)
+        current_value = self.horizontalScrollBar().value()
+        
+        if delta < 0:
+            target_value = (current_value // item_width + 1) * item_width
+        else:
+            target_value = (current_value // item_width) * item_width
+            if target_value == current_value:
+                target_value -= item_width
+
+        self.animation.setStartValue(current_value)
+        self.animation.setEndValue(target_value)
+        self.animation.start()
+        event.accept()
 
 class CollapsiblePanel(QWidget):
     def __init__(self, parent=None, name:str=""):
@@ -62,7 +90,6 @@ class CollapsiblePanel(QWidget):
 
     def add_control_widget(self, widget, index=-1):
         self.input_layout.insertWidget(index, widget)
-
 
     def show_content(self):
         self.content_area.setVisible(True)

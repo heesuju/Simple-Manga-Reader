@@ -45,7 +45,7 @@ class ChapterPanel(CollapsiblePanel):
         if index < len(self.chapter_thumbnail_widgets):
             self.current_chapter_thumbnail = self.chapter_thumbnail_widgets[index]
             self.current_chapter_thumbnail.set_selected(True)
-            self.content_area.ensureWidgetVisible(self.current_chapter_thumbnail)
+            self.content_area.snapToItem(index)
 
         self.input_label.set_total(len(self.chapter_thumbnail_widgets))
         self.input_label.set_value(index+1)

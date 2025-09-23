@@ -79,9 +79,11 @@ class FolderGrid(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
+        self.root_dir = self.root_dir if isinstance(self.root_dir, Path) else Path(self.root_dir)
+        
         if not self.root_dir.exists():
-            return
-
+                return
+        
         items = []
         if self.root_dir.is_file() and self.root_dir.suffix.lower() == '.zip':
             # Load items from zip file
