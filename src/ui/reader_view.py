@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, pyqtProperty
 
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
@@ -20,7 +20,17 @@ from src.ui.image_view import ImageView
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.core.thumbnail_worker import get_common_size_ratio
-from src.utils.segmentation import extract_panels_with_gutters as segment_image_into_panels
+from src.utils.segmentation import get_panel_coordinates
+
+class FitInViewAnimation(QPropertyAnimation):
+    def __init__(self, target, parent=None):
+        super().__init__(target, b"", parent)
+        self.setTargetObject(target)
+
+    def updateCurrentValue(self, value):
+        self.targetObject().fitInView(value, Qt.AspectRatioMode.KeepAspectRatio)
+
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QParallelAnimationGroup
 
 class ReaderView(QMainWindow):
     def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
@@ -51,10 +61,10 @@ class ReaderView(QMainWindow):
         self.original_view_mouse_press = None
         self.is_zoomed = False
 
-        self.slideshow_panels = []
-        self.slideshow_timer = QTimer(self)
-        self.slideshow_timer.timeout.connect(self.show_next_panel)
-        self.current_panel_index = 0
+        self.guided_reading_animation = None
+        self.continuous_play = False
+        self.page_slideshow_timer = QTimer(self)
+        self.page_slideshow_timer.timeout.connect(self.show_next)
 
         self._setup_ui()
         self.showFullScreen()
@@ -90,7 +100,9 @@ class ReaderView(QMainWindow):
         self.chapter_panel = ChapterPanel(self, self.change_chapter)
         self.chapter_panel.add_control_widget(self.back_btn, 0)
         self.chapter_panel.add_control_widget(self.layout_btn)
-        self.chapter_panel.play_button_clicked.connect(self.start_slideshow)
+        self.chapter_panel.play_button_clicked.connect(self.start_guided_reading)
+        self.chapter_panel.slideshow_button_clicked.connect(self.start_page_slideshow)
+        self.chapter_panel.continuous_play_changed.connect(self.set_continuous_play)
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
@@ -109,9 +121,9 @@ class ReaderView(QMainWindow):
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.resizeEvent = self.resizeEvent
 
-    def start_slideshow(self):
-        if self.slideshow_timer.isActive():
-            self.stop_slideshow()
+    def start_guided_reading(self):
+        if self.guided_reading_animation and self.guided_reading_animation.state() == QPropertyAnimation.State.Running:
+            self.stop_guided_reading()
             return
 
         current_image_path = self.model.images[self.model.current_index]
@@ -119,36 +131,68 @@ class ReaderView(QMainWindow):
             # Not supported for zip files yet
             return
 
-        cache_dir = "panels_out"
-        if os.path.exists(cache_dir):
-            shutil.rmtree(cache_dir)
-
-        self.slideshow_panels = segment_image_into_panels(current_image_path, cache_dir)
-        if self.slideshow_panels:
-            self.current_panel_index = 0
-            self.show_next_panel()
-            self.slideshow_timer.start(2000)
-
-    def show_next_panel(self):
-        if not self.slideshow_panels:
+        panel_coordinates = get_panel_coordinates(current_image_path)
+        if not panel_coordinates:
             return
 
-        if self.current_panel_index >= len(self.slideshow_panels):
-            self.current_panel_index = 0
+        # Instantly move to the first panel
+        x, y, w, h = panel_coordinates[0]
+        self.view.setSceneRect(QRectF(x, y, w, h))
+        view_rect = self.view.viewport().rect()
+        x_zoom = view_rect.width() / w
+        y_zoom = view_rect.height() / h
+        target_zoom = min(x_zoom, y_zoom)
+        self.view._zoom = target_zoom
 
-        panel_path = self.slideshow_panels[self.current_panel_index]
-        pixmap = QPixmap(panel_path)
-        self._set_pixmap(pixmap)
-        self.current_panel_index += 1
+        self.guided_reading_animation = QSequentialAnimationGroup(self)
+        self.guided_reading_animation.addPause(500)
 
-    def stop_slideshow(self):
-        self.slideshow_timer.stop()
-        self.slideshow_panels = []
-        self.current_panel_index = 0
-        cache_dir = "panels_out"
-        if os.path.exists(cache_dir):
-            shutil.rmtree(cache_dir)
-        self.model.load_image()
+        for x, y, w, h in panel_coordinates[1:]:
+            parallel_animation = QParallelAnimationGroup(self)
+
+            rect_animation = QPropertyAnimation(self.view, b"sceneRect")
+            rect_animation.setDuration(1000)
+            rect_animation.setEndValue(QRectF(x, y, w, h))
+
+            zoom_animation = QPropertyAnimation(self.view, b"_zoom")
+            zoom_animation.setDuration(1000)
+            view_rect = self.view.viewport().rect()
+            x_zoom = view_rect.width() / w
+            y_zoom = view_rect.height() / h
+            target_zoom = min(x_zoom, y_zoom)
+            zoom_animation.setEndValue(target_zoom)
+
+            parallel_animation.addAnimation(rect_animation)
+            parallel_animation.addAnimation(zoom_animation)
+
+            self.guided_reading_animation.addAnimation(parallel_animation)
+            self.guided_reading_animation.addPause(1000)
+
+        self.guided_reading_animation.finished.connect(self.stop_guided_reading)
+        self.guided_reading_animation.start()
+
+
+    def set_continuous_play(self, enabled: bool):
+        self.continuous_play = enabled
+
+    def stop_guided_reading(self):
+        if self.guided_reading_animation:
+            self.guided_reading_animation.stop()
+            self.guided_reading_animation = None
+        if self.continuous_play:
+            self.show_next()
+            QTimer.singleShot(1000, self.start_guided_reading)
+        else:
+            self._fit_current_image()
+
+    def start_page_slideshow(self):
+        if self.page_slideshow_timer.isActive():
+            self.stop_page_slideshow()
+        else:
+            self.page_slideshow_timer.start(3000)
+
+    def stop_page_slideshow(self):
+        self.page_slideshow_timer.stop()
 
     def on_model_refreshed(self):
         if not self.model.images:

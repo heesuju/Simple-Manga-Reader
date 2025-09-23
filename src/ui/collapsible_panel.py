@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QPushButton
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QPushButton, QCheckBox
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from src.ui.input_label import InputLabel
@@ -48,6 +48,8 @@ class HorizontalScrollArea(QScrollArea):
 
 class CollapsiblePanel(QWidget):
     play_button_clicked = pyqtSignal()
+    slideshow_button_clicked = pyqtSignal()
+    continuous_play_changed = pyqtSignal(bool)
 
     def __init__(self, parent=None, name:str=""):
         super().__init__(parent)
@@ -83,6 +85,14 @@ class CollapsiblePanel(QWidget):
         self.play_button = QPushButton("Play")
         self.play_button.clicked.connect(self.play_button_clicked.emit)
         self.input_layout.addWidget(self.play_button)
+
+        self.slideshow_button = QPushButton("Slideshow")
+        self.slideshow_button.clicked.connect(self.slideshow_button_clicked.emit)
+        self.input_layout.addWidget(self.slideshow_button)
+
+        self.continuous_play_checkbox = QCheckBox("Continuous Play")
+        self.continuous_play_checkbox.stateChanged.connect(lambda state: self.continuous_play_changed.emit(state == Qt.CheckState.Checked.value))
+        self.input_layout.addWidget(self.continuous_play_checkbox)
         
         self.thumbnails_widget = QWidget()
         self.thumbnails_widget.setStyleSheet("background: transparent;")

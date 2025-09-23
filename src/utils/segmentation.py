@@ -4,10 +4,11 @@ import os
 
 import cv2
 import numpy as np
-import os
 
-def extract_panels_with_gutters(image_path, output_dir="panels_fixed"):
+def get_panel_coordinates(image_path):
     img = cv2.imread(image_path)
+    if img is None:
+        return []
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # --- 1. Binarize ---
@@ -32,31 +33,53 @@ def extract_panels_with_gutters(image_path, output_dir="panels_fixed"):
     panels = []
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area > 20000:  # ignore tiny
-            x, y, w, h = cv2.boundingRect(cnt)
-            panels.append((cnt, (x, y, w, h)))
+        x, y, w, h = cv2.boundingRect(cnt)
+        if area > 20000 and w > 50 and h > 50:  # ignore tiny
+            panels.append((x, y, w, h))
 
-    # Sort top→bottom, right→left
-    panels.sort(key=lambda p: (p[1][1] // 50, -p[1][0]))
+    # --- 5. Filter out contained panels ---
+    filtered_panels = []
+    for i, p1 in enumerate(panels):
+        is_contained = False
+        for j, p2 in enumerate(panels):
+            if i == j:
+                continue
+            # p1 is contained in p2 if p2's area is larger and p1 is inside p2
+            if p1[2]*p1[3] < p2[2]*p2[3] and \
+               p1[0] >= p2[0] and p1[1] >= p2[1] and \
+               p1[0]+p1[2] <= p2[0]+p2[2] and p1[1]+p1[3] <= p2[1]+p2[3]:
+                is_contained = True
+                break
+        if not is_contained:
+            filtered_panels.append(p1)
 
-    os.makedirs(output_dir, exist_ok=True)
-    panel_paths = []
-    for i, (cnt, (x, y, w, h)) in enumerate(panels):
-        # Mask contour
-        mask = np.zeros(img.shape[:2], dtype=np.uint8)
-        cv2.drawContours(mask, [cnt], -1, 255, -1)
+    # --- 6. Group panels by rows and sort ---
+    if not filtered_panels:
+        return []
 
-        # RGBA crop
-        panel = img[y:y+h, x:x+w]
-        mask_crop = mask[y:y+h, x:x+w]
-        b, g, r = cv2.split(panel)
-        rgba = cv2.merge([b, g, r, mask_crop])
-        panel_path = os.path.join(output_dir, f"panel_{i}.png")
-        cv2.imwrite(panel_path, rgba)
-        panel_paths.append(panel_path)
+    # Sort panels by y-coordinate
+    sorted_panels = sorted(filtered_panels, key=lambda p: p[1])
 
-    print(f"✅ Extracted {len(panels)} panels into '{output_dir}'.")
-    return panel_paths
+    rows = []
+    while sorted_panels:
+        current_row = [sorted_panels.pop(0)]
+        row_y_center = current_row[0][1] + current_row[0][3] / 2
+
+        remaining_panels = []
+        for panel in sorted_panels:
+            panel_y_center = panel[1] + panel[3] / 2
+            if abs(panel_y_center - row_y_center) < 50: # 50px tolerance
+                current_row.append(panel)
+            else:
+                remaining_panels.append(panel)
+        
+        rows.append(sorted(current_row, key=lambda p: -p[0]))
+        sorted_panels = remaining_panels
+
+    # Flatten the rows into a single list
+    final_panels = [panel for row in rows for panel in row]
+
+    return final_panels
 
 
 # image_path = "C:/Users/mycom/Downloads/sample/12.webp"
