@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Reader</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="controls">
+        <button id="back-btn">Back</button>
+    </div>
+    <div id="grid-view">
+        <!-- Manga folders will be displayed here -->
+    </div>
+    <div id="reader-view">
+        <div id="reader-image-container">
+            <div id="prev-area" class="nav-area"></div>
+            <img id="reader-image" src="" alt="Manga Page">
+            <div id="next-area" class="nav-area"></div>
+        </div>
+        <button id="close-reader">X</button>
+        <div id="reader-controls">
+            <button id="prev-page">Previous</button>
+            <input type="range" id="page-slider" min="0" value="0">
+            <button id="next-page">Next</button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

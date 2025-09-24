@@ -1,0 +1,115 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #1a1a1a;
+    color: white;
+}
+
+#controls {
+    padding: 10px;
+    background-color: #333;
+}
+
+#back-btn {
+    background-color: #555;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+}
+
+#grid-view {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+.grid-item {
+    cursor: pointer;
+    text-align: center;
+}
+
+.grid-item img {
+    max-width: 100%;
+    border-radius: 5px;
+}
+
+#reader-view {
+    display: none; /* Hidden by default */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+#reader-view.visible {
+    display: flex; /* Shown when .visible class is added */
+}
+
+#reader-image-container {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+#reader-image {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+}
+
+#reader-controls {
+    position: absolute;
+    bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center; /* Vertically align items */
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+}
+
+#page-slider {
+    width: 300px;
+    margin: 0 10px;
+}
+
+.hidden {
+    display: none;
+}
+
+#close-reader {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    font-size: 24px;
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+.nav-area {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 20%;
+    cursor: pointer;
+}
+
+#prev-area {
+    left: 0;
+}
+
+#next-area {
+    right: 0;
+}

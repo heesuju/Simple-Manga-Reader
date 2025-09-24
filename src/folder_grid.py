@@ -1,5 +1,10 @@
 import zipfile
 from pathlib import Path
+import multiprocessing
+import sys
+import os
+import subprocess
+import socket
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QPushButton,
     QVBoxLayout, QScrollArea, QMessageBox, QFileDialog, QLineEdit, QHBoxLayout
@@ -15,6 +20,12 @@ from src.utils.img_utils import get_chapter_number, get_image_size
 from src.core.thumbnail_worker import get_common_size_ratio, get_image_ratio
 from src.enums import ViewMode
 import math
+
+def run_server(script_path, root_dir):
+    import subprocess
+    import sys
+    subprocess.run([sys.executable, script_path, root_dir])
+
 
 def is_double_page(size, common_ratio):
     ratio = get_image_ratio(size[0]/2, size[1])
@@ -37,6 +48,7 @@ class FolderGrid(QWidget):
         self.total_items_to_load = 0
         
         self.threadpool = QThreadPool()
+        self.web_server_process = None
 
         self.init_ui()
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.exit_program)
@@ -53,10 +65,13 @@ class FolderGrid(QWidget):
         up_btn.clicked.connect(self.go_up)
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_folder)
+        self.web_access_btn = QPushButton("Start Web Access")
+        self.web_access_btn.clicked.connect(self.toggle_web_access)
         
         top_layout.addWidget(up_btn)
         top_layout.addWidget(self.path_input)
         top_layout.addWidget(browse_btn)
+        top_layout.addWidget(self.web_access_btn)
         main_layout.addLayout(top_layout)
 
         self.scroll = QScrollArea()
@@ -66,6 +81,11 @@ class FolderGrid(QWidget):
         self.scroll_content.setLayout(self.flow_layout)
         self.scroll.setWidget(self.scroll_content)
         main_layout.addWidget(self.scroll)
+
+        self.info_label = QLabel(self)
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.info_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; padding: 10px; border-radius: 5px;")
+        self.info_label.hide()
 
         if self.root_dir:
             self.load_items()
@@ -251,3 +271,33 @@ class FolderGrid(QWidget):
             self.path_input.setText(folder)
             self.root_dir = Path(folder)
             self.load_items()
+
+    def toggle_web_access(self):
+        if self.web_server_process and self.web_server_process.poll() is None:
+            self.stop_web_access()
+        else:
+            self.start_web_access()
+
+    def start_web_access(self):
+        current_dir = self.path_input.text()
+        server_script_path = os.path.abspath("server.py")
+        self.web_server_process = subprocess.Popen([sys.executable, server_script_path, current_dir])
+        self.web_access_btn.setText("Stop Web Access")
+
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        self.info_label.setText(f"Server started at http://{ip_address}:8000")
+        self.info_label.adjustSize()
+        self.info_label.move(self.width() // 2 - self.info_label.width() // 2, self.height() // 2 - self.info_label.height() // 2)
+        self.info_label.show()
+        QTimer.singleShot(3000, self.info_label.hide)
+
+    def stop_web_access(self):
+        if self.web_server_process and self.web_server_process.poll() is None:
+            self.web_server_process.terminate()
+        self.web_server_process = None
+        self.web_access_btn.setText("Start Web Access")
+
+    def closeEvent(self, event):
+        self.stop_web_access()
+        event.accept()
