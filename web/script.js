@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const nextArea = document.getElementById('next-area');
     const backBtn = document.getElementById('back-btn');
     const pageSlider = document.getElementById('page-slider');
+    const layoutBtn = document.getElementById('layout-btn');
+    const stripView = document.getElementById('strip-view');
 
     let currentPath = '';
     let currentManga = null;
@@ -16,6 +18,54 @@ document.addEventListener('DOMContentLoaded', () => {
     let imageList = [];
     let chapterList = [];
     let currentChapterIndex = -1;
+    let layoutMode = 'single';
+
+    function toggleLayout() {
+        layoutMode = layoutMode === 'single' ? 'strip' : 'single';
+        if (layoutMode === 'strip') {
+            renderStripView();
+            document.getElementById('reader-image-container').style.display = 'none';
+            stripView.style.display = 'block';
+        } else {
+            const images = stripView.getElementsByTagName('img');
+            let topVisibleImage = 0;
+            for (let i = 0; i < images.length; i++) {
+                const rect = images[i].getBoundingClientRect();
+                if (rect.top >= 0) {
+                    topVisibleImage = i;
+                    break;
+                }
+            }
+            currentPage = topVisibleImage;
+            displayPage();
+
+            stripView.style.display = 'none';
+            document.getElementById('reader-image-container').style.display = 'flex';
+        }
+    }
+
+    layoutBtn.addEventListener('click', toggleLayout);
+
+    function renderStripView() {
+        stripView.innerHTML = ''; // Clear the strip view
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    img.src = img.dataset.src;
+                    observer.unobserve(img);
+                }
+            });
+        });
+
+        imageList.forEach(imagePath => {
+            const img = document.createElement('img');
+            img.dataset.src = `/images/${imagePath}`;
+            stripView.appendChild(img);
+            observer.observe(img);
+        });
+    }
 
     function loadGrid(path) {
         currentPath = path;
@@ -57,6 +107,10 @@ document.addEventListener('DOMContentLoaded', () => {
         gridView.classList.add('hidden');
         document.getElementById('controls').classList.add('hidden');
         readerView.classList.add('visible');
+
+        layoutMode = 'single';
+        stripView.style.display = 'none';
+        document.getElementById('reader-image-container').style.display = 'flex';
 
         fetch(`/api/series?path=${encodeURIComponent(mangaDir)}`)
             .then(response => response.json())
