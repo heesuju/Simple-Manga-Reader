@@ -6,7 +6,7 @@ import os
 import shutil
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QGraphicsScene,QGraphicsPixmapItem, 
+    QMainWindow, QWidget, QGraphicsScene,QGraphicsView,QGraphicsPixmapItem, 
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
@@ -65,6 +65,10 @@ class ReaderView(QMainWindow):
         self.continuous_play = False
         self.page_slideshow_timer = QTimer(self)
         self.page_slideshow_timer.timeout.connect(self.show_next)
+
+        self.user_interrupted_animation = False
+        self.is_dragging_animation = False
+        self.last_pan_pos = None
 
         self._setup_ui()
         self.showFullScreen()
@@ -168,17 +172,23 @@ class ReaderView(QMainWindow):
             self.guided_reading_animation.addAnimation(parallel_animation)
             self.guided_reading_animation.addPause(1000)
 
-        self.guided_reading_animation.finished.connect(self.stop_guided_reading)
+        self.guided_reading_animation.finished.connect(lambda: self.stop_guided_reading(user_interrupted=False))
         self.guided_reading_animation.start()
+        self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
 
 
     def set_continuous_play(self, enabled: bool):
         self.continuous_play = enabled
 
-    def stop_guided_reading(self):
+    def stop_guided_reading(self, user_interrupted=False):
+        self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         if self.guided_reading_animation:
             self.guided_reading_animation.stop()
             self.guided_reading_animation = None
+
+        if user_interrupted:
+            return
+
         if self.continuous_play:
             self.show_next()
             QTimer.singleShot(1000, self.start_guided_reading)
@@ -290,6 +300,11 @@ class ReaderView(QMainWindow):
         return super().event(e)
 
     def eventFilter(self, obj, event):
+        if obj is self.view.viewport():
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if self.guided_reading_animation and self.guided_reading_animation.state() == QPropertyAnimation.State.Running:
+                    self.stop_guided_reading(user_interrupted=True)
+
         # Unified mouse move handling using global coordinates
         if event.type() == QEvent.Type.MouseMove and obj in (
             self.chapter_panel, self.page_panel,

@@ -11,9 +11,17 @@ def get_panel_coordinates(image_path):
         return []
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
+    h, w = gray.shape
+    corners = [gray[0, 0], gray[0, w-1], gray[h-1, 0], gray[h-1, w-1]]
+    corner_mean = np.mean(corners)
+
     # --- 1. Binarize ---
-    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)  # white ~ gutters
-    inv = 255 - binary  # panels ~ white
+    if corner_mean > 127: # light background
+        _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)  # white ~ gutters
+        inv = 255 - binary  # panels ~ white
+    else: # dark background
+        _, inv = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        binary = 255 - inv
 
     # --- 2. Detect horizontal & vertical gutters ---
     h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 3))
