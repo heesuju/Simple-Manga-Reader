@@ -7,6 +7,7 @@ import zipfile
 from src.utils.str_utils import find_number
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 IMG_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'}
 
@@ -295,3 +296,77 @@ def detect_manga_panels(image_path: str) -> List[dict]:
     except Exception as e:
         print(f"Error detecting panels: {e}")
         return []
+
+def draw_text_on_image(image, text, box):
+    """
+    Draws text on an image with a white background using PIL for UTF-8 support.
+    The text is wrapped to fit the bounding box.
+
+    Args:
+        image: The image to draw on (numpy array from OpenCV).
+        text: The text to draw.
+        box: The bounding box (min_x, min_y, max_x, max_y).
+    """
+    min_x, min_y, max_x, max_y = [int(c) for c in box]
+
+    # Draw a white rectangle to cover the original text
+    cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (255, 255, 255), -1)
+
+    # Convert OpenCV image to PIL image
+    pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(pil_image)
+
+    # --- Font Size Selection & Text Wrapping ---
+    box_width = max_x - min_x
+    box_height = max_y - min_y
+    
+    font_size = box_height
+    font = None
+    wrapped_text = text
+
+    while font_size > 1:
+        try:
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except IOError:
+            font = ImageFont.load_default()
+
+        # --- Text Wrapping ---
+        words = text.split()
+        lines = []
+        if not words:
+            wrapped_text = ""
+        else:
+            current_line = words[0]
+            for word in words[1:]:
+                test_line = f"{current_line} {word}"
+                text_bbox = draw.textbbox((0,0), test_line, font=font)
+                text_width = text_bbox[2] - text_bbox[0]
+                if text_width <= box_width:
+                    current_line = test_line
+                else:
+                    lines.append(current_line)
+                    current_line = word
+            lines.append(current_line)
+            wrapped_text = "\n".join(lines)
+
+        # --- Check if wrapped text fits ---
+        text_bbox = draw.multiline_textbbox((0, 0), wrapped_text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        if text_width <= box_width and text_height <= box_height:
+            break
+        font_size -= 1
+
+    # --- Text Placement ---
+    text_bbox = draw.multiline_textbbox((0, 0), wrapped_text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    text_x = min_x + (box_width - text_width) / 2
+    text_y = min_y + (box_height - text_height) / 2
+
+    # Draw the text
+    draw.multiline_text((text_x, text_y), wrapped_text, font=font, fill=(0, 0, 0), align="center")
+
+    # Convert PIL image back to OpenCV image
+    return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)

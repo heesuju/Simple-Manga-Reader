@@ -1,6 +1,9 @@
 import sys
 from PyQt6.QtWidgets import QApplication
 from src.folder_grid import FolderGrid
+from dotenv import load_dotenv
+
+load_dotenv()
 
 if __name__ == "__main__":
     import argparse

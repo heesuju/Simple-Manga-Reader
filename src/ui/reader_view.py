@@ -101,12 +101,13 @@ class ReaderView(QMainWindow):
         container.setContentsMargins(0, 0, 0, 0)
         self.setCentralWidget(container)
 
-        self.chapter_panel = ChapterPanel(self, self.change_chapter)
+        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.change_chapter)
         self.chapter_panel.add_control_widget(self.back_btn, 0)
         self.chapter_panel.add_control_widget(self.layout_btn)
         self.chapter_panel.play_button_clicked.connect(self.start_guided_reading)
         self.chapter_panel.slideshow_button_clicked.connect(self.start_page_slideshow)
         self.chapter_panel.continuous_play_changed.connect(self.set_continuous_play)
+        self.chapter_panel.translation_ready.connect(self._on_translation_ready)
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
@@ -690,3 +691,15 @@ class ReaderView(QMainWindow):
         if self.back_to_grid_callback:
             self.close()
             self.back_to_grid_callback(self.model.manga_dir)
+
+    def _on_translation_ready(self, modified_image):
+        # Convert cv2 image (BGR) to QImage (RGB)
+        height, width, channel = modified_image.shape
+        bytes_per_line = 3 * width
+        q_image = QImage(modified_image.data, width, height, bytes_per_line, QImage.Format.Format_BGR888)
+        
+        # Convert QImage to QPixmap
+        pixmap = QPixmap.fromImage(q_image)
+        
+        # Update the scene
+        self._set_pixmap(pixmap)
