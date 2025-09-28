@@ -155,7 +155,13 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         ROOT_DIR = sys.argv[1]
+    
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip_address = s.getsockname()[0]
+    s.close()
 
     with socketserver.TCPServer(("0.0.0.0", PORT), MangaHandler) as httpd:
-        print("serving at port", PORT)
+        print(f"Serving at http://{ip_address}:{PORT}")
         httpd.serve_forever()

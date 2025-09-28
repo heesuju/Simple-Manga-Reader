@@ -1,9 +1,5 @@
 import cv2
 import numpy as np
-import os
-
-import cv2
-import numpy as np
 
 def get_panel_coordinates(image_path):
     img = cv2.imread(image_path)
@@ -89,14 +85,73 @@ def get_panel_coordinates(image_path):
 
     return final_panels
 
+def detect_bubbles(image_path, debug=True):
+    # --- 1. Load ---
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError(f"Could not load image: {image_path}")
 
-# image_path = "C:/Users/mycom/Downloads/sample/12.webp"
-# image_path = "C:/Users/mycom/Downloads/1.png"
-# image_path = "C:/Users/mycom/Downloads/20250714200642_5de89599e2a87a5d3bc6a158e5b161d9_IMAG01_1.jpg"
-# image_path = "C:/Users/mycom/Downloads/example/7527.png"
-# image_path = "C:/Users/mycom/Downloads/example/7526.png"
-# image_path = "C:/Users/mycom/Downloads/example/7554.png"
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
+    # --- 2. Threshold ---
+    # Adaptive works better on manga scans
+    binary = cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        25, 15
+    )
 
-# Example usage
-# extract_panels_with_gutters(image_path)
+    # --- 3. Find contours ---
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    bubble_boxes = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < 1000 or area > 200000:  # filter small noise / huge panels
+            continue
+
+        x, y, w, h = cv2.boundingRect(c)
+        aspect_ratio = w / float(h)
+
+        hull = cv2.convexHull(c)
+        hull_area = cv2.contourArea(hull) if cv2.contourArea(hull) > 0 else 1
+        solidity = float(area) / hull_area
+
+        rect_area = w * h
+        rectangularity = float(area) / rect_area
+
+        # --- 4. Bubble-like filtering ---
+        # Ovals (solidity ~0.9), spiky (~0.6–0.85), boxes (~0.9 rect)
+        if 0.2 < aspect_ratio < 5.0 and 0.5 < solidity <= 1.0:
+            if rectangularity > 0.5:  # exclude long thin lines
+                bubble_boxes.append((x, y, w, h))
+
+    # --- 5. Debug visualization ---
+    if debug:
+        vis = img.copy()
+        for (x, y, w, h) in bubble_boxes:
+            cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+        cv2.imshow("Detected Bubbles", vis)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+    return bubble_boxes
+
+from src.utils.ocr_utils import OCR_SINGLETON
+from src.utils.text_utils import group_text_by_proximity
+
+def get_text_bubbles_from_image(image_path):
+    """
+    Detects text bubbles in an image using OCR and clustering.
+
+    Args:
+        image_path (str): The path to the image file.
+
+    Returns:
+        A list of (text, box) tuples, where each tuple represents a text bubble.
+    """
+    ocr_result = OCR_SINGLETON.read_text(image_path)
+    grouped_text = group_text_by_proximity(ocr_result)
+    return grouped_text

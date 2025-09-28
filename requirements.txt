@@ -5,3 +5,4 @@ deepl
 Pillow
 requests
 python-dotenv
+scikit-learn

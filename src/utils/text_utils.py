@@ -1,93 +1,87 @@
 import numpy as np
-from collections import defaultdict
+from sklearn.cluster import DBSCAN
 
-def get_box_center(box):
-    """Calculates the center of a bounding box."""
-    return np.mean(box, axis=0)
-
-def get_box_dimensions(box):
-    """Calculates the width and height of a bounding box."""
-    min_coords = np.min(box, axis=0)
-    max_coords = np.max(box, axis=0)
-    return max_coords - min_coords
-
-def group_text_by_proximity(ocr_result, x_dist_ratio=0.7, y_dist_ratio=1.0):
+def group_text_by_proximity(results, y_threshold=10, eps=80, min_samples=1):
     """
-    Groups OCR text results based on proximity.
-
-    Args:
-        ocr_result: The result from easyocr.readtext.
-        x_dist_ratio: The horizontal distance between box centers, as a ratio of the average width,
-                      to be considered in the same group.
-        y_dist_ratio: The vertical distance between box centers, as a ratio of the average height,
-                      to be considered in the same group.
-
-    Returns:
-        A list of strings, where each string is a group of text ordered from top-right to bottom-left.
+    Group OCR results into bubbles/columns and sort them. 
+    
+    :param results: EasyOCR output [(bbox, text, conf), ...]
+    :param y_threshold: tolerance for grouping words into the same line
+    :param eps: clustering distance (adjust for bubble separation)
+    :param min_samples: DBSCAN parameter
     """
-    if not ocr_result:
+    if not results:
         return []
 
     boxes = []
-    for i, (box_coords, text, _) in enumerate(ocr_result):
-        center = get_box_center(np.array(box_coords))
-        width, height = get_box_dimensions(np.array(box_coords))
-        boxes.append({
-            "id": i,
-            "text": text,
-            "box": box_coords,
-            "center_x": center[0],
-            "center_y": center[1],
-            "width": width,
-            "height": height
-        })
+    centers = []
+    for (bbox, text, conf) in results:
+        x_coords = [p[0] for p in bbox]
+        y_coords = [p[1] for p in bbox]
+        x_min, y_min = min(x_coords), min(y_coords)
+        x_max, y_max = max(x_coords), max(y_coords)
+        cx, cy = (x_min + x_max) / 2, (y_min + y_max) / 2
+        boxes.append(((x_min, y_min, x_max, y_max), text))
+        centers.append([cx, cy])
 
-    # Build adjacency list
-    adj = defaultdict(list)
-    for i in range(len(boxes)):
-        for j in range(i + 1, len(boxes)):
-            box1 = boxes[i]
-            box2 = boxes[j]
+    centers = np.array(centers)
 
-            x_dist = abs(box1["center_x"] - box2["center_x"])
-            y_dist = abs(box1["center_y"] - box2["center_y"])
+    # Cluster by proximity
+    clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(centers)
+    labels = clustering.labels_
 
-            avg_width = (box1["width"] + box2["width"]) / 2
-            avg_height = (box1["height"] + box2["height"]) / 2
-            
-            if x_dist < avg_width * x_dist_ratio and y_dist < avg_height * y_dist_ratio:
-                adj[i].append(j)
-                adj[j].append(i)
+    bubbles = {}
+    for label, (box, text) in zip(labels, boxes):
+        if label not in bubbles:
+            bubbles[label] = []
+        bubbles[label].append((box, text))
 
-    # Find connected components (groups) using BFS
-    visited = set()
-    groups = []
-    for i in range(len(boxes)):
-        if i not in visited:
-            component = []
-            q = [i]
-            visited.add(i)
-            while q:
-                u = q.pop(0)
-                component.append(boxes[u])
-                for v in adj[u]:
-                    if v not in visited:
-                        visited.add(v)
-                        q.append(v)
-            groups.append(component)
+    ordered_bubbles = {} # Use a dict to store text and box
+    for label, items in bubbles.items():
+        # Sort inside bubble
+        items.sort(key=lambda b: (b[0][1], b[0][0]))  # y, then x
 
-    # Sort and join text in each group
-    result_groups = []
-    for group in groups:
-        # Sort top-to-bottom, then right-to-left
-        group.sort(key=lambda b: (b["center_y"], -b["center_x"]))
+        # Group into lines
+        lines = []
+        current_line = []
+        last_y = None
+        for (x_min, y_min, x_max, y_max), text in items:
+            if last_y is None or abs(y_min - last_y) < y_threshold:
+                current_line.append((x_min, text))
+                last_y = y_min if last_y is None else (last_y + y_min) / 2
+            else:
+                current_line.sort(key=lambda t: t[0])
+                lines.append(" ".join([t[1] for t in current_line]))
+                current_line = [(x_min, text)]
+                last_y = y_min
+        if current_line:
+            current_line.sort(key=lambda t: t[0])
+            lines.append(" ".join([t[1] for t in current_line]))
+
+        # Calculate bubble bounding box
+        all_boxes_in_bubble = [item[0] for item in items]
+        min_x = min(box[0] for box in all_boxes_in_bubble)
+        min_y = min(box[1] for box in all_boxes_in_bubble)
+        max_x = max(box[2] for box in all_boxes_in_bubble)
+        max_y = max(box[3] for box in all_boxes_in_bubble)
         
-        # Calculate union of bounding boxes
-        all_boxes = np.vstack([b["box"] for b in group])
-        min_x, min_y = np.min(all_boxes, axis=0)
-        max_x, max_y = np.max(all_boxes, axis=0)
-        
-        text = " ".join([b["text"] for b in group])
-        result_groups.append((text, (min_x, min_y, max_x, max_y)))
+        ordered_bubbles[label] = ("\n".join(lines), (min_x, min_y, max_x, max_y))
 
-    return result_groups
+    # Sort bubbles left-to-right, top-to-bottom
+    bubble_positions = []
+    for label, items in bubbles.items():
+        y_top = min(b[1] for b, _ in items)
+        x_left = min(b[0] for b, _ in items)
+        bubble_positions.append((label, x_left, y_top))
+
+    # Sort by top-to-bottom, then left-to-right
+    bubble_positions.sort(key=lambda b: (b[2], b[1]))
+
+    # Get the final sorted bubbles
+    final_bubbles = []
+    for label, _, _ in bubble_positions:
+        # Check if the label exists in ordered_bubbles before accessing
+        if label in ordered_bubbles:
+            final_bubbles.append(ordered_bubbles[label])
+
+    return final_bubbles

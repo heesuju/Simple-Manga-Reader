@@ -70,6 +70,9 @@ class ReaderView(QMainWindow):
         self.is_dragging_animation = False
         self.last_pan_pos = None
 
+        self.panels_visible = True
+        self.mouse_press_pos = None
+
         self._setup_ui()
         self.showFullScreen()
         self.model.refresh()
@@ -117,13 +120,9 @@ class ReaderView(QMainWindow):
         self.chapter_panel.installEventFilter(self)
         self.page_panel.installEventFilter(self)
         
-        self.setMouseTracking(True)
-        self.centralWidget().setMouseTracking(True)
-        self.view.setMouseTracking(True)
-        self.view.viewport().setMouseTracking(True)
-        self.view.viewport().installEventFilter(self)
         self.original_view_mouse_press = self.view.mousePressEvent
         self.view.mousePressEvent = self._overlay_mouse_press
+        self.view.mouseReleaseEvent = self._overlay_mouse_release
         self.view.resizeEvent = self.resizeEvent
 
     def start_guided_reading(self):
@@ -237,60 +236,49 @@ class ReaderView(QMainWindow):
         page_panel_height = 200 if self.page_panel.content_area.isVisible() else 0
         self.page_panel.setGeometry(0, self.height() - page_panel_height, self.width(), page_panel_height)
 
-    def mouseMoveEvent(self, event):
-        self._handle_panel_visibility(event.pos())
-        super().mouseMoveEvent(event)
 
-    def _handle_panel_visibility(self, pos):
-        y = pos.y()
-        height = self.height()
-
-        top_area_height = height * 0.15
-        bottom_area_start = height * 0.85
-        
-        right_rect = self.rect()
-        right_rect.setLeft(int(self.width() * 0.85))
-
-        show_chapter = y <= top_area_height
-        show_page = (y >= bottom_area_start) and (self.model.view_mode != ViewMode.STRIP)
-        show_strip = (self.model.view_mode == ViewMode.STRIP) and right_rect.contains(pos)
-
-        if show_chapter:
-            self.chapter_panel.show_content()
-        else:
-            self.chapter_panel.hide_content()
-
-        if show_page:
-            self.page_panel.show_content()
-        else:
-            self.page_panel.hide_content()
-        
-        self._update_panel_geometries()
-
-    
     def _overlay_mouse_press(self, event):
-        """Trigger prev/next when clicking on left/right 20% of screen."""
-        if not math.isclose(self.view._zoom_factor, 1.0):
-            self.original_view_mouse_press(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.mouse_press_pos = event.position()
+        self.original_view_mouse_press(event)
+
+    def _overlay_mouse_release(self, event):
+        if self.mouse_press_pos is None or event.button() != Qt.MouseButton.LeftButton:
             return
 
-        if event.button() == Qt.MouseButton.LeftButton:
-            w = self.view.width()
-            x = event.position().x()
+        # Check if it was a brief click without dragging
+        distance = (event.position() - self.mouse_press_pos).manhattanLength()
+        if distance > 5:
+            self.mouse_press_pos = None
+            return
 
-            left_area = w * 0.2
-            right_area = w * 0.8
+        self.mouse_press_pos = None
 
-            if x <= left_area:
-                self.show_prev()
-                event.accept()
-            elif x >= right_area:
-                self.show_next()
-                event.accept()
-            else:
-                self.original_view_mouse_press(event)
+        if not math.isclose(self.view._zoom_factor, 1.0):
+            return
+
+        w = self.view.width()
+        x = event.position().x()
+
+        left_area = w * 0.2
+        right_area = w * 0.8
+
+        if x <= left_area:
+            self.show_prev()
+        elif x >= right_area:
+            self.show_next()
         else:
-            self.original_view_mouse_press(event)
+            self._toggle_panels()
+
+    def _toggle_panels(self):
+        self.panels_visible = not self.panels_visible
+        if self.panels_visible:
+            self.chapter_panel.show_content()
+            self.page_panel.show_content()
+        else:
+            self.chapter_panel.hide_content()
+            self.page_panel.hide_content()
+        self._update_panel_geometries()
 
     def event(self, e):
         if e.type() == QEvent.Type.Gesture:
@@ -305,20 +293,6 @@ class ReaderView(QMainWindow):
             if event.type() == QEvent.Type.MouseButtonPress:
                 if self.guided_reading_animation and self.guided_reading_animation.state() == QPropertyAnimation.State.Running:
                     self.stop_guided_reading(user_interrupted=True)
-
-        # Unified mouse move handling using global coordinates
-        if event.type() == QEvent.Type.MouseMove and obj in (
-            self.chapter_panel, self.page_panel,
-            self.view.viewport(), 
-            self.scroll_area.viewport() if self.scroll_area else None
-        ):
-            global_pos = event.globalPosition().toPoint()
-            window_pos = self.mapFromGlobal(global_pos)
-            
-            if self.rect().contains(window_pos):
-                self._handle_panel_visibility(window_pos)
-            
-            return False # Pass event to original widget
 
         # Handle resize for strip mode (existing logic)
         if self.model.view_mode == ViewMode.STRIP and self.scroll_area and obj is self.scroll_area.viewport():

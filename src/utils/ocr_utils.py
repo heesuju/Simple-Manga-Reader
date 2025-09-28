@@ -16,18 +16,18 @@ class OCRSingleton:
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
-        self.reader = easyocr.Reader(['en', 'es'])
+        self.reader = easyocr.Reader(['ko', 'en'])
 
-    def read_text(self, image_path):
+    def read_text(self, image):
         '''
-        Reads text from an image file.
+        Reads text from an image file or image data.
 
         Args:
-            image_path (str): The path to the image file.
+            image (str or numpy.ndarray): The path to the image file or the image data as a numpy array.
 
         Returns:
             list: A list of tuples, where each tuple contains the bounding box, the text, and the confidence score.
         '''
-        return self.reader.readtext(image_path)
+        return self.reader.readtext(image)
 
 OCR_SINGLETON = OCRSingleton.get_instance()

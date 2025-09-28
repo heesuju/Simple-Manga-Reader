@@ -10,26 +10,23 @@ from src.utils.img_utils import _get_first_image_path, draw_text_on_image
 from src.data.reader_model import ReaderModel
 from src.utils.ocr_utils import OCR_SINGLETON
 from src.utils.text_utils import group_text_by_proximity
-from src.utils.translation_utils import translate_text
+from src.utils.translation_utils import translate_texts
 import cv2
 
 
-class TranslationWorkerSignals(QObject):
-    finished = pyqtSignal(int, str, object)
+class BulkTranslationWorkerSignals(QObject):
+    finished = pyqtSignal(list)
 
 
-class TranslationWorker(QRunnable):
-    def __init__(self, index, text, box):
+class BulkTranslationWorker(QRunnable):
+    def __init__(self, texts):
         super().__init__()
-        self.index = index
-        self.text = text
-        self.box = box
-        self.signals = TranslationWorkerSignals()
+        self.texts = texts
+        self.signals = BulkTranslationWorkerSignals()
 
     def run(self):
-        translated_text = translate_text(self.text)
-        print(f"{self.text} -> {translated_text}")
-        self.signals.finished.emit(self.index, translated_text, self.box)
+        translated_texts = translate_texts(self.texts)
+        self.signals.finished.emit(translated_texts)
 
 
 class ChapterPanel(CollapsiblePanel):
@@ -42,8 +39,7 @@ class ChapterPanel(CollapsiblePanel):
         self.on_chapter_changed = on_chapter_changed
         self.chapter_thumbnail_widgets = []
         self.current_chapter_thumbnail = None
-        self.translations = {}
-        self.translation_count = 0
+        self.grouped_text_with_boxes = []
         self.modified_image = None
         self.input_label.enterPressed.connect(self.on_chapter_changed)
 
@@ -109,28 +105,29 @@ class ChapterPanel(CollapsiblePanel):
         ocr_result = OCR_SINGLETON.read_text(current_image_path)
         
         # Group text
-        grouped_text_with_boxes = group_text_by_proximity(ocr_result)
+        self.grouped_text_with_boxes = group_text_by_proximity(ocr_result)
 
-        self.translations.clear()
-        self.translation_count = len(grouped_text_with_boxes)
-        if self.translation_count == 0:
+        if not self.grouped_text_with_boxes:
             self.translation_ready.emit(image) # Emit original image if no text
             return
 
         self.modified_image = image.copy()
 
-        for i, (text, box) in enumerate(grouped_text_with_boxes):
-            worker = TranslationWorker(i, text, box)
-            worker.signals.finished.connect(self._on_translation_finished)
-            self.thread_pool.start(worker)
-
-    def _on_translation_finished(self, index, translated_text, box):
-        self.translations[index] = (translated_text, box)
+        texts_to_translate = [text for text, box in self.grouped_text_with_boxes]
         
-        if len(self.translations) == self.translation_count:
-            # All translations are done, now draw them in order
-            for i in sorted(self.translations.keys()):
-                text, box = self.translations[i]
-                self.modified_image = draw_text_on_image(self.modified_image, text, box)
-            
+        worker = BulkTranslationWorker(texts_to_translate)
+        worker.signals.finished.connect(self._on_bulk_translation_finished)
+        self.thread_pool.start(worker)
+
+    def _on_bulk_translation_finished(self, translated_texts):
+        if len(translated_texts) != len(self.grouped_text_with_boxes):
+            print("Error: Number of translations does not match number of text boxes.")
             self.translation_ready.emit(self.modified_image)
+            return
+
+        for i, translated_text in enumerate(translated_texts):
+            original_text, box = self.grouped_text_with_boxes[i]
+            print(f"{original_text} -> {translated_text}")
+            self.modified_image = draw_text_on_image(self.modified_image, translated_text, box)
+        
+        self.translation_ready.emit(self.modified_image)
