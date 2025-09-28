@@ -26,20 +26,20 @@ class ReaderModel(QObject):
     double_image_loaded = pyqtSignal(str, str)
     layout_updated = pyqtSignal(ViewMode)
 
-    def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
+    def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None, language: str = 'ko'):
         super().__init__()
-        if index > len(manga_dirs) - 1:
-            return
         
+        self.language = language
         self.start_file = start_file
         self.view_mode = ViewMode.SINGLE
-        self.chapter_index = index
-        self.chapters = manga_dirs
-        self.manga_dir = self.chapters[index]
         self.images: List[str] = images if images else []
         self.current_index = 0
+        self.chapters = manga_dirs if manga_dirs else []
+        self.chapter_index = index if manga_dirs else 0
+        self.manga_dir = self.chapters[self.chapter_index] if manga_dirs else None
 
-        self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
+        if self.chapters:
+            self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
 
     def refresh(self, start_from_end:bool=False, preserve_view_mode:bool=False):
         if not self.images:

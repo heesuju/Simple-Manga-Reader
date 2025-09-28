@@ -17,7 +17,7 @@ class ClickableLabel(QWidget):
         if isinstance(path, str) and '|' in path:
             self.display_name = Path(path.split('|')[1]).name
         else:
-            self.display_name = Path(path).name
+            self.display_name = path.get("name")
 
         self.setFixedSize(150, 200)
         self.setCursor(Qt.CursorShape.PointingHandCursor)

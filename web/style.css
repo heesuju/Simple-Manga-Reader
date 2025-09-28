@@ -35,6 +35,54 @@ body {
     border-radius: 5px;
 }
 
+#chapter-list-view {
+    display: none; /* Hidden by default */
+    padding: 20px;
+}
+
+#series-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+#series-header img {
+    width: 150px;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 5px;
+    margin-right: 20px;
+}
+
+#series-header h1 {
+    font-size: 2em;
+}
+
+#chapter-list {
+    list-style: none;
+    padding: 0;
+}
+
+.chapter-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #444;
+    cursor: pointer;
+}
+
+.chapter-item:hover {
+    background-color: #333;
+}
+
+.chapter-item img {
+    width: 150px;
+    height: 75px;
+    object-fit: cover;
+    border-radius: 5px;
+    margin-right: 20px;
+}
+
 #reader-view {
     display: none; /* Hidden by default */
     position: fixed;

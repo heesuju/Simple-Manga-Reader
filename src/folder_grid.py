@@ -9,7 +9,7 @@ import io
 import qrcode
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, 
-    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog
+    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem
 )
 from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize
@@ -22,6 +22,8 @@ from src.utils.img_utils import get_chapter_number, get_image_size
 from src.core.thumbnail_worker import get_common_size_ratio, get_image_ratio
 from src.enums import ViewMode
 import math
+import json
+from src.core.library_scanner import LibraryScanner
 
 def run_server(script_path, root_dir):
     import subprocess
@@ -39,15 +41,21 @@ def is_double_page(size, common_ratio):
 
 class FolderGrid(QWidget):
     """Shows a grid of folders and images."""
-    def __init__(self, root_dir: str = ""):
-        super().__init__()
+    series_selected = pyqtSignal(object)
+
+    def __init__(self, library_manager, parent=None):
+        super().__init__(parent)
         
-        self.root_dir = Path(root_dir) if root_dir else Path.home()
+        self.library_manager = library_manager
+        self.root_dir = Path.home() # Default value, can be removed later
         self.loading_generation = 0
         self.loader = None
         self.received_items = {}
         self.next_item_to_display = 0
         self.total_items_to_load = 0
+        self.language = 'ko'
+        self.current_view = 'series' # or 'chapters'
+        self.current_series = None
         
         self.threadpool = QThreadPool()
         self.web_server_process = None
@@ -70,10 +78,18 @@ class FolderGrid(QWidget):
         self.web_access_btn = QPushButton("Start Web Access")
         self.web_access_btn.clicked.connect(self.toggle_web_access)
         
+        self.settings_btn = QPushButton("Settings")
+        self.settings_btn.clicked.connect(self.open_settings)
+        self.scan_btn = QPushButton("Scan Library")
+        self.scan_btn.clicked.connect(self.scan_library)
+
         top_layout.addWidget(up_btn)
         top_layout.addWidget(self.path_input)
         top_layout.addWidget(browse_btn)
+        # top_layout.addWidget(self.lang_combo)
         top_layout.addWidget(self.web_access_btn)
+        top_layout.addWidget(self.settings_btn)
+        top_layout.addWidget(self.scan_btn)
         main_layout.addLayout(top_layout)
 
         self.scroll = QScrollArea()
@@ -91,9 +107,12 @@ class FolderGrid(QWidget):
 
         if self.root_dir:
             self.load_items()
+
+    def lang_changed(self, text):
+        self.language = self.lang_combo.currentData()
     
     def load_items(self):
-        """Load items from a directory or a zip file."""
+        """Load series from the library."""
         self.loading_generation += 1
 
         while self.flow_layout.count():
@@ -101,71 +120,19 @@ class FolderGrid(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-        self.root_dir = self.root_dir if isinstance(self.root_dir, Path) else Path(self.root_dir)
-        
-        if not self.root_dir.exists():
-                return
-        
-        items = []
-        if self.root_dir.is_file() and self.root_dir.suffix.lower() == '.zip':
-            # Load items from zip file
-            try:
-                with zipfile.ZipFile(self.root_dir, 'r') as zf:
-                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                    items = [f"{self.root_dir}|{image_name}" for image_name in image_files]
-            except zipfile.BadZipFile:
-                QMessageBox.warning(self, "Error", "Could not read the zip file.")
-                self.go_up()
-                return
-        else:
-            # Load items from directory
-            try:
-                all_items = list(self.root_dir.iterdir())
-            except PermissionError:
-                QMessageBox.warning(self, "Permission Denied", f"Cannot access the directory: {self.root_dir}")
-                self.go_up()
-                return
-
-            subdirs = [p for p in all_items if p.is_dir()]
-            files = [p for p in all_items if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.zip'}]
-
-            image_files = [f for f in files if f.suffix.lower() != '.zip']
-            zip_files = [f for f in files if f.suffix.lower() == '.zip']
-            
-            filtered_images = []
-            is_implicit_cover_present = (len(image_files) == 1 and len(subdirs) > 0)
-
-            for img in image_files:
-                is_explicit_cover = img.name.lower().startswith('cover.')
-                if is_explicit_cover or is_implicit_cover_present:
-                    continue
-                filtered_images.append(img)
-
-            items = subdirs + zip_files + filtered_images
-            items = sorted(items, key=get_chapter_number)
-
-        # Split wide images
-        common_size, ratio, _, _ = get_common_size_ratio(items)
-        if common_size[0] > 0:
-            new_items = []
-            for item in items:
-                if isinstance(item, (Path, str)):
-                    size = get_image_size(item)
-                    
-                    if is_double_page(size, ratio):
-                        new_items.append(str(item) + "_right")
-                        new_items.append(str(item) + "_left")
-                    else:
-                        new_items.append(item)
-                else:
-                    new_items.append(item)
-            items = new_items
-
-        self.total_items_to_load = len(items)
+        series_list = self.library_manager.get_series()
+        self.total_items_to_load = len(series_list)
         self.received_items.clear()
         self.next_item_to_display = 0
 
-        loader = ItemLoader(items, self.loading_generation)
+        if not series_list:
+            return
+
+        items_to_load = []
+        for series in series_list:
+            items_to_load.append(series)
+
+        loader = ItemLoader(items_to_load, self.loading_generation, item_type='series')
         if self.loader:
             try:
                 self.loader.signals.item_loaded.disconnect()
@@ -211,48 +178,85 @@ class FolderGrid(QWidget):
             
             self.next_item_to_display += 1
 
-    def item_selected(self, path: object, selected_index: int):
-        if isinstance(path, Path) and path.is_dir():
-            self.root_dir = path
-            self.path_input.setText(str(self.root_dir))
-            self.load_items()
-        elif isinstance(path, Path) and path.suffix.lower() == '.zip':
-            self.root_dir = path
-            self.path_input.setText(str(self.root_dir))
-            self.load_items()
-        elif (isinstance(path, Path) and path.is_file()) or (isinstance(path, str)):
-            # This is either a regular image file or a virtual path to an image in a zip
-            if '|' in str(path):
-                # Virtual path
-                zip_path_str = str(path).split('|')[0]
-                zip_path = Path(zip_path_str)
-                series_dir = zip_path.parent
-                chapter_files = [str(p) for p in series_dir.iterdir() if p.suffix.lower() == '.zip']
-                images = [item for item in self.loader.items if isinstance(item, str) and item.startswith(zip_path_str)]
-                chapter_index = chapter_files.index(zip_path_str)
-                start_file = path
-            else:
-                # Regular image file
-                image_dir = Path(path).parent
-                series_dir = image_dir.parent
-                chapter_files = [d for d in series_dir.iterdir() if d.is_dir()]
-                chapter_files = sorted(chapter_files, key=get_chapter_number)
-                images = [str(item) for item in self.loader.items if isinstance(item, (str, Path)) and str(item).startswith(str(image_dir))]
-                chapter_index = chapter_files.index(image_dir)
-                start_file = str(path)
 
-            self.reader = ReaderView(chapter_files, chapter_index, start_file=start_file, images=images)
+
+    def item_selected(self, item: object, selected_index: int):
+        if self.current_view == 'series':
+            self.series_selected.emit(item)
+        elif self.current_view == 'chapters':
+            # This part is now handled by ChapterListView, but we keep it for now
+            # to avoid breaking things before the full transition.
+            series_path = Path(self.current_series['path'])
+            chapter_files = [str(ch['path']) for ch in self.current_series['chapters']]
+            chapter_index = selected_index
+            start_file = None # Start from the beginning of the chapter
+
+            # Get all images in the chapter
+            chapter_path = Path(item['path'])
+            images = [str(p) for p in chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
+            images = sorted(images, key=get_chapter_number)
+
+            self.reader = ReaderView(chapter_files, chapter_index, start_file=start_file, images=images, language=self.language)
             self.reader.back_to_grid_callback = self.show_grid_at_path
             self.reader.show()
             self.close()
 
+    def display_chapters(self, chapters):
+        self.loading_generation += 1
+
+        while self.flow_layout.count():
+            item = self.flow_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self.total_items_to_load = len(chapters)
+        self.received_items.clear()
+        self.next_item_to_display = 0
+
+        if not chapters:
+            return
+
+        loader = ItemLoader(chapters, self.loading_generation, item_type='chapter')
+        if self.loader:
+            try:
+                self.loader.signals.item_loaded.disconnect()
+                self.loader.signals.item_invalid.disconnect()
+                self.loader.signals.loading_finished.disconnect()
+            except TypeError:
+                pass
+        self.loader = loader
+        loader.signals.item_loaded.connect(self.on_item_loaded)
+        loader.signals.item_invalid.connect(self.on_item_invalid)
+        self.threadpool.start(loader)
+
+    def open_reader_for_chapter(self, series, chapter):
+        series_path = Path(series['path'])
+        chapter_files = [str(ch['path']) for ch in series['chapters']]
+        chapter_index = series['chapters'].index(chapter)
+        start_file = None # Start from the beginning of the chapter
+
+        # Get all images in the chapter
+        chapter_path = Path(chapter['path'])
+        images = [str(p) for p in chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
+        images = sorted(images, key=get_chapter_number)
+
+        self.reader = ReaderView(chapter_files, chapter_index, start_file=start_file, images=images, language=self.language)
+        self.reader.back_to_grid_callback = self.show_grid_at_path
+        self.reader.show()
+        self.close()
+
     def go_up(self):
-        if self.root_dir:
-            parent = self.root_dir.parent
-            if parent.exists() and parent != self.root_dir:
-                self.root_dir = parent
-                self.path_input.setText(str(self.root_dir))
-                self.load_items()
+        if self.current_view == 'chapters':
+            self.load_items() # Go back to series view
+            self.current_view = 'series'
+            self.current_series = None
+        else:
+            if self.root_dir:
+                parent = self.root_dir.parent
+                if parent.exists() and parent != self.root_dir:
+                    self.root_dir = parent
+                    self.path_input.setText(str(self.root_dir))
+                    self.load_items()
 
     def path_entered(self):
         path_text = self.path_input.text()
@@ -281,9 +285,9 @@ class FolderGrid(QWidget):
             self.start_web_access()
 
     def start_web_access(self):
-        current_dir = self.path_input.text()
         server_script_path = os.path.abspath("server.py")
-        self.web_server_process = subprocess.Popen([sys.executable, server_script_path, current_dir])
+        command = [sys.executable, server_script_path] + self.library_manager.library['root_directories']
+        self.web_server_process = subprocess.Popen(command)
         self.web_access_btn.setText("Stop Web Access")
 
         hostname = socket.gethostname()
@@ -316,3 +320,52 @@ class FolderGrid(QWidget):
     def closeEvent(self, event):
         self.stop_web_access()
         event.accept()
+
+    def open_settings(self):
+        dialog = SettingsDialog(self.library_manager, self)
+        dialog.exec()
+
+    def scan_library(self):
+        self.library_manager.scan_library()
+        self.load_items()
+
+class SettingsDialog(QDialog):
+    def __init__(self, library_manager, parent=None):
+        super().__init__(parent)
+        self.library_manager = library_manager
+        self.setWindowTitle("Settings")
+        self.layout = QVBoxLayout(self)
+
+        self.list_widget = QListWidget()
+        for directory in self.library_manager.library['root_directories']:
+            self.list_widget.addItem(directory)
+
+        self.add_btn = QPushButton("Add Directory")
+        self.add_btn.clicked.connect(self.add_directory)
+        self.remove_btn = QPushButton("Remove Selected")
+        self.remove_btn.clicked.connect(self.remove_directory)
+        self.save_btn = QPushButton("Save and Close")
+        self.save_btn.clicked.connect(self.save_and_close)
+
+        self.layout.addWidget(QLabel("Manga Library Folders:"))
+        self.layout.addWidget(self.list_widget)
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.add_btn)
+        btn_layout.addWidget(self.remove_btn)
+        self.layout.addLayout(btn_layout)
+        self.layout.addWidget(self.save_btn)
+
+    def add_directory(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder")
+        if folder:
+            self.library_manager.add_root_directory(folder)
+            self.list_widget.addItem(folder)
+
+    def remove_directory(self):
+        for item in self.list_widget.selectedItems():
+            self.library_manager.remove_root_directory(item.text())
+            self.list_widget.takeItem(self.list_widget.row(item))
+
+    def save_and_close(self):
+        self.library_manager.save_library()
+        self.accept()

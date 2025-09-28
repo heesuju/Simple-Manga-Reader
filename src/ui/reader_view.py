@@ -30,9 +30,11 @@ class FitInViewAnimation(QPropertyAnimation):
     def updateCurrentValue(self, value):
         self.targetObject().fitInView(value, Qt.AspectRatioMode.KeepAspectRatio)
 
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QParallelAnimationGroup
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QParallelAnimationGroup, pyqtSignal
 
 class ReaderView(QMainWindow):
+    back_pressed = pyqtSignal()
+
     def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
         super().__init__()
         self.setWindowTitle("Manga Reader")
@@ -662,9 +664,7 @@ class ReaderView(QMainWindow):
             self.scroll_area.verticalScrollBar().setValue(label.y())
 
     def back_to_grid(self):
-        if self.back_to_grid_callback:
-            self.close()
-            self.back_to_grid_callback(self.model.manga_dir)
+        self.back_pressed.emit()
 
     def _on_translation_ready(self, modified_image):
         # Convert cv2 image (BGR) to QImage (RGB)

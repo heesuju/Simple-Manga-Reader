@@ -83,29 +83,69 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const chapterListView = document.getElementById('chapter-list-view');
+
     function loadGrid(path) {
         currentPath = path;
         gridView.innerHTML = ''; // Clear the grid
 
-        fetch(`/api/folders?path=${encodeURIComponent(path)}`)
+        fetch('/api/folders')
             .then(response => response.json())
             .then(items => {
                 items.forEach(item => {
                     const gridItem = document.createElement('div');
                     gridItem.classList.add('grid-item');
                     gridItem.innerHTML = `
-                        <img src="/images/${item.thumbnail}" alt="${item.name}">
+                        <img src="/images/${item.cover_image}?width=150&quality=50" alt="${item.name}">
                         <p>${item.name}</p>
                     `;
                     gridItem.addEventListener('click', () => {
-                        if (item.type === 'folder') {
-                            loadGrid(item.path);
-                        } else {
-                            openReader(item.path);
-                        }
+                        showChapterList(item);
                     });
                     gridView.appendChild(gridItem);
                 });
+            });
+    }
+
+    const backToGridBtn = document.getElementById('back-to-grid-btn');
+
+    backToGridBtn.addEventListener('click', () => {
+        gridView.style.display = 'grid';
+        chapterListView.style.display = 'none';
+    });
+
+    function showChapterList(series) {
+        gridView.style.display = 'none';
+        chapterListView.style.display = 'block';
+        chapterListView.innerHTML = ''; // Clear the view
+
+        fetch(`/api/series/${encodeURIComponent(series.name)}`)
+            .then(response => response.json())
+            .then(seriesData => {
+                if (seriesData.chapters && seriesData.chapters.length > 0) {
+                    const header = document.createElement('div');
+                    header.id = 'series-header';
+                    header.innerHTML = `
+                        <img src="/images/${seriesData.cover_image}" alt="${seriesData.name}">
+                        <h1>${seriesData.name}</h1>
+                    `;
+                    chapterListView.appendChild(header);
+
+                    const chapterList = document.createElement('ul');
+                    chapterList.id = 'chapter-list';
+                    seriesData.chapters.forEach(chapter => {
+                        const chapterItem = document.createElement('li');
+                        chapterItem.classList.add('chapter-item');
+                        chapterItem.innerHTML = `<img src="/images/${chapter.thumbnail}?width=150&quality=50" alt="${chapter.name}"><span>${chapter.name}</span>`;
+                        chapterItem.addEventListener('click', () => {
+                            openReader(seriesData, chapter);
+                        });
+                        chapterList.appendChild(chapterItem);
+                    });
+                    chapterListView.appendChild(chapterList);
+                } else {
+                    openReader(seriesData, null);
+                }
             });
     }
 
@@ -117,10 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
         loadGrid(parentPath);
     });
 
-    function openReader(mangaDir, startAt = 'first') {
-        currentManga = mangaDir;
+    function openReader(seriesData, chapter) {
+        currentManga = seriesData.path;
         
-        gridView.classList.add('hidden');
+        gridView.style.display = 'none';
+        chapterListView.style.display = 'none';
         document.getElementById('controls').classList.add('hidden');
         readerView.classList.add('visible');
 
@@ -128,25 +169,25 @@ document.addEventListener('DOMContentLoaded', () => {
         stripView.style.display = 'none';
         document.getElementById('reader-image-container').style.display = 'flex';
 
-        fetch(`/api/series?path=${encodeURIComponent(mangaDir)}`)
-            .then(response => response.json())
-            .then(chapters => {
-                chapterList = chapters;
-                currentChapterIndex = chapterList.indexOf(mangaDir);
-            });
-
-        fetch(`/api/images?path=${encodeURIComponent(mangaDir)}`)
-            .then(response => response.json())
-            .then(images => {
-                imageList = images;
-                pageSlider.max = imageList.length - 1;
-                if (startAt === 'last') {
-                    currentPage = imageList.length - 1;
-                } else {
+        if (chapter) {
+            chapterList = seriesData.chapters;
+            currentChapterIndex = chapterList.indexOf(chapter);
+            imageList = chapter.images;
+            pageSlider.max = imageList.length - 1;
+            currentPage = 0;
+            displayPage();
+        } else { // Series with no chapters
+            chapterList = [];
+            currentChapterIndex = 0;
+            fetch(`/api/images?path=${encodeURIComponent(seriesData.path)}`)
+                .then(response => response.json())
+                .then(images => {
+                    imageList = images;
+                    pageSlider.max = imageList.length - 1;
                     currentPage = 0;
-                }
-                displayPage();
-            });
+                    displayPage();
+                });
+        }
     }
 
     function displayPage() {

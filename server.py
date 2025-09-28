@@ -6,26 +6,13 @@ import os
 from pathlib import Path
 import urllib.parse
 import re
-import time
-from collections import OrderedDict
+from PIL import Image
+import io
 
-class LRUCache:
-    def __init__(self, capacity: int):
-        self.cache = OrderedDict()
-        self.capacity = capacity
+from src.core.library_manager import LibraryManager
 
-    def get(self, key: str):
-        if key not in self.cache:
-            return None
-        else:
-            self.cache.move_to_end(key)
-            return self.cache[key]
-
-    def put(self, key: str, value):
-        self.cache[key] = value
-        self.cache.move_to_end(key)
-        if len(self.cache) > self.capacity:
-            self.cache.popitem(last = False)
+library_manager = LibraryManager()
+ROOT_DIRS = library_manager.library['root_directories']
 
 def find_number(text:str)->int:
     numbers = re.findall(r'\d+', text)
@@ -45,13 +32,6 @@ def get_chapter_number(path):
         return find_number(name)
 
 PORT = 8000
-# IMPORTANT: Change this to the directory where your manga is stored
-# ROOT_DIR = os.path.expanduser("~") 
-ROOT_DIR = os.path.expanduser("C:/Utils/mangadex-dl_x64_v3.1.4/mangadex-dl") 
-
-# Cache for API responses and images
-api_cache = LRUCache(100)
-image_cache = LRUCache(50)
 
 class MangaHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -89,128 +69,129 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error(404, "File not found")
             return
         elif self.path.startswith('/api/folders'):
-            cached_response = api_cache.get(self.path)
-            if cached_response:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(cached_response)
-                return
-
-            query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            path_param = query_components.get("path", [""])[0]
-            current_path = os.path.join(ROOT_DIR, path_param)
-
-            items = []
-            for item in os.scandir(current_path):
-                if item.is_dir():
-                    has_subfolders = any(sub.is_dir() for sub in os.scandir(item.path))
-                    item_type = 'folder' if has_subfolders else 'leaf'
-                    thumbnail = None
-                    try:
-                        for sub_item in os.scandir(item.path):
-                            if sub_item.is_file() and sub_item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
-                                thumbnail = os.path.relpath(sub_item.path, ROOT_DIR)
-                                break
-                    except FileNotFoundError:
-                        pass # Ignore if thumbnail not found
-                    items.append({'name': item.name, 'path': os.path.relpath(item.path, ROOT_DIR), 'type': item_type, 'thumbnail': thumbnail})
-            
-            items.sort(key=lambda x: get_chapter_number(x['name']))
-            response = json.dumps(items).encode('utf-8')
-            api_cache.put(self.path, response)
-
+            series = library_manager.get_series()
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(response)
+            self.wfile.write(json.dumps(series).encode('utf-8'))
+            return
+        elif self.path.startswith('/api/series/'):
+            series_name = urllib.parse.unquote(self.path[len('/api/series/'):])
+            series = next((s for s in library_manager.get_series() if s['name'] == series_name), None)
+            if series:
+                if not series.get('chapters'):
+                    # Series with no chapters, add images from the series folder
+                    full_series_path = Path(os.path.join(series['root_dir'], series['path']))
+                    images = []
+                    try:
+                        for item in sorted(os.scandir(full_series_path), key=lambda e: e.name):
+                            if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                                images.append(os.path.relpath(item.path, series['root_dir']))
+                    except FileNotFoundError:
+                        pass
+                    series['images'] = images
+                else:
+                    # Add thumbnails and image lists to chapters
+                    for chapter in series.get('chapters', []):
+                        chapter_rel_path = chapter['path']
+                        full_chapter_path = None
+                        root_dir = None
+                        for r in ROOT_DIRS:
+                            test_path = os.path.join(r, chapter_rel_path)
+                            if os.path.exists(test_path):
+                                full_chapter_path = test_path
+                                root_dir = r
+                                break
+
+                        if full_chapter_path:
+                            images = []
+                            thumbnail = None
+                            try:
+                                for item in sorted(os.scandir(full_chapter_path), key=lambda e: e.name):
+                                    if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                                        image_rel_path = os.path.relpath(item.path, root_dir)
+                                        images.append(image_rel_path)
+                                        if not thumbnail:
+                                            thumbnail = image_rel_path
+                            except FileNotFoundError:
+                                pass
+                            chapter['thumbnail'] = thumbnail
+                            chapter['images'] = images
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(series).encode('utf-8'))
+            else:
+                self.send_error(404, "Series not found")
             return
         elif self.path.startswith('/api/images'):
-            cached_response = api_cache.get(self.path)
-            if cached_response:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(cached_response)
-                return
-
             query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             path_param = query_components.get("path", [""])[0]
-            full_path = os.path.join(ROOT_DIR, path_param)
-            if os.path.isdir(full_path):
+            full_path = None
+            root_dir_found = None
+            for r in ROOT_DIRS:
+                test_path = os.path.join(r, path_param)
+                if os.path.exists(test_path):
+                    full_path = test_path
+                    root_dir_found = r
+                    break
+
+            if full_path and os.path.isdir(full_path):
                 images = []
-                for item in os.scandir(full_path):
+                for item in sorted(os.scandir(full_path), key=lambda e: e.name):
                     if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
-                        images.append(os.path.join(path_param, item.name))
-                images.sort(key=get_chapter_number)
-                response = json.dumps(images).encode('utf-8')
-                api_cache.put(self.path, response)
-
+                        images.append(os.path.relpath(item.path, root_dir_found))
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(response)
+                self.wfile.write(json.dumps(images).encode('utf-8'))
             else:
-                self.send_error(404, "Manga not found")
+                self.send_error(404, "Not found")
             return
-        elif self.path.startswith('/api/series'):
-            cached_response = api_cache.get(self.path)
-            if cached_response:
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(cached_response)
-                return
-
-            query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            path_param = query_components.get("path", [""])[0]
-            series_path = os.path.dirname(os.path.join(ROOT_DIR, path_param))
-
-            chapters = []
-            for item in os.scandir(series_path):
-                if item.is_dir():
-                    chapters.append(os.path.relpath(item.path, ROOT_DIR))
-            
-            chapters.sort(key=get_chapter_number)
-            response = json.dumps(chapters).encode('utf-8')
-            api_cache.put(self.path, response)
-
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(response)
-            return
-            
         elif self.path.startswith('/images/'):
-            image_path = urllib.parse.unquote(self.path[len('/images/'):])
-            cached_image = image_cache.get(image_path)
-            if cached_image:
-                content_type, image_data = cached_image
-                self.send_response(200)
-                self.send_header('Content-type', content_type)
-                self.end_headers()
-                self.wfile.write(image_data)
-                return
+            parts = self.path.split('?')
+            image_path = urllib.parse.unquote(parts[0][len('/images/'):])
+            query_params = urllib.parse.parse_qs(parts[1]) if len(parts) > 1 else {}
 
-            full_image_path = os.path.join(ROOT_DIR, image_path)
-            if os.path.isfile(full_image_path):
+            full_image_path = None
+            for root_dir in ROOT_DIRS:
+                test_path = os.path.join(root_dir, image_path)
+                if os.path.isfile(test_path):
+                    full_image_path = test_path
+                    break
+
+            if full_image_path:
                 try:
-                    with open(full_image_path, 'rb') as f:
-                        image_data = f.read()
-                        content_type = 'image/jpeg'
-                        if full_image_path.lower().endswith('.png'):
-                            content_type = 'image/png'
-                        elif full_image_path.lower().endswith('.gif'):
-                            content_type = 'image/gif'
-                        elif full_image_path.lower().endswith('.webp'):
-                            content_type = 'image/webp'
-                        
-                        image_cache.put(image_path, (content_type, image_data))
+                    width = int(query_params.get('width', [0])[0])
+                    quality = int(query_params.get('quality', [75])[0])
 
-                        self.send_response(200)
-                        self.send_header('Content-type', content_type)
-                        self.end_headers()
-                        self.wfile.write(image_data)
+                    if width > 0:
+                        with Image.open(full_image_path) as img:
+                            img.thumbnail((width, width * 10)) # Keep aspect ratio
+                            buffer = io.BytesIO()
+                            img_format = 'jpeg' if img.mode == 'RGB' else 'png'
+                            img.save(buffer, format=img_format, quality=quality)
+                            buffer.seek(0)
+                            image_data = buffer.read()
+
+                            self.send_response(200)
+                            self.send_header('Content-type', f'image/{img_format}')
+                            self.end_headers()
+                            self.wfile.write(image_data)
+                    else:
+                        with open(full_image_path, 'rb') as f:
+                            self.send_response(200)
+                            content_type = 'image/jpeg'
+                            if full_image_path.lower().endswith('.png'):
+                                content_type = 'image/png'
+                            elif full_image_path.lower().endswith('.gif'):
+                                content_type = 'image/gif'
+                            elif full_image_path.lower().endswith('.webp'):
+                                content_type = 'image/webp'
+                            self.send_header('Content-type', content_type)
+                            self.end_headers()
+                            self.wfile.write(f.read())
                 except FileNotFoundError:
                     self.send_error(404, "Image not found")
             else:
@@ -222,7 +203,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        ROOT_DIR = sys.argv[1]
+        ROOT_DIRS = sys.argv[1:]
     
     import socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
