@@ -5,11 +5,13 @@ import sys
 import os
 import subprocess
 import socket
+import io
+import qrcode
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QGridLayout, QLabel, QPushButton,
-    QVBoxLayout, QScrollArea, QMessageBox, QFileDialog, QLineEdit, QHBoxLayout
+    QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, 
+    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog
 )
-from PyQt6.QtGui import QPixmap, QMouseEvent, QCursor, QKeySequence, QShortcut, QImageReader
+from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize
 
 from src.ui.reader_view import ReaderView
@@ -286,11 +288,24 @@ class FolderGrid(QWidget):
 
         hostname = socket.gethostname()
         ip_address = socket.gethostbyname(hostname)
-        self.info_label.setText(f"Server started at http://{ip_address}:8000")
-        self.info_label.adjustSize()
-        self.info_label.move(self.width() // 2 - self.info_label.width() // 2, self.height() // 2 - self.info_label.height() // 2)
-        self.info_label.show()
-        QTimer.singleShot(3000, self.info_label.hide)
+        url = f"http://{ip_address}:8000"
+
+        # Generate QR code
+        qr_image = qrcode.make(url)
+        img_byte_array = io.BytesIO()
+        qr_image.save(img_byte_array, format='PNG')
+        pixmap = QPixmap()
+        pixmap.loadFromData(img_byte_array.getvalue())
+
+        # Display QR code in a dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Web Access QR Code")
+        layout = QVBoxLayout()
+        label = QLabel()
+        label.setPixmap(pixmap)
+        layout.addWidget(label)
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def stop_web_access(self):
         if self.web_server_process and self.web_server_process.poll() is None:

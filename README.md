@@ -39,3 +39,8 @@ python reg.py
 
 ### Disclaimer:
 - Ignores `vol` in chapter folders. (e.g. `Vol 1. Ch2` and `Vol 0. Ch3` are ordered `Ch2` and `Ch3`)
+
+./llama-cli -m models/Qwen3-0.6B-Q4_K_M.gguf
+./llama-server -m models/Qwen3-0.6B-Q4_K_M.gguf --port 8080
+
+./llama-server -m models/jan-nano-4b-Q4_K_M.gguf --port 8080

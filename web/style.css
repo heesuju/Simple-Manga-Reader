@@ -62,9 +62,20 @@ body {
 }
 
 #reader-image {
-    max-width: 90vw;
-    max-height: 90vh;
+    max-width: 100vw;
+    max-height: 100vh;
     object-fit: contain;
+}
+
+#reader-controls, #close-reader {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#reader-controls.visible, #close-reader.visible {
+    opacity: 1;
+    visibility: visible;
 }
 
 #reader-controls {

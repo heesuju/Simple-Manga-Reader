@@ -20,6 +20,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChapterIndex = -1;
     let layoutMode = 'single';
 
+    const readerImageContainer = document.getElementById('reader-image-container');
+
+    function toggleControls(event) {
+        const rect = readerImageContainer.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const middleStart = rect.width * 0.2;
+        const middleEnd = rect.width * 0.8;
+
+        if (x >= middleStart && x <= middleEnd) {
+            document.getElementById('reader-controls').classList.toggle('visible');
+            closeReaderBtn.classList.toggle('visible');
+        }
+    }
+
+    readerImageContainer.addEventListener('click', toggleControls);
+
     function toggleLayout() {
         layoutMode = layoutMode === 'single' ? 'strip' : 'single';
         if (layoutMode === 'strip') {
@@ -167,8 +183,6 @@ document.addEventListener('DOMContentLoaded', () => {
         displayPage();
     });
 
-    nextPageBtn.addEventListener('click', showNextPage);
-    prevPageBtn.addEventListener('click', showPrevPage);
     nextArea.addEventListener('click', showNextPage);
     prevArea.addEventListener('click', showPrevPage);
 

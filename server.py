@@ -6,6 +6,26 @@ import os
 from pathlib import Path
 import urllib.parse
 import re
+import time
+from collections import OrderedDict
+
+class LRUCache:
+    def __init__(self, capacity: int):
+        self.cache = OrderedDict()
+        self.capacity = capacity
+
+    def get(self, key: str):
+        if key not in self.cache:
+            return None
+        else:
+            self.cache.move_to_end(key)
+            return self.cache[key]
+
+    def put(self, key: str, value):
+        self.cache[key] = value
+        self.cache.move_to_end(key)
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last = False)
 
 def find_number(text:str)->int:
     numbers = re.findall(r'\d+', text)
@@ -28,6 +48,10 @@ PORT = 8000
 # IMPORTANT: Change this to the directory where your manga is stored
 # ROOT_DIR = os.path.expanduser("~") 
 ROOT_DIR = os.path.expanduser("C:/Utils/mangadex-dl_x64_v3.1.4/mangadex-dl") 
+
+# Cache for API responses and images
+api_cache = LRUCache(100)
+image_cache = LRUCache(50)
 
 class MangaHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -65,13 +89,17 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error(404, "File not found")
             return
         elif self.path.startswith('/api/folders'):
+            cached_response = api_cache.get(self.path)
+            if cached_response:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(cached_response)
+                return
+
             query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             path_param = query_components.get("path", [""])[0]
             current_path = os.path.join(ROOT_DIR, path_param)
-
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
 
             items = []
             for item in os.scandir(current_path):
@@ -89,33 +117,54 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                     items.append({'name': item.name, 'path': os.path.relpath(item.path, ROOT_DIR), 'type': item_type, 'thumbnail': thumbnail})
             
             items.sort(key=lambda x: get_chapter_number(x['name']))
-            self.wfile.write(json.dumps(items).encode('utf-8'))
+            response = json.dumps(items).encode('utf-8')
+            api_cache.put(self.path, response)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(response)
             return
         elif self.path.startswith('/api/images'):
+            cached_response = api_cache.get(self.path)
+            if cached_response:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(cached_response)
+                return
+
             query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             path_param = query_components.get("path", [""])[0]
             full_path = os.path.join(ROOT_DIR, path_param)
             if os.path.isdir(full_path):
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
                 images = []
                 for item in os.scandir(full_path):
                     if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
                         images.append(os.path.join(path_param, item.name))
                 images.sort(key=get_chapter_number)
-                self.wfile.write(json.dumps(images).encode('utf-8'))
+                response = json.dumps(images).encode('utf-8')
+                api_cache.put(self.path, response)
+
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(response)
             else:
                 self.send_error(404, "Manga not found")
             return
         elif self.path.startswith('/api/series'):
+            cached_response = api_cache.get(self.path)
+            if cached_response:
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(cached_response)
+                return
+
             query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             path_param = query_components.get("path", [""])[0]
             series_path = os.path.dirname(os.path.join(ROOT_DIR, path_param))
-
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
 
             chapters = []
             for item in os.scandir(series_path):
@@ -123,16 +172,31 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                     chapters.append(os.path.relpath(item.path, ROOT_DIR))
             
             chapters.sort(key=get_chapter_number)
-            self.wfile.write(json.dumps(chapters).encode('utf-8'))
+            response = json.dumps(chapters).encode('utf-8')
+            api_cache.put(self.path, response)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(response)
             return
             
         elif self.path.startswith('/images/'):
             image_path = urllib.parse.unquote(self.path[len('/images/'):])
+            cached_image = image_cache.get(image_path)
+            if cached_image:
+                content_type, image_data = cached_image
+                self.send_response(200)
+                self.send_header('Content-type', content_type)
+                self.end_headers()
+                self.wfile.write(image_data)
+                return
+
             full_image_path = os.path.join(ROOT_DIR, image_path)
             if os.path.isfile(full_image_path):
                 try:
                     with open(full_image_path, 'rb') as f:
-                        self.send_response(200)
+                        image_data = f.read()
                         content_type = 'image/jpeg'
                         if full_image_path.lower().endswith('.png'):
                             content_type = 'image/png'
@@ -140,9 +204,13 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                             content_type = 'image/gif'
                         elif full_image_path.lower().endswith('.webp'):
                             content_type = 'image/webp'
+                        
+                        image_cache.put(image_path, (content_type, image_data))
+
+                        self.send_response(200)
                         self.send_header('Content-type', content_type)
                         self.end_headers()
-                        self.wfile.write(f.read())
+                        self.wfile.write(image_data)
                 except FileNotFoundError:
                     self.send_error(404, "Image not found")
             else:

@@ -6,3 +6,5 @@ Pillow
 requests
 python-dotenv
 scikit-learn
+langdetect
+qrcode
