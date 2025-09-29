@@ -3,7 +3,7 @@ import json
 import os
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 from src.folder_grid import FolderGrid
-from src.ui.chapter_list_view import ChapterListView
+from src.ui.chapter_list import ChapterListView
 from src.utils.img_utils import get_chapter_number
 from pathlib import Path
 from dotenv import load_dotenv
@@ -50,6 +50,9 @@ class MainWindow(QMainWindow):
         self.current_series = series
         if chapter:
             self.current_series_has_chapters = True
+            # Save the last read chapter
+            series['last_read_chapter'] = chapter['path']
+            self.library_manager.save_library()
         else:
             self.current_series_has_chapters = False
 

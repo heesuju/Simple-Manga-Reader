@@ -69,10 +69,10 @@ class FolderGrid(QWidget):
         main_layout = QVBoxLayout(self)
 
         top_layout = QHBoxLayout()
+        back_btn = QPushButton("←")
+        back_btn.clicked.connect(self.go_up)
         self.path_input = QLineEdit(str(self.root_dir))
         self.path_input.returnPressed.connect(self.path_entered)
-        up_btn = QPushButton("Up")
-        up_btn.clicked.connect(self.go_up)
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_folder)
         self.web_access_btn = QPushButton("Start Web Access")
@@ -83,7 +83,7 @@ class FolderGrid(QWidget):
         self.scan_btn = QPushButton("Scan Library")
         self.scan_btn.clicked.connect(self.scan_library)
 
-        top_layout.addWidget(up_btn)
+        top_layout.addWidget(back_btn)
         top_layout.addWidget(self.path_input)
         top_layout.addWidget(browse_btn)
         # top_layout.addWidget(self.lang_combo)
