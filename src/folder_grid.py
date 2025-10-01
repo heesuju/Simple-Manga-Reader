@@ -8,11 +8,11 @@ import socket
 import io
 import qrcode
 from PyQt6.QtWidgets import (
-    QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, 
-    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout
+    QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, QSizePolicy,
+    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter
 )
 from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence
-from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel
 
 from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
@@ -24,6 +24,7 @@ from src.enums import ViewMode
 import math
 import json
 from src.core.library_scanner import LibraryScanner
+from src.ui.filter_token import FilterToken
 
 def run_server(script_path, root_dir):
     import subprocess
@@ -56,6 +57,7 @@ class FolderGrid(QWidget):
         self.current_view = 'series' # or 'chapters'
         self.current_series = None
         self.items = []
+        self.tokens = {}
         
         self.threadpool = QThreadPool()
         self.web_server_process = None
@@ -70,8 +72,9 @@ class FolderGrid(QWidget):
 
         top_layout = QHBoxLayout()
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search...")
+        self.search_bar.setPlaceholderText("Search by title, or type / to filter by author/genre")
         self.search_bar.textChanged.connect(self.search_items)
+        self.search_bar.returnPressed.connect(self.handle_return_pressed)
         top_layout.addWidget(self.search_bar)
 
         self.add_btn = QPushButton("Add")
@@ -82,6 +85,13 @@ class FolderGrid(QWidget):
         top_layout.addWidget(self.add_btn)
         top_layout.addWidget(self.web_access_btn)
         main_layout.addLayout(top_layout)
+
+        self.token_container = QWidget()
+        self.token_layout = QHBoxLayout(self.token_container)
+        self.token_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.token_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.token_container.setVisible(False)
+        main_layout.addWidget(self.token_container)
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -96,15 +106,93 @@ class FolderGrid(QWidget):
         self.info_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; padding: 10px; border-radius: 5px;")
         self.info_label.hide()
 
+        self.setup_completer()
         self.load_items()
 
-    def search_items(self, text):
-        if not text:
-            self.load_items()
+    def setup_completer(self):
+        self.completer = QCompleter(self)
+        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.completer.setWidget(self.search_bar)
+        self.completer.activated.connect(self.handle_completion)
+
+    def handle_completion(self, text):
+        current_text = self.search_bar.text()
+        if current_text.startswith("/author:") or current_text.startswith("/genre:"):
+            prefix = current_text.split(":")[0] + ":"
+            self.add_token(prefix, text)
+            self.search_bar.clear()
+        elif current_text.startswith("/"):
+            self.search_bar.setText(text)
+
+    def handle_return_pressed(self):
+        text = self.search_bar.text()
+        if text.startswith("/"):
+            parts = text.split(":", 1)
+            if len(parts) == 2 and parts[1]:
+                self.add_token(parts[0] + ":", parts[1])
+                self.search_bar.clear()
+        else:
+            self.apply_filters()
+
+    def add_token(self, token_type, token_value):
+        token_key = f"{token_type}{token_value}"
+        if token_key in self.tokens:
             return
-        
-        filtered_series = self.library_manager.search_series(text)
-        self.load_items(filtered_series)
+
+        token_widget = FilterToken(token_type, token_value)
+        token_widget.remove_requested.connect(self.remove_token)
+        self.tokens[token_key] = token_widget
+        self.token_layout.addWidget(token_widget)
+        self.token_container.setVisible(True)
+        self.apply_filters()
+
+    def remove_token(self, token_type, token_value):
+        token_key = f"{token_type}{token_value}"
+        if token_key in self.tokens:
+            self.tokens[token_key].deleteLater()
+            del self.tokens[token_key]
+            if not self.tokens:
+                self.token_container.setVisible(False)
+            self.apply_filters()
+
+    def get_filters(self):
+        authors = []
+        genres = []
+        for token_widget in self.tokens.values():
+            if token_widget.token_type == "/author:":
+                authors.append(token_widget.token_value)
+            elif token_widget.token_type == "/genre:":
+                genres.append(token_widget.token_value)
+        return {'authors': authors, 'genres': genres}
+
+    def apply_filters(self):
+        search_text = self.search_bar.text()
+        if search_text.startswith("/"):
+             search_text = ""
+        filters = self.get_filters()
+        series_list = self.library_manager.search_series_with_filters(search_text, filters)
+        self.load_items(series_list)
+
+    def search_items(self, text):
+        if text.startswith("/"):
+            if text == "/":
+                model = QStringListModel(["/author:", "/genre:"])
+                self.completer.setModel(model)
+            elif text.startswith("/author:"):
+                value = text.split(":", 1)[1]
+                authors = self.library_manager.get_all_authors()
+                filtered_authors = [author for author in authors if value.lower() in author.lower()]
+                model = QStringListModel(filtered_authors)
+                self.completer.setModel(model)
+            elif text.startswith("/genre:"):
+                value = text.split(":", 1)[1]
+                genres = self.library_manager.get_all_genres()
+                filtered_genres = [genre for genre in genres if value.lower() in genre.lower()]
+                model = QStringListModel(filtered_genres)
+                self.completer.setModel(model)
+            self.completer.complete()
+        else:
+            self.apply_filters()
 
     def lang_changed(self, text):
         self.language = self.lang_combo.currentData()
@@ -180,8 +268,6 @@ class FolderGrid(QWidget):
                 self.grid_layout.addWidget(widget, row, col)
             
             self.next_item_to_display += 1
-
-
 
     def item_selected(self, series: object):
         self.series_selected.emit(series)

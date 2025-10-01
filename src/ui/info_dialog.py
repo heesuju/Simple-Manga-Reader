@@ -26,18 +26,18 @@ class InfoDialog(QDialog):
         # Info display
         self.description_label = QLabel("Description:")
         self.description_text = QTextEdit()
-        self.description_text.setReadOnly(True)
+        self.description_text.setText(series.get('description', ''))
         self.genres_label = QLabel("Genres:")
-        self.genres_value = QLabel()
+        self.genres_input = QLineEdit(", ".join(series.get('genres', [])))
         self.authors_label = QLabel("Authors:")
-        self.authors_value = QLabel()
+        self.authors_input = QLineEdit(", ".join(series.get('authors', [])))
 
         self.layout.addWidget(self.description_label)
         self.layout.addWidget(self.description_text)
         self.layout.addWidget(self.genres_label)
-        self.layout.addWidget(self.genres_value)
+        self.layout.addWidget(self.genres_input)
         self.layout.addWidget(self.authors_label)
-        self.layout.addWidget(self.authors_value)
+        self.layout.addWidget(self.authors_input)
 
         # Save button
         self.save_button = QPushButton("Save")
@@ -59,15 +59,19 @@ class InfoDialog(QDialog):
             self.fetched_info['description'] = description
 
             genres = [tag["attributes"]["name"]["en"] for tag in attributes.get("tags", []) if tag["attributes"]["group"] == "genre"]
-            self.genres_value.setText(", ".join(genres))
+            self.genres_input.setText(", ".join(genres))
             self.fetched_info['genres'] = genres
 
             author_ids = [rel["id"] for rel in info.get("relationships", []) if rel["type"] == "author"]
             author_names = [get_manga_dex_author(author_id) for author_id in author_ids]
-            self.authors_value.setText(", ".join(filter(None, author_names)))
+            self.authors_input.setText(", ".join(filter(None, author_names)))
             self.fetched_info['authors'] = author_names
 
     def save_info(self):
-        if self.fetched_info:
-            self.library_manager.update_series_info(self.series['path'], self.fetched_info)
-            self.accept()
+        new_info = {
+            'description': self.description_text.toPlainText(),
+            'authors': [author.strip() for author in self.authors_input.text().split(',') if author.strip()],
+            'genres': [genre.strip() for genre in self.genres_input.text().split(',') if genre.strip()]
+        }
+        self.library_manager.update_series_info(self.series['id'], new_info)
+        self.accept()

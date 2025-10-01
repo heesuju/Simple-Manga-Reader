@@ -1,15 +1,14 @@
 import os
 from .library_scanner import LibraryScanner
-from src.utils.database_utils import get_db_connection
+from src.utils.database_utils import get_db_connection, create_tables
 
 class LibraryManager:
     def __init__(self):
         self.init_db()
 
     def init_db(self):
+        create_tables()
         conn = get_db_connection()
-        # The create_tables function from database_utils can be called here if needed
-        # to ensure tables are created on startup.
         conn.close()
 
     def get_series(self):
@@ -18,9 +17,10 @@ class LibraryManager:
         cursor.execute("SELECT * FROM series")
         series_list = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        # For each series, you might want to load its chapters as well
         for series in series_list:
             series['chapters'] = self.get_chapters(series)
+            series['authors'] = self.get_authors(series['id'])
+            series['genres'] = self.get_genres(series['id'])
         return series_list
 
     def search_series(self, search_term):
@@ -31,6 +31,89 @@ class LibraryManager:
         conn.close()
         for series in series_list:
             series['chapters'] = self.get_chapters(series)
+            series['authors'] = self.get_authors(series['id'])
+            series['genres'] = self.get_genres(series['id'])
+        return series_list
+
+    def get_authors(self, series_id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT a.name FROM authors a
+            JOIN series_authors sa ON a.id = sa.author_id
+            WHERE sa.series_id = ?
+        """, (series_id,))
+        authors = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return authors
+
+    def get_genres(self, series_id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT g.name FROM genres g
+            JOIN series_genres sg ON g.id = sg.genre_id
+            WHERE sg.series_id = ?
+        """, (series_id,))
+        genres = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return genres
+
+    def get_all_authors(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM authors ORDER BY name")
+        authors = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return authors
+
+    def get_all_genres(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM genres ORDER BY name")
+        genres = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return genres
+
+    def search_series_with_filters(self, search_term, filters):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        query = "SELECT DISTINCT s.* FROM series s"
+        params = []
+        joins = ""
+
+        if filters.get('authors'):
+            joins += " JOIN series_authors sa ON s.id = sa.series_id JOIN authors a ON sa.author_id = a.id"
+            query += joins
+            query += " WHERE a.name IN ({})".format(', '.join('?'*len(filters['authors'])))
+            params.extend(filters['authors'])
+        
+        if filters.get('genres'):
+            if not joins: # if joins is empty, we need to add the joins
+                joins += " JOIN series_genres sg ON s.id = sg.series_id JOIN genres g ON sg.genre_id = g.id"
+                query += joins
+                query += " WHERE g.name IN ({})".format(', '.join('?'*len(filters['genres'])))
+            else: # if joins is not empty, we need to use AND
+                query += " AND s.id IN (SELECT s.id FROM series s JOIN series_genres sg ON s.id = sg.series_id JOIN genres g ON sg.genre_id = g.id WHERE g.name IN ({})) ".format(', '.join('?'*len(filters['genres'])))
+            params.extend(filters['genres'])
+
+        if search_term:
+            if not filters.get('authors') and not filters.get('genres'):
+                query += " WHERE s.name LIKE ?"
+            else:
+                query += " AND s.name LIKE ?"
+            params.append(f'%{search_term}%')
+
+        cursor.execute(query, params)
+        series_list = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+
+        for series in series_list:
+            series['chapters'] = self.get_chapters(series)
+            series['authors'] = self.get_authors(series['id'])
+            series['genres'] = self.get_genres(series['id'])
+        
         return series_list
 
     def get_chapters(self, series):
@@ -101,14 +184,42 @@ class LibraryManager:
         finally:
             conn.close()
 
-    def update_series_info(self, series_path, new_info):
+    def update_series_info(self, series_id, new_info):
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            # Assuming new_info is a dictionary with column names as keys
-            # This example only updates the name. Extend as needed.
-            if 'name' in new_info:
-                cursor.execute("UPDATE series SET name = ? WHERE path = ?", (new_info['name'], series_path))
+            # Update description
+            if 'description' in new_info:
+                cursor.execute("UPDATE series SET description = ? WHERE id = ?", (new_info['description'], series_id))
+
+            # Update authors
+            if 'authors' in new_info:
+                # First, delete existing author links for the series
+                cursor.execute("DELETE FROM series_authors WHERE series_id = ?", (series_id,))
+                # Then, add the new authors
+                for author_name in new_info['authors']:
+                    # Get author id or create new author
+                    cursor.execute("SELECT id FROM authors WHERE name = ?", (author_name,))
+                    author_id = cursor.fetchone()
+                    if not author_id:
+                        cursor.execute("INSERT INTO authors (name) VALUES (?) RETURNING id", (author_name,))
+                        author_id = cursor.fetchone()
+                    cursor.execute("INSERT INTO series_authors (series_id, author_id) VALUES (?, ?)", (series_id, author_id['id']))
+
+            # Update genres
+            if 'genres' in new_info:
+                # First, delete existing genre links for the series
+                cursor.execute("DELETE FROM series_genres WHERE series_id = ?", (series_id,))
+                # Then, add the new genres
+                for genre_name in new_info['genres']:
+                    # Get genre id or create new genre
+                    cursor.execute("SELECT id FROM genres WHERE name = ?", (genre_name,))
+                    genre_id = cursor.fetchone()
+                    if not genre_id:
+                        cursor.execute("INSERT INTO genres (name) VALUES (?) RETURNING id", (genre_name,))
+                        genre_id = cursor.fetchone()
+                    cursor.execute("INSERT INTO series_genres (series_id, genre_id) VALUES (?, ?)", (series_id, genre_id['id']))
+
             conn.commit()
         except Exception as e:
             print(f"Error updating series info: {e}")
