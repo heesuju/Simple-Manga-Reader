@@ -1,3 +1,4 @@
+import qdarktheme
 import sys
 import json
 import os
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    qdarktheme.setup_theme("dark")
     library_manager = LibraryManager()
     main_win = MainWindow(library_manager)
     main_win.show()
