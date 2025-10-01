@@ -45,7 +45,7 @@ class ChapterListItemWidget(QWidget):
         self.update_page_count()
 
     def update_page_count(self):
-        full_chapter_path = Path(os.path.join(self.series['root_dir'], self.chapter['path']))
+        full_chapter_path = Path(self.chapter['path'])
         if full_chapter_path.exists() and full_chapter_path.is_dir():
             images = [p for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
             self.page_count_label.setText(f'{len(images)} pages')
@@ -109,7 +109,7 @@ class ChapterListView(QWidget):
         top_layout = QHBoxLayout()
         self.series_thumbnail = QLabel()
         self.series_thumbnail.setFixedSize(150, 200)
-        full_cover_path = os.path.join(series['root_dir'], series['cover_image'])
+        full_cover_path = series['cover_image']
         cover_pixmap = QPixmap(full_cover_path)
         self.series_thumbnail.setPixmap(cover_pixmap.scaled(150, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         
@@ -178,7 +178,7 @@ class ChapterListView(QWidget):
 
         self.list_layout.addStretch()
 
-        loader = ItemLoader(chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75, root_dir=self.series['root_dir'])
+        loader = ItemLoader(chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75)
         loader.signals.item_loaded.connect(self.on_thumbnail_loaded)
         self.threadpool.start(loader)
 

@@ -52,25 +52,24 @@ class MainWindow(QMainWindow):
         if chapter:
             self.current_series_has_chapters = True
             # Save the last read chapter
-            series['last_read_chapter'] = chapter['path']
-            self.library_manager.save_library()
+            self.library_manager.update_last_read_chapter(series['id'], chapter['path'])
         else:
             self.current_series_has_chapters = False
 
         if chapter:
-            chapter_files = [os.path.join(series['root_dir'], ch['path']) for ch in series['chapters']]
+            chapter_files = [ch['path'] for ch in series['chapters']]
             chapter_index = series['chapters'].index(chapter)
             start_file = None # Start from the beginning of the chapter
 
             # Get all images in the chapter
-            full_chapter_path = Path(os.path.join(series['root_dir'], chapter['path']))
+            full_chapter_path = Path(chapter['path'])
             images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
             images = sorted(images, key=get_chapter_number)
         else: # No chapters, it's a series of images
             chapter_files = []
             chapter_index = 0
             start_file = None
-            full_series_path = Path(os.path.join(series['root_dir'], series['path']))
+            full_series_path = Path(series['path'])
             images = [str(p) for p in full_series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
             images = sorted(images, key=get_chapter_number)
 

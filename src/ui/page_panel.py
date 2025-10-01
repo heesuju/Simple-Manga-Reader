@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QThreadPool
 from src.ui.collapsible_panel import CollapsiblePanel
-from src.ui.thumbnail_widget import ThumbnailWidget
+from src.ui.page_thumbnail import PageThumbnail
 from src.core.thumbnail_worker import ThumbnailWorker
 from src.data.reader_model import ReaderModel
 from src.enums import ViewMode
@@ -27,7 +27,7 @@ class PagePanel(CollapsiblePanel):
             images = model._get_double_view_images()
 
         for i, image_path in enumerate(images):
-            widget = ThumbnailWidget(i, str(i+1))
+            widget = PageThumbnail(i, str(i+1))
             widget.clicked.connect(self._change_page_by_thumbnail)
             self.thumbnails_layout.insertWidget(i, widget)
             self.page_thumbnail_widgets.append(widget)

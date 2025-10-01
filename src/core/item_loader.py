@@ -53,23 +53,21 @@ class ItemLoader(QRunnable):
                 item_type = 'series'
                 cover_image = item.get('cover_image')
                 if cover_image:
-                    full_path = os.path.join(item['root_dir'], cover_image)
-                    pix = load_thumbnail_from_path(full_path, self.thumb_width, self.thumb_height)
+                    pix = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
                 chapter_path = item['path']
-                full_path = os.path.join(self.root_dir, chapter_path)
                 thumbnail_path = None
                 
-                cover_path = Path(full_path) / 'cover.png' 
+                cover_path = Path(chapter_path) / 'cover.png' 
                 if not cover_path.exists(): 
-                    cover_path = Path(full_path) / 'cover.jpg'
+                    cover_path = Path(chapter_path) / 'cover.jpg'
                 
                 if cover_path.exists():
                     thumbnail_path = str(cover_path)
                 else:
                     try:
-                        first_image = next(f for f in Path(full_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
+                        first_image = next(f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
                         if first_image:
                             thumbnail_path = str(first_image)
                     except (StopIteration, PermissionError):

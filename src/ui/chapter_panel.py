@@ -4,7 +4,7 @@ from pathlib import Path
 from PyQt6.QtCore import QThreadPool, pyqtSignal, QRunnable, QObject
 from PyQt6.QtWidgets import QPushButton
 from src.ui.collapsible_panel import CollapsiblePanel
-from src.ui.thumbnail_widget import ThumbnailWidget
+from src.ui.page_thumbnail import PageThumbnail
 from src.core.thumbnail_worker import ThumbnailWorker
 from src.utils.img_utils import _get_first_image_path, draw_text_on_image
 from src.data.reader_model import ReaderModel
@@ -54,7 +54,7 @@ class ChapterPanel(CollapsiblePanel):
 
         for i, chapter in enumerate(chapters):
             chapter_name = Path(str(chapter)).name
-            widget = ThumbnailWidget(i, chapter_name)
+            widget = PageThumbnail(i, chapter_name)
             widget.clicked.connect(self._change_chapter_by_thumbnail)
             self.thumbnails_layout.insertWidget(i, widget)
             self.chapter_thumbnail_widgets.append(widget)
