@@ -72,6 +72,8 @@ def create_tables():
         cursor.execute("ALTER TABLE series ADD COLUMN description TEXT")
     if 'last_read_chapter' not in columns:
         cursor.execute("ALTER TABLE series ADD COLUMN last_read_chapter TEXT")
+    if 'last_opened_date' not in columns:
+        cursor.execute("ALTER TABLE series ADD COLUMN last_opened_date DATETIME")
 
     conn.commit()
     conn.close()

@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from .library_scanner import LibraryScanner
 from src.utils.database_utils import get_db_connection, create_tables
 
@@ -27,6 +28,18 @@ class LibraryManager:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM series WHERE name LIKE ?", (f'%{search_term}%',))
+        series_list = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        for series in series_list:
+            series['chapters'] = self.get_chapters(series)
+            series['authors'] = self.get_authors(series['id'])
+            series['genres'] = self.get_genres(series['id'])
+        return series_list
+
+    def get_recently_opened_series(self, limit=20):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM series WHERE last_opened_date IS NOT NULL ORDER BY last_opened_date DESC LIMIT ?", (limit,))
         series_list = [dict(row) for row in cursor.fetchall()]
         conn.close()
         for series in series_list:
@@ -176,7 +189,7 @@ class LibraryManager:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("UPDATE series SET last_read_chapter = ? WHERE id = ?", (chapter_path, series_id))
+            cursor.execute("UPDATE series SET last_read_chapter = ?, last_opened_date = ? WHERE id = ?", (chapter_path, datetime.now(), series_id))
             conn.commit()
         except Exception as e:
             print(f"Error updating last read chapter: {e}")

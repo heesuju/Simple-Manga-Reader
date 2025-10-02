@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu
+    QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu, QGraphicsBlurEffect, QGraphicsOpacityEffect
 )
-from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics
-from PyQt6.QtCore import Qt, pyqtSignal, QMargins
-from src.utils.img_utils import crop_pixmap
+from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath
+from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup
+from src.utils.img_utils import crop_pixmap, get_chapter_number
 from src.ui.info_dialog import InfoDialog
 import os
 import sys
@@ -13,20 +13,34 @@ class ThumbnailWidget(QWidget):
     clicked = pyqtSignal(object)
     remove_requested = pyqtSignal(object)
 
-    def __init__(self, series, library_manager, parent=None):
+    def __init__(self, series, library_manager, parent=None, show_chapter_number=False):
         super().__init__(parent)
         self.series = series
         self.library_manager = library_manager
+        self.show_chapter_number = show_chapter_number
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(5, 5, 5, 5)
-        self.layout.setSpacing(5)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
 
         self.image_container = QWidget()
         self.image_container.setObjectName("image_container")
-        self.image_label = QLabel(self.image_container)
+        self.image_label = QLabel(self)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_container.setFixedSize(150, 210)
-        self.image_label.setFixedSize(150, 210)
+        self.image_label.setScaledContents(True)
+
+        self.original_size = QSize(160, 260)
+        self.image_container_size = QSize(150, 210)
+        self.setFixedSize(self.original_size)
+        self.image_container.setFixedSize(self.image_container_size)
+        self.image_label.setGeometry(QRect(5, 5, self.image_container_size.width(), self.image_container_size.height()))
+
+        # Shine effect
+        self.shine_label = QLabel(self)
+        self.shine_label.setStyleSheet("background-color: qradialgradient(cx:1, cy:0, radius: 1, fx:1, fy:0, stop:0 rgba(255, 255, 255, 100), stop:0.5 rgba(255, 255, 255, 0));")
+        
+        self.shine_opacity_effect = QGraphicsOpacityEffect(self.shine_label)
+        self.shine_label.setGraphicsEffect(self.shine_opacity_effect)
+        self.shine_opacity_effect.setOpacity(0)
 
         self.info_layout = QHBoxLayout()
         self.name_label = QLabel()
@@ -40,7 +54,6 @@ class ThumbnailWidget(QWidget):
         text = self.series['name']
         rect = font_metrics.boundingRect(0, 0, 130, max_height * 2, Qt.TextFlag.TextWordWrap, text)
         if rect.height() > max_height:
-            # Find the right place to cut the text
             end = len(text)
             while end > 0:
                 end -= 1
@@ -50,29 +63,101 @@ class ThumbnailWidget(QWidget):
                     break
         self.name_label.setText(text)
 
-        self.menu_button = QPushButton("\u22EE") # Vertical ellipsis
-        self.menu_button.setFlat(True)
-        self.menu_button.setStyleSheet("border: none; font-size: 20px;")
-        self.menu_button.setFixedSize(30, 30)
-        self.menu_button.clicked.connect(self.show_menu)
-
         self.info_layout.addWidget(self.name_label)
-        self.info_layout.addWidget(self.menu_button)
 
         self.layout.addWidget(self.image_container)
         self.layout.addLayout(self.info_layout)
-        self.setFixedSize(160, 260)
 
         self._hover = False
         self._selected = False
         self._update_style()
 
-    def show_menu(self):
+        self.setup_animation()
+
+        if self.show_chapter_number:
+            self.chapter_label = QLabel(self)
+            self.chapter_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; border-radius: 5px; padding: 2px;")
+            self.chapter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.chapter_label.hide()
+
+    def set_chapter_number(self, series_obj):
+        if not self.show_chapter_number or 'last_read_chapter' not in series_obj or not series_obj['last_read_chapter']:
+            return
+
+        chapter_path = series_obj['last_read_chapter']
+        chapter_number = get_chapter_number(chapter_path)
+
+        if chapter_number is not None:
+            self.chapter_label.setText(f"Ch{chapter_number:02}")
+            self.chapter_label.adjustSize()
+            self.chapter_label.move(self.image_container.width() - self.chapter_label.width() - 5, 5)
+            self.chapter_label.show()
+            self.chapter_label.raise_()
+
+    def setup_animation(self):
+        # Grow animation
+        self.anim_group_grow = QParallelAnimationGroup(self)
+        self.anim_group_shrink = QParallelAnimationGroup(self)
+
+        # Image label animation
+        anim_img_grow = QPropertyAnimation(self.image_label, b"geometry")
+        anim_img_grow.setDuration(150)
+        anim_img_grow.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        original_rect = QRect(5, 5, self.image_container_size.width(), self.image_container_size.height())
+        grown_rect = QRect(
+            5 - int(self.image_container_size.width() * 0.05),
+            5 - int(self.image_container_size.height() * 0.05),
+            int(self.image_container_size.width() * 1.1),
+            int(self.image_container_size.height() * 1.1)
+        )
+        anim_img_grow.setStartValue(original_rect)
+        anim_img_grow.setEndValue(grown_rect)
+        self.anim_group_grow.addAnimation(anim_img_grow)
+
+        anim_img_shrink = QPropertyAnimation(self.image_label, b"geometry")
+        anim_img_shrink.setDuration(150)
+        anim_img_shrink.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        anim_img_shrink.setStartValue(grown_rect)
+        anim_img_shrink.setEndValue(original_rect)
+        self.anim_group_shrink.addAnimation(anim_img_shrink)
+
+        # Shine label animation
+        shine_size = int(self.image_container_size.width() * 0.8)
+        original_shine_rect = QRect(original_rect.right() - shine_size, original_rect.top(), shine_size, shine_size)
+        grown_shine_size = int(grown_rect.width() * 0.8)
+        grown_shine_rect = QRect(grown_rect.right() - grown_shine_size, grown_rect.top(), grown_shine_size, grown_shine_size)
+
+        anim_shine_grow = QPropertyAnimation(self.shine_label, b"geometry")
+        anim_shine_grow.setDuration(150)
+        anim_shine_grow.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        anim_shine_grow.setStartValue(original_shine_rect)
+        anim_shine_grow.setEndValue(grown_shine_rect)
+        self.anim_group_grow.addAnimation(anim_shine_grow)
+
+        anim_shine_shrink = QPropertyAnimation(self.shine_label, b"geometry")
+        anim_shine_shrink.setDuration(150)
+        anim_shine_shrink.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        anim_shine_shrink.setStartValue(grown_shine_rect)
+        anim_shine_shrink.setEndValue(original_shine_rect)
+        self.anim_group_shrink.addAnimation(anim_shine_shrink)
+
+        # Shine fade in/out
+        self.anim_fade_in = QPropertyAnimation(self.shine_opacity_effect, b"opacity")
+        self.anim_fade_in.setDuration(200)
+        self.anim_fade_in.setStartValue(0)
+        self.anim_fade_in.setEndValue(1)
+
+        self.anim_fade_out = QPropertyAnimation(self.shine_opacity_effect, b"opacity")
+        self.anim_fade_out.setDuration(200)
+        self.anim_fade_out.setStartValue(1)
+        self.anim_fade_out.setEndValue(0)
+
+    def contextMenuEvent(self, event):
         menu = QMenu(self)
         open_action = menu.addAction("Open Folder")
         remove_action = menu.addAction("Remove")
         get_info_action = menu.addAction("Get Info")
-        action = menu.exec(self.menu_button.mapToGlobal(self.menu_button.rect().bottomLeft()))
+        action = menu.exec(event.globalPos())
 
         if action == open_action:
             self.open_folder()
@@ -94,20 +179,33 @@ class ThumbnailWidget(QWidget):
             subprocess.Popen(["xdg-open", self.series['path']])
 
     def _update_style(self):
-        border_style = "border: 2px solid transparent;"
+        border_color = "transparent"
         if self._selected:
-            border_style = "border: 2px solid rgba(74, 134, 232, 180);"
+            border_color = "rgba(74, 134, 232, 180)"
         elif self._hover:
-            border_style = "border: 2px solid rgba(100, 100, 100, 180);"
-        self.image_container.setStyleSheet(f"QWidget#image_container {{ {border_style} }}")
+            border_color = "rgba(100, 100, 100, 180)"
+        
+        self.image_container.setStyleSheet(f"QWidget#image_container {{ border: 2px solid {border_color}; border-radius: 10px; background-color: transparent; }}")
 
     def enterEvent(self, event):
         self._hover = True
+        self.image_label.raise_()
+        self.shine_label.raise_()
+        if self.show_chapter_number and hasattr(self, 'chapter_label'):
+            self.chapter_label.raise_()
+        self.anim_group_shrink.stop()
+        self.anim_group_grow.start()
+        self.anim_fade_out.stop()
+        self.anim_fade_in.start()
         self._update_style()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self._hover = False
+        self.anim_group_grow.stop()
+        self.anim_group_shrink.start()
+        self.anim_fade_in.stop()
+        self.anim_fade_out.start()
         self._update_style()
         super().leaveEvent(event)
 
@@ -120,8 +218,20 @@ class ThumbnailWidget(QWidget):
         if pixmap.isNull():
             return
         
-        cropped = crop_pixmap(pixmap, 150, 210)
-        self.image_label.setPixmap(cropped)
+        cropped = crop_pixmap(pixmap, self.image_container_size.width(), self.image_container_size.height())
+        
+        rounded = QPixmap(cropped.size())
+        rounded.fill(Qt.GlobalColor.transparent)
+        
+        painter = QPainter(rounded)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(0, 0, cropped.width(), cropped.height(), 0, 0)
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, cropped)
+        painter.end()
+
+        self.image_label.setPixmap(rounded)
 
     def set_selected(self, selected: bool):
         self._selected = selected

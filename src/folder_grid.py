@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter
 )
 from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence
-from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent
 
 from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
@@ -43,12 +43,14 @@ def is_double_page(size, common_ratio):
 class FolderGrid(QWidget):
     """Shows a grid of folders and images."""
     series_selected = pyqtSignal(object)
+    recent_series_selected = pyqtSignal(object)
 
     def __init__(self, library_manager, parent=None):
         super().__init__(parent)
         
         self.library_manager = library_manager
         self.loading_generation = 0
+        self.recent_loading_generation = 0
         self.loader = None
         self.received_items = {}
         self.next_item_to_display = 0
@@ -58,6 +60,8 @@ class FolderGrid(QWidget):
         self.current_series = None
         self.items = []
         self.tokens = {}
+        self.recent_items = []
+        self.recent_loader = None
         
         self.threadpool = QThreadPool()
         self.web_server_process = None
@@ -95,11 +99,68 @@ class FolderGrid(QWidget):
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("border: none;")
         self.scroll_content = QWidget()
-        self.grid_layout = QGridLayout(self.scroll_content)
-        self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.scroll.setWidget(self.scroll_content)
         main_layout.addWidget(self.scroll)
+
+        content_layout = QVBoxLayout(self.scroll_content)
+        content_layout.setContentsMargins(0,0,0,0)
+        content_layout.setSpacing(0)
+
+        self.recent_label = QLabel("Recently Opened")
+        self.recent_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-left: 10px;")
+        content_layout.addWidget(self.recent_label)
+
+        self.recent_scroll_container = QWidget()
+        container_layout = QGridLayout(self.recent_scroll_container)
+        container_layout.setContentsMargins(0,0,0,0)
+        content_layout.addWidget(self.recent_scroll_container)
+
+        self.recent_scroll = QScrollArea()
+        self.recent_scroll.setWidgetResizable(True)
+        self.recent_scroll.setStyleSheet("border: none;")
+        self.recent_scroll.viewport().setContentsMargins(0, 0, 0, 0)
+        self.recent_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.recent_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.recent_scroll.setFixedHeight(260)
+        self.recent_scroll.viewport().installEventFilter(self)
+        container_layout.addWidget(self.recent_scroll, 0, 0)
+
+        self.recent_scroll_content = QWidget()
+        self.recent_layout = QHBoxLayout(self.recent_scroll_content)
+        self.recent_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.recent_layout.setContentsMargins(0,0,0,0)
+        self.recent_layout.setSpacing(0)
+        self.recent_scroll.setWidget(self.recent_scroll_content)
+
+        self.recent_scroll_left_btn = QPushButton("<", self.recent_scroll_container)
+        self.recent_scroll_left_btn.setFixedWidth(30)
+        self.recent_scroll_left_btn.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.recent_scroll_left_btn.setStyleSheet("background-color: rgba(0, 0, 0, 128); color: white; border: none;")
+        self.recent_scroll_left_btn.hide()
+        container_layout.addWidget(self.recent_scroll_left_btn, 0, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.recent_scroll_right_btn = QPushButton(">", self.recent_scroll_container)
+        self.recent_scroll_right_btn.setFixedWidth(30)
+        self.recent_scroll_right_btn.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.recent_scroll_right_btn.setStyleSheet("background-color: rgba(0, 0, 0, 128); color: white; border: none;")
+        self.recent_scroll_right_btn.hide()
+        container_layout.addWidget(self.recent_scroll_right_btn, 0, 0, Qt.AlignmentFlag.AlignRight)
+
+        self.recent_scroll_left_btn.clicked.connect(self.scroll_left)
+        self.recent_scroll_right_btn.clicked.connect(self.scroll_right)
+
+        scroll_bar = self.recent_scroll.horizontalScrollBar()
+        scroll_bar.rangeChanged.connect(self.update_scroll_buttons_visibility)
+        scroll_bar.valueChanged.connect(self.update_scroll_buttons_visibility)
+
+        self.grid_layout = QGridLayout()
+        self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.grid_layout.setContentsMargins(0,0,0,0)
+        self.grid_layout.setSpacing(0)
+        content_layout.addLayout(self.grid_layout)
+        content_layout.addStretch(1)
 
         self.info_label = QLabel(self)
         self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -107,6 +168,7 @@ class FolderGrid(QWidget):
         self.info_label.hide()
 
         self.setup_completer()
+        self.load_recent_items()
         self.load_items()
 
     def setup_completer(self):
@@ -170,6 +232,14 @@ class FolderGrid(QWidget):
         if search_text.startswith("/"):
              search_text = ""
         filters = self.get_filters()
+
+        if search_text or filters.get('authors') or filters.get('genres'):
+            self.recent_label.hide()
+            self.recent_scroll_container.hide()
+        else:
+            self.recent_label.show()
+            self.recent_scroll_container.show()
+
         series_list = self.library_manager.search_series_with_filters(search_text, filters)
         self.load_items(series_list)
 
@@ -232,6 +302,102 @@ class FolderGrid(QWidget):
         loader.signals.item_invalid.connect(self.on_item_invalid)
         self.threadpool.start(loader)
 
+    def load_recent_items(self):
+        self.recent_loading_generation += 1
+
+        while self.recent_layout.count():
+            item = self.recent_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        recent_series_list = self.library_manager.get_recently_opened_series()
+
+        if not recent_series_list:
+            self.recent_label.hide()
+            self.recent_scroll.hide()
+            return
+
+        self.recent_label.show()
+        self.recent_scroll.show()
+
+        loader = ItemLoader(recent_series_list, self.recent_loading_generation, item_type='series')
+        if self.recent_loader:
+            try:
+                self.recent_loader.signals.item_loaded.disconnect()
+            except TypeError:
+                pass
+        self.recent_loader = loader
+        loader.signals.item_loaded.connect(self.on_recent_item_loaded)
+        self.threadpool.start(loader)
+
+    def on_recent_item_loaded(self, pix, series, idx, generation, item_type):
+        if generation != self.recent_loading_generation:
+            return
+        
+        widget = ThumbnailWidget(series, self.library_manager, show_chapter_number=True)
+        widget.set_pixmap(pix)
+        widget.set_chapter_number(series)
+        widget.clicked.connect(self.recent_series_selected)
+        widget.remove_requested.connect(self.remove_series)
+        self.recent_layout.addWidget(widget)
+
+    def scroll_left(self):
+        scroll_bar = self.recent_scroll.horizontalScrollBar()
+        current_pos = scroll_bar.value()
+        viewport_width = self.recent_scroll.viewport().width()
+        
+        target_pos = current_pos - viewport_width
+        
+        closest_widget = None
+        min_dist = float('inf')
+        
+        for i in range(self.recent_layout.count()):
+            widget = self.recent_layout.itemAt(i).widget()
+            if widget:
+                dist = abs(widget.pos().x() - target_pos)
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_widget = widget
+        
+        if closest_widget:
+            self.animate_scroll(closest_widget.pos().x())
+
+    def scroll_right(self):
+        scroll_bar = self.recent_scroll.horizontalScrollBar()
+        current_pos = scroll_bar.value()
+        viewport_width = self.recent_scroll.viewport().width()
+        visible_right = current_pos + viewport_width
+
+        target_widget = None
+        for i in range(self.recent_layout.count()):
+            widget = self.recent_layout.itemAt(i).widget()
+            if widget and widget.pos().x() >= visible_right:
+                target_widget = widget
+                break
+        
+        if target_widget:
+            self.animate_scroll(target_widget.pos().x())
+        else:
+            # If no widget is completely off-screen, scroll to the end
+            self.animate_scroll(scroll_bar.maximum())
+
+    def animate_scroll(self, value):
+        self.scroll_animation = QPropertyAnimation(self.recent_scroll.horizontalScrollBar(), b"value")
+        self.scroll_animation.setDuration(300)
+        self.scroll_animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.scroll_animation.setEndValue(value)
+        self.scroll_animation.start()
+
+    def update_scroll_buttons_visibility(self):
+        scroll_bar = self.recent_scroll.horizontalScrollBar()
+        scrollable = scroll_bar.maximum() > 0
+
+        self.recent_scroll_left_btn.setVisible(scrollable)
+        self.recent_scroll_right_btn.setVisible(scrollable)
+
+        self.recent_scroll_left_btn.setEnabled(scroll_bar.value() > 0)
+        self.recent_scroll_right_btn.setEnabled(scroll_bar.value() < scroll_bar.maximum())
+
     def on_item_loaded(self, pix, series, idx, generation, item_type):
         if generation != self.loading_generation:
             return
@@ -274,6 +440,7 @@ class FolderGrid(QWidget):
 
     def remove_series(self, series: object):
         self.library_manager.remove_series(series)
+        self.load_recent_items()
         self.load_items()
 
     def display_chapters(self, chapters):
@@ -380,6 +547,7 @@ class FolderGrid(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Select Manga Series Folder")
         if folder:
             self.library_manager.add_series(folder)
+            self.load_recent_items()
             self.load_items()
 
     def add_multiple_series(self):
@@ -387,11 +555,13 @@ class FolderGrid(QWidget):
         if folder:
             subfolders = [f.path for f in os.scandir(folder) if f.is_dir()]
             self.library_manager.add_series_batch(subfolders)
+            self.load_recent_items()
             self.load_items()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.relayout_items()
+        self.update_scroll_buttons_visibility()
 
     def relayout_items(self):
         if not self.items:
@@ -408,6 +578,11 @@ class FolderGrid(QWidget):
             row = i // num_cols
             col = i % num_cols
             self.grid_layout.addWidget(widget, row, col)
+
+    def eventFilter(self, source, event):
+        if source == self.recent_scroll.viewport() and event.type() == QEvent.Type.Wheel:
+            return True
+        return super().eventFilter(source, event)
 
     def closeEvent(self, event):
         self.stop_web_access()

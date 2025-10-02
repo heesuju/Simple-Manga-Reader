@@ -29,6 +29,7 @@ class MainWindow(QMainWindow):
 
         self.folder_grid = FolderGrid(self.library_manager, self)
         self.folder_grid.series_selected.connect(self.show_chapter_list)
+        self.folder_grid.recent_series_selected.connect(self.show_reader_for_recent)
         self.stacked_widget.addWidget(self.folder_grid)
 
     def show_chapter_list(self, series):
@@ -44,7 +45,27 @@ class MainWindow(QMainWindow):
             self.current_series_has_chapters = False
             self.show_reader_view(series, None)
 
+    def show_reader_for_recent(self, series):
+        last_read_path = series.get('last_read_chapter')
+        if not last_read_path:
+            # If for some reason there is no last read chapter, fall back to chapter list
+            self.show_chapter_list(series)
+            return
+
+        target_chapter = None
+        for chapter in series.get('chapters', []):
+            if chapter['path'] == last_read_path:
+                target_chapter = chapter
+                break
+        
+        if target_chapter:
+            self.show_reader_view(series, target_chapter)
+        else:
+            # Fallback if chapter not found
+            self.show_chapter_list(series)
+
     def show_folder_grid(self):
+        self.folder_grid.load_recent_items()
         self.stacked_widget.setCurrentWidget(self.folder_grid)
 
     def show_reader_view(self, series, chapter):
