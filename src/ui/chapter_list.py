@@ -18,9 +18,10 @@ class ChapterListItemWidget(QWidget):
         self.series = series
         self.library_manager = library_manager
         self.is_highlighted = False
+        self.hovered = False
+        self.pressed = False
 
-        self.setAutoFillBackground(True)
-        self.set_default_palette()
+        self.setAutoFillBackground(False)
 
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(10)
@@ -38,12 +39,35 @@ class ChapterListItemWidget(QWidget):
 
         chapter_number = int(chapter_name.replace("Ch ", ""))
         self.chapter_number_label.setText(f'{chapter_number:02}')
-        self.chapter_number_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 0px; color: white;")
+        self.chapter_number_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 0px; color: white; background: transparent;")
         self.name_label.setText(Path(chapter['path']).name)
-        self.name_label.setStyleSheet("color: white;")
-        self.page_count_label.setStyleSheet("color: white;")
+        self.name_label.setStyleSheet("color: white; background: transparent;")
+        self.page_count_label.setStyleSheet("color: white; background: transparent;")
 
         self.update_page_count()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        
+        if self.is_highlighted:
+            bg_color = QColor(168, 216, 255, 150)
+            border_color = QColor(168, 216, 255, 200)
+        elif self.pressed:
+            bg_color = QColor(255, 255, 255, 40)
+            border_color = QColor(255, 255, 255, 70)
+        elif self.hovered:
+            bg_color = QColor(255, 255, 255, 20)
+            border_color = QColor(255, 255, 255, 50)
+        else:
+            bg_color = Qt.GlobalColor.transparent
+            border_color = QColor(255, 255, 255, 30)
+
+        painter.setBrush(bg_color)
+        painter.setPen(border_color)
+        painter.drawRoundedRect(rect, 5, 5)
 
     def update_page_count(self):
         full_chapter_path = Path(self.chapter['path'])
@@ -51,46 +75,31 @@ class ChapterListItemWidget(QWidget):
             images = [p for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
             self.page_count_label.setText(f'{len(images)} pages')
 
-    def set_default_palette(self):
-        palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Window, Qt.GlobalColor.transparent)
-        self.setPalette(palette)
-
     def set_pixmap(self, pixmap):
         cropped_pixmap = crop_pixmap(pixmap, 75, 38)
         self.thumbnail_label.setPixmap(cropped_pixmap)
 
     def enterEvent(self, event):
-        if not self.is_highlighted:
-            palette = self.palette()
-            palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255, 20))
-            self.setPalette(palette)
+        self.hovered = True
+        self.update()
 
     def leaveEvent(self, event):
-        if not self.is_highlighted:
-            self.set_default_palette()
+        self.hovered = False
+        self.update()
 
     def mousePressEvent(self, event):
-        if not self.is_highlighted:
-            palette = self.palette()
-            palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255, 40))
-            self.setPalette(palette)
+        self.pressed = True
+        self.update()
 
     def mouseReleaseEvent(self, event):
-        if not self.is_highlighted:
-            palette = self.palette()
-            palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255, 20))
-            self.setPalette(palette)
-        self.chapter_selected.emit(self.chapter)
+        self.pressed = False
+        self.update()
+        if self.rect().contains(event.pos()):
+            self.chapter_selected.emit(self.chapter)
 
     def set_highlight(self, is_highlighted):
         self.is_highlighted = is_highlighted
-        if is_highlighted:
-            palette = self.palette()
-            palette.setColor(QPalette.ColorRole.Window, QColor(168, 216, 255, 150))
-            self.setPalette(palette)
-        else:
-            self.set_default_palette()
+        self.update()
 
 class GradientOverlay(QWidget):
     def __init__(self, parent=None):

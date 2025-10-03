@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 import os
 import shutil
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene,QGraphicsView,QGraphicsPixmapItem, 
@@ -21,6 +22,8 @@ from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.core.thumbnail_worker import get_common_size_ratio
 from src.utils.segmentation import get_panel_coordinates
+from src.utils.database_utils import get_db_connection
+from src.utils.img_utils import get_chapter_number
 
 class FitInViewAnimation(QPropertyAnimation):
     def __init__(self, target, parent=None):
@@ -35,12 +38,12 @@ from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAni
 class ReaderView(QMainWindow):
     back_pressed = pyqtSignal()
 
-    def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
+    def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
         super().__init__()
         self.setWindowTitle("Manga Reader")
         self.grabGesture(Qt.GestureType.PinchGesture)
 
-        self.model = ReaderModel(manga_dirs, index, start_file, images)
+        self.model = ReaderModel(series, manga_dirs, index, start_file, images)
         self.model.refreshed.connect(self.on_model_refreshed)
         self.model.image_loaded.connect(self._load_image)
         self.model.double_image_loaded.connect(self._load_double_images)
@@ -436,9 +439,15 @@ class ReaderView(QMainWindow):
             self.model.current_index += step
             self.model.load_image()
         else:
-            self._change_chapter(1)  # Go to next chapter
-
-        self.page_panel._update_page_selection(self.model.current_index)
+            next_chapter_path = self._get_adjacent_chapter_from_db(1)
+            if next_chapter_path:
+                new_chapter = next((ch for ch in self.model.chapters if str(Path(ch)) == next_chapter_path), None)
+                if new_chapter:
+                    self.model.manga_dir = new_chapter
+                    self.model.chapter_index = self.model.chapters.index(new_chapter)
+                    self.model.images = [] # force reload
+                    self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+                    self.model.refresh(start_from_end=False, preserve_view_mode=True)
 
     def show_prev(self):
         if not self.model.images:
@@ -454,9 +463,15 @@ class ReaderView(QMainWindow):
             self.model.current_index -= step
             self.model.load_image()
         else:
-            self._change_chapter(-1)  # Go to previous chapter
-
-        self.page_panel._update_page_selection(self.model.current_index)
+            prev_chapter_path = self._get_adjacent_chapter_from_db(-1)
+            if prev_chapter_path:
+                new_chapter = next((ch for ch in self.model.chapters if str(Path(ch)) == prev_chapter_path), None)
+                if new_chapter:
+                    self.model.manga_dir = new_chapter
+                    self.model.chapter_index = self.model.chapters.index(new_chapter)
+                    self.model.images = [] # force reload
+                    self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+                    self.model.refresh(start_from_end=True, preserve_view_mode=True)
 
     def change_page(self, page:int):
         self.model.change_page(page)
@@ -479,6 +494,38 @@ class ReaderView(QMainWindow):
             # For 'prev', start from the end of the chapter
             start_from_end = (direction == -1)
             self.model.refresh(start_from_end=start_from_end, preserve_view_mode=True)
+
+    def _get_adjacent_chapter_from_db(self, direction: int):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get current series ID
+        cursor.execute("SELECT id FROM series WHERE path = ?", (self.model.series['path'],))
+        series_id_row = cursor.fetchone()
+        if not series_id_row:
+            conn.close()
+            return None
+        series_id = series_id_row['id']
+
+        # Get all chapters for the series
+        cursor.execute("SELECT path FROM chapters WHERE series_id = ?", (series_id,))
+        chapters = [row['path'] for row in cursor.fetchall()]
+        conn.close()
+
+        chapters.sort(key=get_chapter_number)
+
+        try:
+            current_chapter_path = str(Path(self.model.manga_dir))
+            current_db_index = chapters.index(current_chapter_path)
+            next_db_index = current_db_index + direction
+
+            if 0 <= next_db_index < len(chapters):
+                return chapters[next_db_index]
+        except ValueError:
+            # The current chapter path is not in the database list, fall back to original behavior
+            pass
+
+        return None
 
     def toggle_fullscreen(self):
         if self.isFullScreen():

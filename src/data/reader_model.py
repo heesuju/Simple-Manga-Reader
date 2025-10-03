@@ -26,9 +26,10 @@ class ReaderModel(QObject):
     double_image_loaded = pyqtSignal(str, str)
     layout_updated = pyqtSignal(ViewMode)
 
-    def __init__(self, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None, language: str = 'ko'):
+    def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None, language: str = 'ko'):
         super().__init__()
         
+        self.series = series
         self.language = language
         self.start_file = start_file
         self.view_mode = ViewMode.SINGLE
@@ -80,16 +81,19 @@ class ReaderModel(QObject):
             self.load_image()
 
     def _get_image_list(self):
-        if isinstance(self.manga_dir, str) and self.manga_dir.endswith('.zip'):
+        if not self.manga_dir:
+            return []
+        manga_path = Path(self.manga_dir)
+        if self.manga_dir.endswith('.zip'):
             try:
                 with zipfile.ZipFile(self.manga_dir, 'r') as zf:
                     image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
                     return [f"{self.manga_dir}|{name}" for name in image_files]
             except zipfile.BadZipFile:
                 return []
-        elif isinstance(self.manga_dir, Path) and self.manga_dir.is_dir():
+        elif manga_path.is_dir():
             exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-            return [str(p) for p in sorted(self.manga_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
+            return [str(p) for p in sorted(manga_path.iterdir()) if p.suffix.lower() in exts and p.is_file()]
         return []
 
     def _get_double_view_images(self, right_to_left:bool=True):
@@ -129,6 +133,9 @@ class ReaderModel(QObject):
         return result
 
     def load_image(self):
+        if not self.images or not (0 <= self.current_index < len(self.images)):
+            return
+
         images = self.images
         if self.view_mode == ViewMode.DOUBLE:
             images = self._get_double_view_images()

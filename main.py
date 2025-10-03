@@ -94,14 +94,17 @@ class MainWindow(QMainWindow):
             images = [str(p) for p in full_series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
             images = sorted(images, key=get_chapter_number)
 
-        self.reader_view = ReaderView(chapter_files, chapter_index, start_file=start_file, images=images)
+        self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images)
         self.reader_view.back_pressed.connect(self.handle_reader_back)
         self.stacked_widget.addWidget(self.reader_view)
         self.stacked_widget.setCurrentWidget(self.reader_view)
 
     def handle_reader_back(self):
         if self.current_series_has_chapters:
-            self.stacked_widget.setCurrentWidget(self.chapter_list)
+            if not hasattr(self, 'chapter_list') or self.chapter_list.series != self.current_series:
+                self.show_chapter_list(self.current_series)
+            else:
+                self.stacked_widget.setCurrentWidget(self.chapter_list)
         else:
             self.stacked_widget.setCurrentWidget(self.folder_grid)
 
