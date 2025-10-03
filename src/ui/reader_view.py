@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
-from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage
+from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, pyqtProperty
 
 from src.enums import ViewMode
@@ -240,6 +240,12 @@ class ReaderView(QMainWindow):
 
         page_panel_height = 200 if self.page_panel.content_area.isVisible() else 0
         self.page_panel.setGeometry(0, self.height() - page_panel_height, self.width(), page_panel_height)
+
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.BackButton:
+            self.back_to_grid()
+        return super().mousePressEvent(event)
 
 
     def _overlay_mouse_press(self, event):
@@ -515,6 +521,8 @@ class ReaderView(QMainWindow):
         chapters.sort(key=get_chapter_number)
 
         try:
+            if self.model.manga_dir is None:
+                return None
             current_chapter_path = str(Path(self.model.manga_dir))
             current_db_index = chapters.index(current_chapter_path)
             next_db_index = current_db_index + direction

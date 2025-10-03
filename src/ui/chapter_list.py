@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect
 import os
-from PyQt6.QtGui import QPixmap, QPalette, QColor, QPainter, QLinearGradient
+from PyQt6.QtGui import QPixmap, QPalette, QColor, QPainter, QLinearGradient, QShortcut, QKeySequence, QMouseEvent
 from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF
 
 from src.core.item_loader import ItemLoader
@@ -185,8 +185,14 @@ class ChapterListView(QWidget):
         """)
         self.back_btn.clicked.connect(self.go_back)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.gradient_overlay.set_scroll_offset)
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.go_back)
 
         self.load_chapters_and_info()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.BackButton:
+            self.go_back()
+        return super().mousePressEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
