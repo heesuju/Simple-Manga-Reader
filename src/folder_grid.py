@@ -81,6 +81,11 @@ class FolderGrid(QWidget):
         self.search_bar.returnPressed.connect(self.handle_return_pressed)
         top_layout.addWidget(self.search_bar)
 
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.clicked.connect(self.clear_search)
+        top_layout.addWidget(self.clear_btn)
+
+
         self.add_btn = QPushButton("Add")
         self.add_btn.clicked.connect(self.show_add_menu)
         self.web_access_btn = QPushButton("Start Web Access")
@@ -217,6 +222,14 @@ class FolderGrid(QWidget):
                 self.token_container.setVisible(False)
             self.apply_filters()
 
+    def clear_search(self):
+        self.search_bar.clear()
+        for token_key in list(self.tokens.keys()):
+            self.tokens[token_key].deleteLater()
+            del self.tokens[token_key]
+        self.token_container.setVisible(False)
+        self.apply_filters()
+        
     def get_filters(self):
         authors = []
         genres = []
