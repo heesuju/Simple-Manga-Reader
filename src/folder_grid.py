@@ -24,8 +24,10 @@ from src.enums import ViewMode
 import math
 import json
 from src.core.library_scanner import LibraryScanner
+from src.core.library_manager import LibraryManager
 from src.ui.filter_token import FilterToken
 from src.ui.batch_metadata_dialog import BatchMetadataDialog
+from src.ui.info_dialog import InfoDialog
 
 def run_server(script_path, root_dir):
     import subprocess
@@ -561,6 +563,10 @@ class FolderGrid(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Select Manga Series Folder")
         if folder:
             self.library_manager.add_series(folder)
+            new_series = self.library_manager.get_series_by_path(folder)
+            if new_series:
+                info_dialog = InfoDialog(new_series, self.library_manager, self)
+                info_dialog.exec()
             self.load_recent_items()
             self.load_items()
 

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from datetime import datetime
 from .library_scanner import LibraryScanner
 from src.utils.database_utils import get_db_connection, create_tables
@@ -129,6 +130,21 @@ class LibraryManager:
         
         return series_list
 
+    def get_series_by_path(self, path):
+        normalized_path = str(Path(path))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM series WHERE path = ?", (normalized_path,))
+        series_row = cursor.fetchone()
+        conn.close()
+        if series_row:
+            series = dict(series_row)
+            series['chapters'] = self.get_chapters(series)
+            series['authors'] = self.get_authors(series['id'])
+            series['genres'] = self.get_genres(series['id'])
+            return series
+        return None
+
     def get_chapters(self, series):
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -138,15 +154,16 @@ class LibraryManager:
         return chapters
 
     def add_series(self, path, metadata=None):
+        normalized_path = str(Path(path))
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM series WHERE path = ?", (path,))
+        cursor.execute("SELECT id FROM series WHERE path = ?", (normalized_path,))
         if cursor.fetchone():
             conn.close()
             return  # Series already exists
 
         scanner = LibraryScanner()
-        series_data = scanner.scan_series(path)
+        series_data = scanner.scan_series(normalized_path)
         if series_data:
             try:
                 cursor.execute(
