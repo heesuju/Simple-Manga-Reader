@@ -197,6 +197,9 @@ def get_chapter_number(path):
     
 
 def _get_first_image_path(chapter_dir):
+    if not chapter_dir:
+        return None
+    chapter_path = Path(chapter_dir)
     if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
         try:
             with zipfile.ZipFile(chapter_dir, 'r') as zf:
@@ -205,9 +208,9 @@ def _get_first_image_path(chapter_dir):
                     return f"{chapter_dir}|{image_files[0]}"
         except zipfile.BadZipFile:
             return None
-    elif isinstance(chapter_dir, Path) and chapter_dir.is_dir():
+    elif chapter_path.is_dir():
         exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-        image_files = [p for p in sorted(chapter_dir.iterdir()) if p.suffix.lower() in exts and p.is_file()]
+        image_files = [p for p in sorted(chapter_path.iterdir()) if p.suffix.lower() in exts and p.is_file()]
         if image_files:
             return str(image_files[0])
     return None

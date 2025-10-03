@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QPushButton
 from src.ui.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.core.thumbnail_worker import ThumbnailWorker
-from src.utils.img_utils import _get_first_image_path, draw_text_on_image
+from src.utils.img_utils import _get_first_image_path, draw_text_on_image, load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.data.reader_model import ReaderModel
 from src.utils.ocr_utils import OCR_SINGLETON
 from src.utils.text_utils import group_text_by_proximity
@@ -46,6 +46,12 @@ class ChapterPanel(CollapsiblePanel):
         self.translate_button = QPushButton("Translate")
         self.translate_button.clicked.connect(self._translate_current_page)
         self.add_control_widget(self.translate_button)
+
+    def _load_thumbnail(self, path):
+        if '|' in path:
+            return load_thumbnail_from_virtual_path(path, 150, 200)
+        else:
+            return load_thumbnail_from_path(path, 150, 200)
     
     def _update_chapter_thumbnails(self, chapters:List[object]):
         for i in reversed(range(self.thumbnails_layout.count() - 1)):
