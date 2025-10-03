@@ -163,6 +163,10 @@ class FolderGrid(QWidget):
         scroll_bar.rangeChanged.connect(self.update_scroll_buttons_visibility)
         scroll_bar.valueChanged.connect(self.update_scroll_buttons_visibility)
 
+        self.all_series_label = QLabel("All (0)")
+        self.all_series_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-left: 10px;")
+        content_layout.addWidget(self.all_series_label)
+
         self.grid_layout = QGridLayout()
         self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.grid_layout.setContentsMargins(0,0,0,0)
@@ -294,6 +298,7 @@ class FolderGrid(QWidget):
         if series_list is None:
             series_list = self.library_manager.get_series()
         self.total_items_to_load = len(series_list)
+        self.all_series_label.setText(f"All ({self.total_items_to_load})")
         self.received_items.clear()
         self.next_item_to_display = 0
         self.items.clear()
@@ -604,6 +609,7 @@ class FolderGrid(QWidget):
 
     def eventFilter(self, source, event):
         if source == self.recent_scroll.viewport() and event.type() == QEvent.Type.Wheel:
+            QApplication.sendEvent(self.scroll.viewport(), event)
             return True
         return super().eventFilter(source, event)
 
