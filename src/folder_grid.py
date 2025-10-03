@@ -25,6 +25,7 @@ import math
 import json
 from src.core.library_scanner import LibraryScanner
 from src.ui.filter_token import FilterToken
+from src.ui.batch_metadata_dialog import BatchMetadataDialog
 
 def run_server(script_path, root_dir):
     import subprocess
@@ -566,10 +567,13 @@ class FolderGrid(QWidget):
     def add_multiple_series(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder with Manga Series")
         if folder:
-            subfolders = [f.path for f in os.scandir(folder) if f.is_dir()]
-            self.library_manager.add_series_batch(subfolders)
-            self.load_recent_items()
-            self.load_items()
+            dialog = BatchMetadataDialog(self.library_manager, self)
+            if dialog.exec():
+                metadata = dialog.get_metadata()
+                subfolders = [f.path for f in os.scandir(folder) if f.is_dir()]
+                self.library_manager.add_series_batch(subfolders, metadata)
+                self.load_recent_items()
+                self.load_items()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

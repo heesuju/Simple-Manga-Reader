@@ -137,7 +137,7 @@ class LibraryManager:
         conn.close()
         return chapters
 
-    def add_series(self, path):
+    def add_series(self, path, metadata=None):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM series WHERE path = ?", (path,))
@@ -159,6 +159,30 @@ class LibraryManager:
                         "INSERT INTO chapters (series_id, name, path) VALUES (?, ?, ?)",
                         (series_id, chapter['name'], chapter['path'])
                     )
+                
+                if metadata:
+                    if 'authors' in metadata and metadata['authors']:
+                        for author_name in metadata['authors']:
+                            cursor.execute("SELECT id FROM authors WHERE name = ?", (author_name,))
+                            author_row = cursor.fetchone()
+                            if not author_row:
+                                cursor.execute("INSERT INTO authors (name) VALUES (?)", (author_name,))
+                                author_id = cursor.lastrowid
+                            else:
+                                author_id = author_row['id']
+                            cursor.execute("INSERT INTO series_authors (series_id, author_id) VALUES (?, ?)", (series_id, author_id))
+
+                    if 'genres' in metadata and metadata['genres']:
+                        for genre_name in metadata['genres']:
+                            cursor.execute("SELECT id FROM genres WHERE name = ?", (genre_name,))
+                            genre_row = cursor.fetchone()
+                            if not genre_row:
+                                cursor.execute("INSERT INTO genres (name) VALUES (?)", (genre_name,))
+                                genre_id = cursor.lastrowid
+                            else:
+                                genre_id = genre_row['id']
+                            cursor.execute("INSERT INTO series_genres (series_id, genre_id) VALUES (?, ?)", (series_id, genre_id))
+
                 conn.commit()
             except Exception as e:
                 print(f"Error adding series: {e}")
@@ -166,9 +190,9 @@ class LibraryManager:
             finally:
                 conn.close()
 
-    def add_series_batch(self, paths):
+    def add_series_batch(self, paths, metadata=None):
         for path in paths:
-            self.add_series(path)
+            self.add_series(path, metadata)
 
     def remove_series(self, series_to_remove):
         conn = get_db_connection()
