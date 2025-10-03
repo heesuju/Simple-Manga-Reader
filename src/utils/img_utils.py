@@ -1,4 +1,6 @@
 import re
+import os
+import hashlib
 from typing import Union, List
 from pathlib import Path
 from PyQt6.QtGui import QPixmap, QImageReader, QColor, QImage
@@ -8,6 +10,22 @@ from src.utils.str_utils import find_number
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+CACHE_DIR = Path('.cache/thumbnails')
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_cache_key(path: str, width: int, height: int, crop: str = None) -> str:
+    """Generate a cache key for a file path and thumbnail settings."""
+    mod_time = os.path.getmtime(path)
+    settings = f"{width}x{height}{'_' + crop if crop else ''}"
+    return hashlib.md5(f"{path}{mod_time}{settings}".encode()).hexdigest()
+
+def get_virtual_path_cache_key(virtual_path: str, width: int, height: int, crop: str = None) -> str:
+    """Generate a cache key for a virtual path and thumbnail settings."""
+    zip_path, image_name = virtual_path.split('|', 1)
+    mod_time = os.path.getmtime(zip_path)
+    settings = f"{width}x{height}{'_' + crop if crop else ''}"
+    return hashlib.md5(f"{virtual_path}{mod_time}{settings}".encode()).hexdigest()
 
 IMG_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'}
 
@@ -84,7 +102,19 @@ def load_thumbnail(reader:QImageReader, width:int, height:int, quality:int=50):
     return QPixmap.fromImage(image)
 
 def load_thumbnail_from_path(path, width=150, height=200, crop=None):
-    reader = QImageReader(str(path))
+    path_str = str(path)
+    try:
+        cache_key = get_cache_key(path_str, width, height, crop)
+        cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
+
+        if cached_thumb_path.exists():
+            pixmap = QPixmap()
+            if pixmap.load(str(cached_thumb_path)):
+                return pixmap
+    except FileNotFoundError:
+        return None # Original file not found
+
+    reader = QImageReader(path_str)
     original_size = reader.size()
     
     if crop:
@@ -94,12 +124,29 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
             elif crop == 'right':
                 reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
 
-    return load_thumbnail(reader, width, height)
+    pixmap = load_thumbnail(reader, width, height)
+    
+    if pixmap and not pixmap.isNull():
+        pixmap.save(str(cached_thumb_path), "PNG")
+
+    return pixmap
 
 def load_thumbnail_from_zip(path, width=150, height=200):
+    path_str = str(path)
+    try:
+        cache_key = get_cache_key(path_str, width, height)
+        cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
+
+        if cached_thumb_path.exists():
+            pixmap = QPixmap()
+            if pixmap.load(str(cached_thumb_path)):
+                return pixmap
+    except FileNotFoundError:
+        return None # Original file not found
+
     try:
         with zipfile.ZipFile(path, 'r') as zf:
-            image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
+            image_files = sorted([f for f in zf.namelist() if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
             if not image_files:
                 return None
 
@@ -112,11 +159,27 @@ def load_thumbnail_from_zip(path, width=150, height=200):
                 buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 
                 reader = QImageReader(buffer, QByteArray())
-                return load_thumbnail(reader, width, height)
+                pixmap = load_thumbnail(reader, width, height)
+
+                if pixmap and not pixmap.isNull():
+                    pixmap.save(str(cached_thumb_path), "PNG")
+
+                return pixmap
     except zipfile.BadZipFile:
         return None
 
 def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=None):
+    try:
+        cache_key = get_virtual_path_cache_key(virtual_path, width, height, crop)
+        cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
+
+        if cached_thumb_path.exists():
+            pixmap = QPixmap()
+            if pixmap.load(str(cached_thumb_path)):
+                return pixmap
+    except FileNotFoundError:
+        return None # Original zip file not found
+
     try:
         zip_path, image_name = virtual_path.split('|', 1)
         with zipfile.ZipFile(zip_path, 'r') as zf:
@@ -137,7 +200,12 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
                         elif crop == 'right':
                             reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
 
-                return load_thumbnail(reader, width, height)
+                pixmap = load_thumbnail(reader, width, height)
+
+                if pixmap and not pixmap.isNull():
+                    pixmap.save(str(cached_thumb_path), "PNG")
+
+                return pixmap
             
     except (zipfile.BadZipFile, KeyError):
         return None
