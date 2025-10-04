@@ -110,8 +110,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const backToGridBtn = document.getElementById('back-to-grid-btn');
 
     backToGridBtn.addEventListener('click', () => {
-        gridView.style.display = 'grid';
         chapterListView.style.display = 'none';
+        gridView.style.display = 'grid';
+        loadGrid(''); // Reload the grid
     });
 
     function showChapterList(series) {
