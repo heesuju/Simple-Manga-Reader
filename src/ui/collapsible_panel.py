@@ -1,7 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QPushButton, QCheckBox
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt6.QtGui import QPixmap
-from src.ui.input_label import InputLabel
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
 
 class HorizontalScrollArea(QScrollArea):
@@ -48,7 +47,6 @@ class HorizontalScrollArea(QScrollArea):
 
 class CollapsiblePanel(QWidget):
     play_button_clicked = pyqtSignal()
-    slideshow_button_clicked = pyqtSignal()
     continuous_play_changed = pyqtSignal(bool)
 
     def __init__(self, parent=None, name:str=""):
@@ -77,22 +75,6 @@ class CollapsiblePanel(QWidget):
         self.hide_timer.setInterval(200)
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self.hide_content)
-
-        self.input_label = InputLabel(name, 0,0)
-        self.input_layout.addWidget(self.input_label, stretch=1, alignment=Qt.AlignmentFlag.AlignHCenter)
-        self.input_container.setVisible(True)
-
-        self.play_button = QPushButton("Play")
-        self.play_button.clicked.connect(self.play_button_clicked.emit)
-        self.input_layout.addWidget(self.play_button)
-
-        self.slideshow_button = QPushButton("Slideshow")
-        self.slideshow_button.clicked.connect(self.slideshow_button_clicked.emit)
-        self.input_layout.addWidget(self.slideshow_button)
-
-        self.continuous_play_checkbox = QCheckBox("Continuous Play")
-        self.continuous_play_checkbox.stateChanged.connect(lambda state: self.continuous_play_changed.emit(state == Qt.CheckState.Checked.value))
-        self.input_layout.addWidget(self.continuous_play_checkbox)
         
         self.thumbnails_widget = QWidget()
         self.thumbnails_widget.setStyleSheet("background: transparent;")
@@ -103,9 +85,6 @@ class CollapsiblePanel(QWidget):
         self.content_area.setWidget(self.thumbnails_widget)
 
         self.raise_()
-
-    def add_control_widget(self, widget, index=-1):
-        self.input_layout.insertWidget(index, widget)
 
     def show_content(self):
         self.content_area.setVisible(True)

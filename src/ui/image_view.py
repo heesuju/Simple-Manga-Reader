@@ -58,8 +58,7 @@ class ImageView(QGraphicsView):
 
     def mouseDoubleClickEvent(self, event):
         if self.manga_reader:
-            self.manga_reader._fit_current_image()
-        self.reset_zoom_state()
+            self.manga_reader.reset_zoom()
         event.accept()
 
     def resizeEvent(self, event):

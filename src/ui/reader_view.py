@@ -17,6 +17,8 @@ from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAni
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
 from src.ui.chapter_panel import ChapterPanel
+from src.ui.top_panel import TopPanel
+from src.ui.slider_panel import SliderPanel
 from src.ui.image_view import ImageView
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
@@ -53,6 +55,7 @@ class PixmapLoader(QRunnable):
 
 class ReaderView(QMainWindow):
     back_pressed = pyqtSignal()
+    zoom_changed = pyqtSignal(str)
 
     def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
         super().__init__()
@@ -75,6 +78,8 @@ class ReaderView(QMainWindow):
         self.v_labels: list[QLabel] = []
         self.vertical_pixmaps: list[QPixmap] = []
 
+        self.slider_panel = None
+
         self._last_total_scale = 1.0
         self._strip_zoom_factor = 1.0
 
@@ -88,6 +93,10 @@ class ReaderView(QMainWindow):
         self.page_slideshow_timer = QTimer(self)
         self.page_slideshow_timer.timeout.connect(self.show_next)
 
+        self.slideshow_speeds = [500, 1000, 2000, 5000] # ms
+        self.current_slideshow_speed_index = 0
+        self.slideshow_repeat = False
+
         self.user_interrupted_animation = False
         self.is_dragging_animation = False
         self.last_pan_pos = None
@@ -98,10 +107,11 @@ class ReaderView(QMainWindow):
         self.is_panning = False
         self.last_pan_pos = None
 
+        self.last_zoom_mode = "Fit Page"
+
         self._setup_ui()
         self.showFullScreen()
         self.model.refresh()
-        self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
     def _setup_ui(self):
         self.scene = QGraphicsScene()
@@ -129,27 +139,59 @@ class ReaderView(QMainWindow):
         container.setContentsMargins(0, 0, 0, 0)
         self.setCentralWidget(container)
 
-        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.change_chapter)
-        self.chapter_panel.add_control_widget(self.back_btn, 0)
-        self.chapter_panel.add_control_widget(self.layout_btn)
-        self.chapter_panel.play_button_clicked.connect(self.start_guided_reading)
-        self.chapter_panel.slideshow_button_clicked.connect(self.start_page_slideshow)
-        self.chapter_panel.continuous_play_changed.connect(self.set_continuous_play)
-        self.chapter_panel.translation_ready.connect(self._on_translation_ready)
+        # 1. Create all panel widgets first
+        self.top_panel = TopPanel(self)
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
-        self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
+        self.slider_panel = SliderPanel(self)
+        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.change_chapter)
 
-        self.chapter_panel.raise_()
+        # 2. Add control widgets to the panels
+        self.top_panel.set_series_title(self.model.series.get("name"))
+        self.top_panel.add_back_button(self.back_btn)
+        self.top_panel.add_layout_button(self.layout_btn)
+
+        # 3. Connect signals from all panels
+        self.slider_panel.valueChanged.connect(self.change_page_from_slider)
+        self.slider_panel.slideshow_button_clicked.connect(self.start_page_slideshow)
+        self.slider_panel.speed_changed.connect(self._on_slideshow_speed_changed)
+        self.slider_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
+        self.slider_panel.page_changed.connect(self.change_page)
+        self.slider_panel.chapter_changed.connect(self.change_chapter)
+        self.slider_panel.page_input_clicked.connect(self._show_page_panel)
+        self.slider_panel.chapter_input_clicked.connect(self._show_chapter_panel)
+        self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
+        self.slider_panel.zoom_reset.connect(self.reset_zoom)
+
+        self.zoom_changed.connect(self.slider_panel.set_zoom_text)
+
+        self.page_panel.hide_content()
+        self.chapter_panel.hide_content()
+
+        self.top_panel.raise_()
         self.page_panel.raise_()
+        self.slider_panel.raise_()
+        self.chapter_panel.raise_()
 
-        self.chapter_panel.installEventFilter(self)
+        self.top_panel.installEventFilter(self)
         self.page_panel.installEventFilter(self)
+        self.slider_panel.installEventFilter(self)
+        self.chapter_panel.installEventFilter(self)
         
         self.original_view_mouse_press = self.view.mousePressEvent
+        self.original_view_mouse_release = self.view.mouseReleaseEvent
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.mouseReleaseEvent = self._overlay_mouse_release
         self.view.resizeEvent = self.resizeEvent
 
+    def _on_slideshow_speed_changed(self):
+        self.current_slideshow_speed_index = (self.current_slideshow_speed_index + 1) % len(self.slideshow_speeds)
+        current_speed_s = self.slideshow_speeds[self.current_slideshow_speed_index] / 1000
+        self.slider_panel.speed_button.setText(f"Speed: {current_speed_s}s")
+        if self.page_slideshow_timer.isActive():
+            self.page_slideshow_timer.start(self.slideshow_speeds[self.current_slideshow_speed_index])
+
+    def _on_slideshow_repeat_changed(self, is_checked: bool):
+        self.slideshow_repeat = is_checked
 
     def start_guided_reading(self):
         if self.guided_reading_animation and self.guided_reading_animation.state() == QPropertyAnimation.State.Running:
@@ -225,19 +267,45 @@ class ReaderView(QMainWindow):
         if self.page_slideshow_timer.isActive():
             self.stop_page_slideshow()
         else:
-            self.page_slideshow_timer.start(3000)
+            self.page_slideshow_timer.start(self.slideshow_speeds[self.current_slideshow_speed_index])
+            self.slider_panel.set_slideshow_state(True)
 
     def stop_page_slideshow(self):
         self.page_slideshow_timer.stop()
+        self.slider_panel.set_slideshow_state(False)
 
     def on_model_refreshed(self):
         if not self.model.images:
             QMessageBox.information(self, "No images", f"No images found in: {self.model.manga_dir}")
+        
         self.page_panel._update_page_thumbnails(self.model)
+        self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
+        self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+        
+        if self.model.images:
+            self.slider_panel.set_range(len(self.model.images) - 1)
+            self.slider_panel.set_value(self.model.current_index)
+        else:
+            self.slider_panel.set_range(0)
+            self.slider_panel.set_value(0)
+
+        total_chapters = len(self.model.chapters)
+        current_chapter = self.model.chapter_index + 1
+        self.slider_panel.set_chapter(current_chapter, total_chapters)
+
         self.model.update_layout()
 
     def on_layout_updated(self, view_mode):
         self.page_panel._update_page_thumbnails(self.model)
+
+        # The number of thumbnails is the number of steps for the slider
+        num_pages = len(self.page_panel.page_thumbnail_widgets)
+        if num_pages > 0:
+            self.slider_panel.set_range(num_pages - 1)
+            self.slider_panel.set_value(self.model.current_index)
+        else:
+            self.slider_panel.set_range(0)
+            self.slider_panel.set_value(0)
 
         if view_mode == ViewMode.SINGLE:
             self.layout_btn.setText("Single")
@@ -249,18 +317,27 @@ class ReaderView(QMainWindow):
             self.layout_btn.setText("Strip")
             self._show_vertical_layout()
 
-        QTimer.singleShot(0, self._fit_current_image)
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_panel_geometries()
 
     def _update_panel_geometries(self):
-        chapter_panel_height = 200 if self.chapter_panel.content_area.isVisible() else 0
-        self.chapter_panel.setGeometry(0, 0, self.width(), chapter_panel_height)
+        if not self.slider_panel:  # Guard against calls before setup is complete
+            return
 
-        page_panel_height = 200 if self.page_panel.content_area.isVisible() else 0
-        self.page_panel.setGeometry(0, self.height() - page_panel_height, self.width(), page_panel_height)
+        top_panel_height = 50 if self.top_panel.isVisible() else 0
+        self.top_panel.setGeometry(0, 0, self.width(), top_panel_height)
+
+        slider_panel_height = 80 if self.slider_panel.isVisible() else 0
+        self.slider_panel.setGeometry(0, self.height() - slider_panel_height, self.width(), slider_panel_height)
+
+        page_panel_height = 180 if self.page_panel.content_area.isVisible() else 0
+        page_panel_y = self.height() - slider_panel_height - page_panel_height
+        self.page_panel.setGeometry(0, page_panel_y, self.width(), page_panel_height)
+
+        chapter_panel_height = 180 if self.chapter_panel.content_area.isVisible() else 0
+        chapter_panel_y = self.height() - slider_panel_height - chapter_panel_height
+        self.chapter_panel.setGeometry(0, chapter_panel_y, self.width(), chapter_panel_height)
 
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -275,6 +352,8 @@ class ReaderView(QMainWindow):
         self.original_view_mouse_press(event)
 
     def _overlay_mouse_release(self, event):
+        self.original_view_mouse_release(event)
+
         if self.mouse_press_pos is None or event.button() != Qt.MouseButton.LeftButton:
             return
 
@@ -314,11 +393,18 @@ class ReaderView(QMainWindow):
             return
 
         if self.panels_visible:
-            self.chapter_panel.show_content()
-            self.page_panel.show_content()
+            self.top_panel.show()
+            self.slider_panel.show()
         else:
-            self.chapter_panel.hide_content()
-            self.page_panel.hide_content()
+            self.top_panel.hide()
+            self.slider_panel.hide()
+            
+            if self.page_panel.content_area.isVisible():
+                self.page_panel.hide_content()
+
+            if self.chapter_panel.content_area.isVisible():
+                self.chapter_panel.hide_content()
+
         self._update_panel_geometries()
 
     def eventFilter(self, obj, event):
@@ -356,8 +442,7 @@ class ReaderView(QMainWindow):
 
             elif event.type() == QEvent.Type.MouseButtonDblClick:
                 if event.button() == Qt.MouseButton.LeftButton:
-                    self._strip_zoom_factor = 1.0
-                    self._resize_vertical_images()
+                    self.reset_zoom()
                     return True
 
             elif event.type() == QEvent.Type.Wheel:
@@ -366,6 +451,9 @@ class ReaderView(QMainWindow):
                     factor = 1.25 if angle > 0 else 0.8
                     self._strip_zoom_factor *= factor
                     self._resize_vertical_images()
+                    zoom_str = f"{self._strip_zoom_factor*100:.0f}%"
+                    self.last_zoom_mode = zoom_str
+                    self.zoom_changed.emit(zoom_str)
                     return True # Consume the event to prevent scrolling
                 self._toggle_panels(False)
 
@@ -415,14 +503,16 @@ class ReaderView(QMainWindow):
             self.movie.frameChanged.connect(self._update_movie_frame)
             self.movie.start()
             self.view.reset_zoom_state()
-            QTimer.singleShot(0, self._fit_current_image)
+            QTimer.singleShot(0, self.apply_last_zoom)
             self.page_panel._update_page_selection(self.model.current_index)
+            self.slider_panel.set_value(self.model.current_index)
         else:
             self.original_pixmap = self._load_pixmap(path)
             self._set_pixmap(self.original_pixmap)
             self.view.reset_zoom_state()
-            QTimer.singleShot(0, self._fit_current_image)
+            QTimer.singleShot(0, self.apply_last_zoom)
             self.page_panel._update_page_selection(self.model.current_index)
+            self.slider_panel.set_value(self.model.current_index)
             # QTimer.singleShot(0, self._fit_current_image)
     
     def _update_movie_frame(self, frame_number: int):
@@ -472,12 +562,60 @@ class ReaderView(QMainWindow):
 
         self.scene.setSceneRect(0, 0, total_width, total_height)
         self.view.reset_zoom_state()
-        QTimer.singleShot(0, self._fit_current_image)
+        QTimer.singleShot(0, self.apply_last_zoom)
+        self.page_panel._update_page_selection(self.model.current_index)
+        self.slider_panel.set_value(self.model.current_index)
 
     def _update_zoom(self, factor: float):
         """Zoom the view using GPU-accelerated transformation.""" 
         self.view.resetTransform()  # reset previous zoom
         self.view.scale(factor, factor)
+        zoom_str = f"{factor*100:.0f}%"
+        self.last_zoom_mode = zoom_str
+        self.zoom_changed.emit(zoom_str)
+
+    def set_zoom_mode(self, mode: str):
+        self.last_zoom_mode = mode
+        if self.model.view_mode == ViewMode.STRIP:
+            if mode == "Fit Page" or mode == "Fit Width":
+                self._strip_zoom_factor = 1.0
+                self.zoom_changed.emit("Fit Width")
+            else:
+                try:
+                    self._strip_zoom_factor = float(mode.replace('%', '')) / 100.0
+                except ValueError:
+                    return # Ignore
+            self._resize_vertical_images()
+            return
+
+        if not self.pixmap_item:
+            return
+
+        if mode == "Fit Page":
+            self._fit_current_image()
+            self.zoom_changed.emit("Fit Page")
+        elif mode == "Fit Width":
+            scene_rect = self.scene.sceneRect()
+            if scene_rect.width() > 0:
+                view_width = self.view.viewport().width()
+                factor = view_width / scene_rect.width()
+                self.view._zoom_factor = factor
+                self._update_zoom(factor)
+                self.zoom_changed.emit("Fit Width")
+        else:
+            try:
+                # Handle percentages like "150%"
+                zoom_value = float(mode.replace('%', '')) / 100.0
+                self.view._zoom_factor = zoom_value
+                self._update_zoom(zoom_value)
+            except ValueError:
+                pass # Ignore invalid text
+
+    def reset_zoom(self):
+        self.set_zoom_mode("Fit Page")
+
+    def apply_last_zoom(self):
+        self.set_zoom_mode(self.last_zoom_mode)
     
     def _fit_current_image(self):
         """Fit image to view and reset zoom factor (handles single-image and vertical modes)."""
@@ -492,6 +630,7 @@ class ReaderView(QMainWindow):
         self.view.resetTransform()  # remove any previous zoom
         self.view.reset_zoom_state()
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.zoom_changed.emit("Fit Page")
 
     def show_next(self):
         if not self.model.images:
@@ -507,15 +646,12 @@ class ReaderView(QMainWindow):
             self.model.current_index += step
             self.model.load_image()
         else:
-            next_chapter_path = self._get_adjacent_chapter_from_db(1)
-            if next_chapter_path:
-                new_chapter = next((ch for ch in self.model.chapters if str(Path(ch)) == next_chapter_path), None)
-                if new_chapter:
-                    self.model.manga_dir = new_chapter
-                    self.model.chapter_index = self.model.chapters.index(new_chapter)
-                    self.model.images = [] # force reload
-                    self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-                    self.model.refresh(start_from_end=False, preserve_view_mode=True)
+            # If slideshow is active and repeat is on, loop back to the start
+            if self.page_slideshow_timer.isActive() and self.slideshow_repeat:
+                self.model.current_index = 0
+                self.model.load_image()
+            else:
+                self._change_chapter(1)
 
     def show_prev(self):
         if not self.model.images:
@@ -531,21 +667,30 @@ class ReaderView(QMainWindow):
             self.model.current_index -= step
             self.model.load_image()
         else:
-            prev_chapter_path = self._get_adjacent_chapter_from_db(-1)
-            if prev_chapter_path:
-                new_chapter = next((ch for ch in self.model.chapters if str(Path(ch)) == prev_chapter_path), None)
-                if new_chapter:
-                    self.model.manga_dir = new_chapter
-                    self.model.chapter_index = self.model.chapters.index(new_chapter)
-                    self.model.images = [] # force reload
-                    self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-                    self.model.refresh(start_from_end=True, preserve_view_mode=True)
+            self._change_chapter(-1)
 
     def change_page(self, page:int):
         self.model.change_page(page)
         self.page_panel._update_page_selection(self.model.current_index)
+        self.slider_panel.set_value(self.model.current_index)
+
+    def change_page_from_slider(self, page_index: int):
+        self.model.change_page(page_index+1)
+
+    def _show_page_panel(self):
+        if self.chapter_panel.content_area.isVisible():
+            self.chapter_panel.hide_content()
+        self.page_panel.show_content()
+        self._update_panel_geometries()
+
+    def _show_chapter_panel(self):
+        if self.page_panel.content_area.isVisible():
+            self.page_panel.hide_content()
+        self.chapter_panel.show_content()
+        self._update_panel_geometries()
 
     def change_chapter(self, chapter:int):
+        self.is_changing_chapter = True
         self.model.change_chapter(chapter)
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
@@ -561,6 +706,7 @@ class ReaderView(QMainWindow):
 
             # For 'prev', start from the end of the chapter
             start_from_end = (direction == -1)
+            self.is_changing_chapter = True
             self.model.refresh(start_from_end=start_from_end, preserve_view_mode=True)
 
     def _get_adjacent_chapter_from_db(self, direction: int):
@@ -708,6 +854,7 @@ class ReaderView(QMainWindow):
         if topmost_visible_index != -1 and self.model.current_index != topmost_visible_index:
             self.model.current_index = topmost_visible_index
             self.page_panel._update_page_selection(self.model.current_index)
+            self.slider_panel.set_value(self.model.current_index)
 
         for i, lbl in enumerate(self.page_labels):
             lbl_top = lbl.y()

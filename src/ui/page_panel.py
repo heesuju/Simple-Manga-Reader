@@ -15,7 +15,6 @@ class PagePanel(CollapsiblePanel):
         self.on_page_changed = on_page_changed
         self.page_thumbnail_widgets = []
         self.current_page_thumbnails = []
-        self.input_label.enterPressed.connect(self.on_page_changed)
         
     def _update_page_thumbnails(self, model:ReaderModel):
         for i in reversed(range(self.thumbnails_layout.count() - 1)):
@@ -71,9 +70,6 @@ class PagePanel(CollapsiblePanel):
             current_thumb.set_selected(True)
             self.current_page_thumbnails.append(current_thumb)
             self.content_area.snapToItem(index)
-
-        self.input_label.set_total(len(self.page_thumbnail_widgets))
-        self.input_label.set_value(index + 1)
 
     def _change_page_by_thumbnail(self, index: int):
         self.on_page_changed(index + 1)

@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QWidget, QLineEdit, QLabel, QHBoxLayout
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QEvent
 from PyQt6.QtGui import QIntValidator
 
 class InputLabel(QWidget):
@@ -8,6 +8,7 @@ class InputLabel(QWidget):
     Emits `enterPressed` signal when Enter is pressed in the input.
     """
     enterPressed = pyqtSignal(int)  # emits the number entered
+    clicked = pyqtSignal()
 
     def __init__(self, title:str, current:int = 1, total:int = 0, max_digits:int = 5, parent=None):
         super().__init__(parent)
@@ -41,6 +42,17 @@ class InputLabel(QWidget):
 
         # Connect Enter key
         self.input.returnPressed.connect(self._on_enter)
+        self.input.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj is self.input and event.type() == QEvent.Type.MouseButtonPress:
+            self.clicked.emit()
+            return False # Let the event continue to the QLineEdit
+        return super().eventFilter(obj, event)
+
+    def mousePressEvent(self, event):
+        self.clicked.emit()
+        super().mousePressEvent(event)
 
     def _on_enter(self):
         try:

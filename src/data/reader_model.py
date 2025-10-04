@@ -77,9 +77,6 @@ class ReaderModel(QObject):
 
         self.refreshed.emit()
 
-        if self.images:
-            self.load_image()
-
     def _get_image_list(self):
         if not self.manga_dir:
             return []
