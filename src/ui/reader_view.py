@@ -708,11 +708,20 @@ class ReaderView(QMainWindow):
             self._change_chapter(-1)
 
     def change_page(self, page:int):
+        if self.model.view_mode == ViewMode.STRIP:
+            self._scroll_to_page(page - 1)
+            self.page_panel._update_page_selection(page - 1)
+            self.slider_panel.set_value(page - 1)
+            return
+
         self.model.change_page(page)
         self.page_panel._update_page_selection(self.model.current_index)
         self.slider_panel.set_value(self.model.current_index)
 
     def change_page_from_slider(self, page_index: int):
+        if self.model.view_mode == ViewMode.STRIP:
+            self._scroll_to_page(page_index)
+            return
         self.model.change_page(page_index+1)
 
     def _show_page_panel(self):
