@@ -81,11 +81,30 @@ class FolderGrid(QWidget):
         main_layout = QVBoxLayout(self)
 
         top_layout = QHBoxLayout()
+
+        self.search_container = QWidget()
+        self.search_container.setStyleSheet(
+            "QWidget { border: none; border-radius: 5px; background-color: rgba(0, 0, 0, 170); color: white; }"
+        )
+        search_container_layout = QHBoxLayout(self.search_container)
+        search_container_layout.setContentsMargins(4, 2, 4, 2)
+        search_container_layout.setSpacing(4)
+
+        self.token_layout = QHBoxLayout()
+        self.token_layout.setContentsMargins(0, 0, 0, 0)
+        self.token_layout.setSpacing(2)
+        self.token_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        search_container_layout.addLayout(self.token_layout)
+
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("Search by title, or type / to filter by author/genre")
         self.search_bar.textChanged.connect(self.search_items)
         self.search_bar.returnPressed.connect(self.handle_return_pressed)
-        top_layout.addWidget(self.search_bar)
+        self.search_bar.setStyleSheet("border: none; background: transparent;")
+        self.search_bar.installEventFilter(self)
+        search_container_layout.addWidget(self.search_bar, 1)
+
+        top_layout.addWidget(self.search_container)
 
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.clicked.connect(self.clear_search)
@@ -106,13 +125,6 @@ class FolderGrid(QWidget):
         top_layout.addWidget(self.add_btn)
         top_layout.addWidget(self.web_access_btn)
         main_layout.addLayout(top_layout)
-
-        self.token_container = QWidget()
-        self.token_layout = QHBoxLayout(self.token_container)
-        self.token_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.token_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.token_container.setVisible(False)
-        main_layout.addWidget(self.token_container)
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -226,7 +238,6 @@ class FolderGrid(QWidget):
         token_widget.remove_requested.connect(self.remove_token)
         self.tokens[token_key] = token_widget
         self.token_layout.addWidget(token_widget)
-        self.token_container.setVisible(True)
         self.apply_filters()
 
     def remove_token(self, token_type, token_value):
@@ -234,8 +245,6 @@ class FolderGrid(QWidget):
         if token_key in self.tokens:
             self.tokens[token_key].deleteLater()
             del self.tokens[token_key]
-            if not self.tokens:
-                self.token_container.setVisible(False)
             self.apply_filters()
 
     def clear_search(self):
@@ -243,7 +252,6 @@ class FolderGrid(QWidget):
         for token_key in list(self.tokens.keys()):
             self.tokens[token_key].deleteLater()
             del self.tokens[token_key]
-        self.token_container.setVisible(False)
         self.apply_filters()
         
     def get_filters(self):
@@ -616,8 +624,19 @@ class FolderGrid(QWidget):
             col = i % num_cols
             self.grid_layout.addWidget(widget, row, col)
 
+    def remove_last_token(self):
+        if not self.tokens:
+            return
+        # The key of the last token is the last one in the dictionary
+        last_token_key = list(self.tokens.keys())[-1]
+        token_widget = self.tokens[last_token_key]
+        self.remove_token(token_widget.token_type, token_widget.token_value)
+
     def eventFilter(self, source, event):
-        if source == self.recent_scroll.viewport() and event.type() == QEvent.Type.Wheel:
+        if source == self.search_bar and event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Backspace and self.search_bar.cursorPosition() == 0:
+            self.remove_last_token()
+            return True
+        if hasattr(self, 'recent_scroll') and source == self.recent_scroll.viewport() and event.type() == QEvent.Type.Wheel:
             QApplication.sendEvent(self.scroll.viewport(), event)
             return True
         return super().eventFilter(source, event)

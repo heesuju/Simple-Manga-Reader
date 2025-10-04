@@ -9,7 +9,18 @@ class FilterToken(QPushButton):
         super().__init__(f"{token_value} ✕", parent)
         self.token_type = token_type
         self.token_value = token_value
-        self.setStyleSheet("QPushButton { background-color: #E0E0E0; border-radius: 5px; padding: 2px 5px; } QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }")
+        self.setStyleSheet("""
+        QPushButton { 
+            background-color: #8AB4F7; 
+            color: black;
+            border-radius: 5px; 
+            padding: 2px 5px; 
+        } 
+        QToolTip { 
+            color: #ffffff; 
+            background-color: #2a82da; 
+            border: 1px solid black; 
+        }""")
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.clicked.connect(self.emit_remove_request)
 
