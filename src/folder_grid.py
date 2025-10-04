@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, QSizePolicy,
     QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter
 )
-from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence
-from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent
+from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent, QSize
 
 from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
@@ -75,6 +75,9 @@ class FolderGrid(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Manga Browser")
+        self.add_icon = QIcon("assets/icons/add.png")
+        self.qr_icon = QIcon("assets/icons/qr.png")
+
         main_layout = QVBoxLayout(self)
 
         top_layout = QHBoxLayout()
@@ -88,10 +91,16 @@ class FolderGrid(QWidget):
         self.clear_btn.clicked.connect(self.clear_search)
         top_layout.addWidget(self.clear_btn)
 
-
-        self.add_btn = QPushButton("Add")
+        self.add_btn = QPushButton()
+        self.add_btn.setIcon(self.add_icon)
+        self.add_btn.setIconSize(QSize(32, 32))
+        self.add_btn.setFixedSize(QSize(32, 32))
         self.add_btn.clicked.connect(self.show_add_menu)
-        self.web_access_btn = QPushButton("Start Web Access")
+
+        self.web_access_btn = QPushButton()
+        self.web_access_btn.setIcon(self.qr_icon)
+        self.web_access_btn.setIconSize(QSize(32, 32))
+        self.web_access_btn.setFixedSize(QSize(32, 32))
         self.web_access_btn.clicked.connect(self.toggle_web_access)
 
         top_layout.addWidget(self.add_btn)

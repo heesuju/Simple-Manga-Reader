@@ -18,7 +18,7 @@ class InputLabel(QWidget):
 
         self.input = QLineEdit(str(current))
         
-        self.input.setFixedWidth(50)
+        self.input.setFixedWidth(40)
         self.input.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.input.setValidator(QIntValidator(1, 10**max_digits))
 

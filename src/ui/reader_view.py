@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
-from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, pyqtProperty
+from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QSize
 
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
@@ -99,7 +99,7 @@ class ReaderView(QMainWindow):
         self.scroll_speeds = [5, 10, 20, 40]
         self.current_scroll_speed_index = 0
 
-        self.slideshow_speeds = [8000, 4000, 2000, 500] # ms
+        self.slideshow_speeds = [4000, 2000, 500] # ms
         self.current_slideshow_speed_index = 0
         self.slideshow_repeat = False
 
@@ -120,11 +120,17 @@ class ReaderView(QMainWindow):
         self.model.refresh()
 
     def _setup_ui(self):
+        self.back_icon = QIcon("assets/icons/back.png")
+
         self.scene = QGraphicsScene()
         self.view = ImageView(manga_reader=self)
         self.view.setScene(self.scene)
 
-        self.back_btn = QPushButton("⬅ Back to Grid")
+        self.back_btn = QPushButton()
+        self.back_btn.setIcon(self.back_icon)
+        self.back_btn.setIconSize(QSize(32, 32))
+        self.back_btn.setFixedSize(QSize(32, 32))
+        self.back_btn.setStyleSheet("border: none; background: transparent;")
         self.back_btn.clicked.connect(self.back_to_grid)
 
         self.layout_btn = QPushButton("Double")
@@ -199,8 +205,12 @@ class ReaderView(QMainWindow):
             return
 
         self.current_slideshow_speed_index = (self.current_slideshow_speed_index + 1) % len(self.slideshow_speeds)
-        current_speed_s = 8000 / self.slideshow_speeds[self.current_slideshow_speed_index]
-        self.slider_panel.speed_button.setText(f"{int(current_speed_s)}x")
+        current_speed_s = 4000 / self.slideshow_speeds[self.current_slideshow_speed_index]
+        if current_speed_s < 1.0 and current_speed_s % 1 != 0:
+            self.slider_panel.speed_button.setText(f"{round(current_speed_s, 1)}x".replace("0", ""))
+        else:
+            self.slider_panel.speed_button.setText(f"{int(current_speed_s)}x")
+
         if self.page_slideshow_timer.isActive():
             self.page_slideshow_timer.start(self.slideshow_speeds[self.current_slideshow_speed_index])
 

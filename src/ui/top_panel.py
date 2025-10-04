@@ -7,7 +7,7 @@ class TopPanel(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("background-color: rgba(0, 0, 0, 170); color: white;")
-
+        
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(10, 5, 10, 5)
         self.layout.setSpacing(10)
@@ -15,7 +15,9 @@ class TopPanel(QWidget):
         self.back_button = None
         self.layout_button = None
         self.series_label = QLabel("Series Title")
-        self.series_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.series_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.series_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self.series_label.setStyleSheet("background-color: transparent;")
 
         self.layout.addWidget(self.series_label, 1) # Add stretch
 
