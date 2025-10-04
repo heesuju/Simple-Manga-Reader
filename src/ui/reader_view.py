@@ -33,7 +33,23 @@ class FitInViewAnimation(QPropertyAnimation):
     def updateCurrentValue(self, value):
         self.targetObject().fitInView(value, Qt.AspectRatioMode.KeepAspectRatio)
 
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QParallelAnimationGroup, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QParallelAnimationGroup, pyqtSignal, QRunnable, pyqtSlot, QObject
+
+class WorkerSignals(QObject):
+    finished = pyqtSignal(int, QPixmap)
+
+class PixmapLoader(QRunnable):
+    def __init__(self, path: str, index: int, reader_view):
+        super().__init__()
+        self.path = path
+        self.index = index
+        self.reader_view = reader_view
+        self.signals = WorkerSignals()
+
+    @pyqtSlot()
+    def run(self):
+        pixmap = self.reader_view._load_pixmap(self.path)
+        self.signals.finished.emit(self.index, pixmap)
 
 class ReaderView(QMainWindow):
     back_pressed = pyqtSignal()
@@ -60,6 +76,7 @@ class ReaderView(QMainWindow):
         self.vertical_pixmaps: list[QPixmap] = []
 
         self._last_total_scale = 1.0
+        self._strip_zoom_factor = 1.0
 
         self.thread_pool = QThreadPool()
 
@@ -77,6 +94,9 @@ class ReaderView(QMainWindow):
 
         self.panels_visible = True
         self.mouse_press_pos = None
+
+        self.is_panning = False
+        self.last_pan_pos = None
 
         self._setup_ui()
         self.showFullScreen()
@@ -129,6 +149,7 @@ class ReaderView(QMainWindow):
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.mouseReleaseEvent = self._overlay_mouse_release
         self.view.resizeEvent = self.resizeEvent
+
 
     def start_guided_reading(self):
         if self.guided_reading_animation and self.guided_reading_animation.state() == QPropertyAnimation.State.Running:
@@ -281,8 +302,17 @@ class ReaderView(QMainWindow):
         else:
             self._toggle_panels()
 
-    def _toggle_panels(self):
-        self.panels_visible = not self.panels_visible
+    def _toggle_panels(self, visible:bool=None):
+        original_state = self.panels_visible
+
+        if visible is not None:
+            self.panels_visible = visible    
+        else:
+            self.panels_visible = not self.panels_visible
+
+        if original_state == self.panels_visible:
+            return
+
         if self.panels_visible:
             self.chapter_panel.show_content()
             self.page_panel.show_content()
@@ -290,14 +320,6 @@ class ReaderView(QMainWindow):
             self.chapter_panel.hide_content()
             self.page_panel.hide_content()
         self._update_panel_geometries()
-
-    def event(self, e):
-        if e.type() == QEvent.Type.Gesture:
-            gesture = e.gesture(Qt.GestureType.PinchGesture)
-            if gesture:
-                self.handle_pinch(gesture)
-                return True
-        return super().event(e)
 
     def eventFilter(self, obj, event):
         if obj is self.view.viewport():
@@ -307,6 +329,46 @@ class ReaderView(QMainWindow):
 
         # Handle resize for strip mode (existing logic)
         if self.model.view_mode == ViewMode.STRIP and self.scroll_area and obj is self.scroll_area.viewport():
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self.is_panning = True
+                    self.last_pan_pos = event.pos()
+                    self.mouse_press_pos = event.pos() # For click-detection
+                    self.scroll_area.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+                    return True
+            elif event.type() == QEvent.Type.MouseMove:
+                if self.is_panning:
+                    delta = event.pos() - self.last_pan_pos
+                    self.last_pan_pos = event.pos()
+                    self.scroll_area.horizontalScrollBar().setValue(self.scroll_area.horizontalScrollBar().value() - delta.x())
+                    self.scroll_area.verticalScrollBar().setValue(self.scroll_area.verticalScrollBar().value() - delta.y())
+                    self._toggle_panels(False)
+                    return True
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self.is_panning = False
+                    self.last_pan_pos = None
+                    self.scroll_area.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+                    # Check if it was a click to toggle panels
+                    if self.mouse_press_pos and (event.pos() - self.mouse_press_pos).manhattanLength() < 5:
+                        self._toggle_panels()
+                    return True
+
+            elif event.type() == QEvent.Type.MouseButtonDblClick:
+                if event.button() == Qt.MouseButton.LeftButton:
+                    self._strip_zoom_factor = 1.0
+                    self._resize_vertical_images()
+                    return True
+
+            elif event.type() == QEvent.Type.Wheel:
+                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                    angle = event.angleDelta().y()
+                    factor = 1.25 if angle > 0 else 0.8
+                    self._strip_zoom_factor *= factor
+                    self._resize_vertical_images()
+                    return True # Consume the event to prevent scrolling
+                self._toggle_panels(False)
+
             if event.type() == QEvent.Type.Resize:
                 QTimer.singleShot(0, self._resize_vertical_images)
                 
@@ -551,25 +613,6 @@ class ReaderView(QMainWindow):
         super().showEvent(ev)
         QTimer.singleShot(0, self._fit_current_image)
 
-    def handle_pinch(self, gesture: QPinchGesture):
-        if gesture.state() == Qt.GestureState.GestureStarted:
-            self._gesture_start_zoom = self.view._zoom_factor
-
-        if gesture.changeFlags() & QPinchGesture.ChangeFlag.ScaleFactorChanged:
-            new_zoom = self._gesture_start_zoom * gesture.totalScaleFactor()
-            scale_delta = new_zoom / self.view._zoom_factor
-
-            if abs(scale_delta - 1.0) < 0.02:
-                return
-
-            self.view.scale(scale_delta, scale_delta)
-            self.view._zoom_factor = new_zoom
-
-            if not math.isclose(self.view._zoom_factor, 1.0, rel_tol=1e-2):
-                self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-            else:
-                self.overlay_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-
     def toggle_layout(self, mode:ViewMode=None):
         self.model.toggle_layout(mode)
 
@@ -594,13 +637,14 @@ class ReaderView(QMainWindow):
             self.scroll_area.setMouseTracking(True)
             self.scroll_area.viewport().setMouseTracking(True)
             self.scroll_area.setWidgetResizable(True)
-            self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.vertical_container = QWidget()
             self.vbox = QVBoxLayout(self.vertical_container)
             self.vbox.setSpacing(0)
             self.vbox.setContentsMargins(0, 0, 0, 0)
             self.scroll_area.setWidget(self.vertical_container)
+            self.scroll_area.setContentsMargins(0, 0, 0, 0)
+            self.vertical_container.setContentsMargins(0, 0, 0, 0)
 
             main_layout = self.centralWidget().layout()
             main_layout.insertWidget(1, self.scroll_area)
@@ -609,6 +653,8 @@ class ReaderView(QMainWindow):
             self.scroll_area.viewport().installEventFilter(self)
 
         self.scroll_area.verticalScrollBar().setValue(0)
+
+        self._strip_zoom_factor = 1.0
 
         while self.vbox.count():
             item = self.vbox.takeAt(0)
@@ -624,7 +670,24 @@ class ReaderView(QMainWindow):
             self.vbox.addWidget(lbl)
             self.page_labels.append(lbl)
 
+            worker = PixmapLoader(self.model.images[i], i, self)
+            worker.signals.finished.connect(self._on_image_loaded)
+            self.thread_pool.start(worker)
+
         QTimer.singleShot(0, self._update_visible_images)
+
+    def _on_image_loaded(self, index: int, pixmap: QPixmap):
+        if index < len(self.page_labels):
+            self.page_pixmaps[index] = pixmap
+            # Only resize if the label is visible
+            lbl = self.page_labels[index]
+            viewport_rect = self.scroll_area.viewport().rect()
+            viewport_top = self.scroll_area.verticalScrollBar().value()
+            viewport_bottom = viewport_top + viewport_rect.height()
+            lbl_top = lbl.y()
+            lbl_bottom = lbl.y() + lbl.height()
+            if lbl_bottom >= viewport_top - 500 and lbl_top <= viewport_bottom + 500:
+                self._resize_single_label(lbl, pixmap)
 
     def _update_visible_images(self):
         if not self.scroll_area:
@@ -649,14 +712,8 @@ class ReaderView(QMainWindow):
             lbl_bottom = lbl.y() + lbl.height()
 
             if lbl_bottom >= viewport_top - 500 and lbl_top <= viewport_bottom + 500:
-                if i not in self.page_pixmaps:
-                    # load original image
-                    orig = self._load_pixmap(self.model.images[i])
-                    self.page_pixmaps[i] = orig
-                else:
-                    orig = self.page_pixmaps[i]
-
-                self._resize_single_label(lbl, orig)
+                if i in self.page_pixmaps:
+                    self._resize_single_label(lbl, self.page_pixmaps[i])
             else:
                 lbl.clear()
 
@@ -673,10 +730,10 @@ class ReaderView(QMainWindow):
     def _resize_single_label(self, label: QLabel, orig_pix: QPixmap):
         if not self.scroll_area:
             return
-        w = self.scroll_area.viewport().width() - (self.vbox.contentsMargins().left() + self.vbox.contentsMargins().right())
+        w = self.scroll_area.viewport().width() * self._strip_zoom_factor - (self.vbox.contentsMargins().left() + self.vbox.contentsMargins().right())
         if w <= 0 or orig_pix.isNull():
             return
-        scaled = orig_pix.scaledToWidth(w, Qt.TransformationMode.SmoothTransformation)
+        scaled = orig_pix.scaledToWidth(int(w), Qt.TransformationMode.SmoothTransformation)
         label.setPixmap(scaled)
         label.setFixedHeight(scaled.height())
 
