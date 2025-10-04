@@ -59,7 +59,7 @@ class SliderPanel(QWidget):
         self.slideshow_button = QPushButton("▶") # Play icon
         self.slideshow_button.clicked.connect(self.slideshow_button_clicked.emit)
 
-        self.speed_button = QPushButton("Speed: 2s")
+        self.speed_button = QPushButton("1X")
         self.speed_button.clicked.connect(self.speed_changed.emit)
 
         self.repeat_button = QPushButton("Repeat")

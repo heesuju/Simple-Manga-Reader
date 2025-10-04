@@ -93,7 +93,13 @@ class ReaderView(QMainWindow):
         self.page_slideshow_timer = QTimer(self)
         self.page_slideshow_timer.timeout.connect(self.show_next)
 
-        self.slideshow_speeds = [500, 1000, 2000, 5000] # ms
+        self.strip_scroll_timer = QTimer(self)
+        self.strip_scroll_timer.timeout.connect(self._scroll_strip)
+        self.scroll_interval = 3
+        self.scroll_speeds = [5, 10, 20, 40]
+        self.current_scroll_speed_index = 0
+
+        self.slideshow_speeds = [8000, 4000, 2000, 500] # ms
         self.current_slideshow_speed_index = 0
         self.slideshow_repeat = False
 
@@ -184,9 +190,17 @@ class ReaderView(QMainWindow):
         self.view.resizeEvent = self.resizeEvent
 
     def _on_slideshow_speed_changed(self):
+        if self.model.view_mode == ViewMode.STRIP:
+            self.current_scroll_speed_index = (self.current_scroll_speed_index + 1) % len(self.scroll_speeds)
+            speed_text = f"{int(self.scroll_speeds[self.current_scroll_speed_index]/5)}x"
+            self.slider_panel.speed_button.setText(speed_text)
+            if self.strip_scroll_timer.isActive():
+                self.strip_scroll_timer.start(self.scroll_interval)
+            return
+
         self.current_slideshow_speed_index = (self.current_slideshow_speed_index + 1) % len(self.slideshow_speeds)
-        current_speed_s = self.slideshow_speeds[self.current_slideshow_speed_index] / 1000
-        self.slider_panel.speed_button.setText(f"Speed: {current_speed_s}s")
+        current_speed_s = 8000 / self.slideshow_speeds[self.current_slideshow_speed_index]
+        self.slider_panel.speed_button.setText(f"{int(current_speed_s)}x")
         if self.page_slideshow_timer.isActive():
             self.page_slideshow_timer.start(self.slideshow_speeds[self.current_slideshow_speed_index])
 
@@ -263,7 +277,30 @@ class ReaderView(QMainWindow):
         else:
             self._fit_current_image()
 
+    def _scroll_strip(self):
+        if not self.scroll_area:
+            return
+
+        scrollbar = self.scroll_area.verticalScrollBar()
+        new_value = scrollbar.value() + self.scroll_speeds[self.current_scroll_speed_index]
+
+        if new_value >= scrollbar.maximum():
+            if self.slideshow_repeat:
+                scrollbar.setValue(0)
+            else:
+                self.stop_page_slideshow()
+        else:
+            scrollbar.setValue(new_value)
+
     def start_page_slideshow(self):
+        if self.model.view_mode == ViewMode.STRIP:
+            if self.strip_scroll_timer.isActive():
+                self.stop_page_slideshow()
+            else:
+                self.strip_scroll_timer.start(self.scroll_interval)
+                self.slider_panel.set_slideshow_state(True)
+            return
+
         if self.page_slideshow_timer.isActive():
             self.stop_page_slideshow()
         else:
@@ -272,6 +309,7 @@ class ReaderView(QMainWindow):
 
     def stop_page_slideshow(self):
         self.page_slideshow_timer.stop()
+        self.strip_scroll_timer.stop()
         self.slider_panel.set_slideshow_state(False)
 
     def on_model_refreshed(self):

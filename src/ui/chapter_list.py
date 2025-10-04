@@ -159,7 +159,7 @@ class ChapterListView(QWidget):
 
         self.content_layout = QVBoxLayout(self.scroll_content)
         self.content_layout.setContentsMargins(10, 10, 10, 10)
-        self.content_layout.setSpacing(10)
+        self.content_layout.setSpacing(5)
 
         self.top_spacer = QWidget()
         self.content_layout.addWidget(self.top_spacer)
