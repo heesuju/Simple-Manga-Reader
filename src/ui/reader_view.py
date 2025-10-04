@@ -667,6 +667,8 @@ class ReaderView(QMainWindow):
             lbl = QLabel("Loading...")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setFixedHeight(300)
+            lbl.setContentsMargins(0,0,0,0)
+            lbl.setStyleSheet("border: 0px; padding: 0px; margin: 0px;")
             self.vbox.addWidget(lbl)
             self.page_labels.append(lbl)
 
