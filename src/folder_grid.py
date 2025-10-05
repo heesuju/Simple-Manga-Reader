@@ -255,14 +255,19 @@ class FolderGrid(QWidget):
         self.apply_filters()
         
     def get_filters(self):
-        authors = []
-        genres = []
+        filters = {'authors': [], 'genres': [], 'themes': [], 'formats': []}
         for token_widget in self.tokens.values():
-            if token_widget.token_type == "/author:":
-                authors.append(token_widget.token_value)
-            elif token_widget.token_type == "/genre:":
-                genres.append(token_widget.token_value)
-        return {'authors': authors, 'genres': genres}
+            token_type = token_widget.token_type.strip('/').strip(':')
+            token_value = token_widget.token_value
+            if token_type == 'author':
+                filters['authors'].append(token_value)
+            elif token_type == 'genre':
+                filters['genres'].append(token_value)
+            elif token_type == 'theme':
+                filters['themes'].append(token_value)
+            elif token_type == 'format':
+                filters['formats'].append(token_value)
+        return filters
 
     def apply_filters(self):
         search_text = self.search_bar.text()
@@ -270,7 +275,7 @@ class FolderGrid(QWidget):
              search_text = ""
         filters = self.get_filters()
 
-        if search_text or filters.get('authors') or filters.get('genres'):
+        if search_text or filters.get('authors') or filters.get('genres') or filters.get('themes') or filters.get('formats'):
             self.recent_label.hide()
             self.recent_scroll_container.hide()
         else:
@@ -280,10 +285,18 @@ class FolderGrid(QWidget):
         series_list = self.library_manager.search_series_with_filters(search_text, filters)
         self.load_items(series_list)
 
+    def apply_tag_filter(self, tag_type, tag_value):
+        self.search_bar.clear()
+        for token_key in list(self.tokens.keys()):
+            self.tokens[token_key].deleteLater()
+            del self.tokens[token_key]
+        self.add_token(f'/{tag_type}:', tag_value)
+        self.apply_filters()
+
     def search_items(self, text):
         if text.startswith("/"):
             if text == "/":
-                model = QStringListModel(["/author:", "/genre:"])
+                model = QStringListModel(["/author:", "/genre:", "/theme:", "/format:"])
                 self.completer.setModel(model)
             elif text.startswith("/author:"):
                 value = text.split(":", 1)[1]
@@ -296,6 +309,18 @@ class FolderGrid(QWidget):
                 genres = self.library_manager.get_all_genres()
                 filtered_genres = [genre for genre in genres if value.lower() in genre.lower()]
                 model = QStringListModel(filtered_genres)
+                self.completer.setModel(model)
+            elif text.startswith("/theme:"):
+                value = text.split(":", 1)[1]
+                themes = self.library_manager.get_all_themes()
+                filtered_themes = [theme for theme in themes if value.lower() in theme.lower()]
+                model = QStringListModel(filtered_themes)
+                self.completer.setModel(model)
+            elif text.startswith("/format:"):
+                value = text.split(":", 1)[1]
+                formats = self.library_manager.get_all_formats()
+                filtered_formats = [format for format in formats if value.lower() in format.lower()]
+                model = QStringListModel(filtered_formats)
                 self.completer.setModel(model)
             self.completer.complete()
         else:
@@ -372,7 +397,7 @@ class FolderGrid(QWidget):
         if generation != self.recent_loading_generation:
             return
         
-        widget = ThumbnailWidget(series, self.library_manager, show_chapter_number=True)
+        widget = ThumbnailWidget(series, self.library_manager, show_chapter_number=len(series["chapters"]) > 0)
         widget.set_pixmap(pix)
         widget.set_chapter_number(series)
         widget.clicked.connect(self.recent_series_selected)

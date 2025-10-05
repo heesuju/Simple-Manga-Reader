@@ -39,11 +39,16 @@ class MainWindow(QMainWindow):
         self.chapter_list = ChapterListView(series, self.library_manager, self)
         self.chapter_list.back_to_library.connect(self.show_folder_grid)
         self.chapter_list.open_reader.connect(self.show_reader_view)
+        self.chapter_list.tag_clicked.connect(self._on_tag_clicked)
         self.stacked_widget.addWidget(self.chapter_list)
         self.stacked_widget.setCurrentWidget(self.chapter_list)
         # else:
         #     self.current_series_has_chapters = False
         #     self.show_reader_view(series, None)
+
+    def _on_tag_clicked(self, tag_type, tag_value):
+        self.folder_grid.apply_tag_filter(tag_type, tag_value)
+        self.show_folder_grid()
 
     def show_reader_for_recent(self, series):
         last_read_path = series.get('last_read_chapter')

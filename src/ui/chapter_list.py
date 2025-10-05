@@ -1,9 +1,11 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect, QSizePolicy
 import os
 from PyQt6.QtGui import QPixmap, QPalette, QColor, QPainter, QLinearGradient, QShortcut, QKeySequence, QMouseEvent
 from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF
 
 from src.core.item_loader import ItemLoader
+from src.ui.clickable_label import ClickableLabel
+from src.ui.flow_layout import FlowLayout
 from src.ui.reader_view import ReaderView
 from src.utils.img_utils import crop_pixmap
 from pathlib import Path
@@ -138,6 +140,7 @@ class GradientOverlay(QWidget):
 class ChapterListView(QWidget):
     back_to_library = pyqtSignal()
     open_reader = pyqtSignal(object, object)
+    tag_clicked = pyqtSignal(str, str)
 
     def __init__(self, series, library_manager, parent=None):
         super().__init__(parent)
@@ -214,6 +217,40 @@ class ChapterListView(QWidget):
         self.top_spacer.setFixedHeight(self.height() // 2)
         self.back_btn.move(10, 10)
 
+    def _on_tag_clicked(self, tag_type, tag_value):
+        self.tag_clicked.emit(tag_type, tag_value)
+
+    def _create_tag_row(self, title, tag_type, tags, color):
+        if not tags:
+            return
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white; margin-top: 10px;")
+        self.content_layout.addWidget(title_label)
+
+        tag_container = QWidget()
+        flow_layout = FlowLayout(tag_container)
+
+        stylesheet = f"""
+            QLabel {{
+                background-color: {color};
+                color: #333;
+                padding: 4px 8px;
+                border-radius: 10px;
+                font-size: 12px;
+            }}
+        """
+
+        for tag in tags:
+            tag_label = ClickableLabel(tag)
+            tag_label.setStyleSheet(stylesheet)
+            tag_label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+            tag_label.setCursor(Qt.CursorShape.PointingHandCursor)
+            tag_label.clicked.connect(lambda t=tag: self._on_tag_clicked(tag_type, t))
+            flow_layout.addWidget(tag_label)
+
+        self.content_layout.addWidget(tag_container)
+
     def load_chapters_and_info(self):
         # --- Info and Buttons (in scroll area) ---
         button_layout = QHBoxLayout()
@@ -239,18 +276,17 @@ class ChapterListView(QWidget):
         series_name_label.setGraphicsEffect(shadow_effect)
         self.content_layout.addWidget(series_name_label)
 
-        authors = self.series.get('authors', [])
-        if authors:
-            authors_label = QLabel(f"by {', '.join(authors)}")
-            authors_label.setStyleSheet("font-style: italic; color: white;")
-            self.content_layout.addWidget(authors_label)
-
         description = self.series.get('description')
         if description:
             description_label = QLabel(description)
             description_label.setWordWrap(True)
             description_label.setStyleSheet("color: white;")
             self.content_layout.addWidget(description_label)
+
+        self._create_tag_row("Authors", "author", self.series.get('authors', []), "#D3B4E8")
+        self._create_tag_row("Genres", "genre", self.series.get('genres', []), "#A7C7E7")
+        self._create_tag_row("Themes", "theme", self.series.get('themes', []), "#E8B4B8")
+        self._create_tag_row("Formats", "format", self.series.get('formats', []), "#B2D8B2")
 
         # --- Chapters Header ---
         db_chapters = self.series.get('chapters', [])

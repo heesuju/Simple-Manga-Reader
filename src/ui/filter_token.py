@@ -26,3 +26,4 @@ class FilterToken(QPushButton):
 
     def emit_remove_request(self):
         self.remove_requested.emit(self.token_type, self.token_value)
+  
