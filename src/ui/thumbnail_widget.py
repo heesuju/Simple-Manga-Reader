@@ -32,15 +32,7 @@ class ThumbnailWidget(QWidget):
         self.image_container_size = QSize(150, 210)
         self.setFixedSize(self.original_size)
         self.image_container.setFixedSize(self.image_container_size)
-        self.image_label.setGeometry(QRect(5, 5, self.image_container_size.width(), self.image_container_size.height()))
-
-        # Shine effect
-        self.shine_label = QLabel(self)
-        self.shine_label.setStyleSheet("background-color: qradialgradient(cx:1, cy:0, radius: 1, fx:1, fy:0, stop:0 rgba(255, 255, 255, 100), stop:0.5 rgba(255, 255, 255, 0));")
-        
-        self.shine_opacity_effect = QGraphicsOpacityEffect(self.shine_label)
-        self.shine_label.setGraphicsEffect(self.shine_opacity_effect)
-        self.shine_opacity_effect.setOpacity(0)
+        self.image_label.setGeometry(QRect(5, 10, self.image_container_size.width(), self.image_container_size.height()))
 
         self.info_layout = QHBoxLayout()
         self.name_label = QLabel()
@@ -100,16 +92,24 @@ class ThumbnailWidget(QWidget):
         self.anim_group_shrink = QParallelAnimationGroup(self)
 
         # Image label animation
+        scale_factor = 1.05
+        grown_width = int(self.image_container_size.width() * scale_factor)
+        grown_height = int(self.image_container_size.height() * scale_factor)
+
+        original_x = 5
+        original_y = 10
+
+        original_rect = QRect(original_x, original_y, self.image_container_size.width(), self.image_container_size.height())
+        grown_rect = QRect(
+            original_x - (grown_width - self.image_container_size.width()) // 2,
+            original_y - (grown_height - self.image_container_size.height()) // 2,
+            grown_width,
+            grown_height
+        )
+
         anim_img_grow = QPropertyAnimation(self.image_label, b"geometry")
         anim_img_grow.setDuration(150)
         anim_img_grow.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        original_rect = QRect(5, 5, self.image_container_size.width(), self.image_container_size.height())
-        grown_rect = QRect(
-            5 - int(self.image_container_size.width() * 0.05),
-            5 - int(self.image_container_size.height() * 0.05),
-            int(self.image_container_size.width() * 1.1),
-            int(self.image_container_size.height() * 1.1)
-        )
         anim_img_grow.setStartValue(original_rect)
         anim_img_grow.setEndValue(grown_rect)
         self.anim_group_grow.addAnimation(anim_img_grow)
@@ -120,37 +120,6 @@ class ThumbnailWidget(QWidget):
         anim_img_shrink.setStartValue(grown_rect)
         anim_img_shrink.setEndValue(original_rect)
         self.anim_group_shrink.addAnimation(anim_img_shrink)
-
-        # Shine label animation
-        shine_size = int(self.image_container_size.width() * 0.8)
-        original_shine_rect = QRect(original_rect.right() - shine_size, original_rect.top(), shine_size, shine_size)
-        grown_shine_size = int(grown_rect.width() * 0.8)
-        grown_shine_rect = QRect(grown_rect.right() - grown_shine_size, grown_rect.top(), grown_shine_size, grown_shine_size)
-
-        anim_shine_grow = QPropertyAnimation(self.shine_label, b"geometry")
-        anim_shine_grow.setDuration(150)
-        anim_shine_grow.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        anim_shine_grow.setStartValue(original_shine_rect)
-        anim_shine_grow.setEndValue(grown_shine_rect)
-        self.anim_group_grow.addAnimation(anim_shine_grow)
-
-        anim_shine_shrink = QPropertyAnimation(self.shine_label, b"geometry")
-        anim_shine_shrink.setDuration(150)
-        anim_shine_shrink.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        anim_shine_shrink.setStartValue(grown_shine_rect)
-        anim_shine_shrink.setEndValue(original_shine_rect)
-        self.anim_group_shrink.addAnimation(anim_shine_shrink)
-
-        # Shine fade in/out
-        self.anim_fade_in = QPropertyAnimation(self.shine_opacity_effect, b"opacity")
-        self.anim_fade_in.setDuration(200)
-        self.anim_fade_in.setStartValue(0)
-        self.anim_fade_in.setEndValue(1)
-
-        self.anim_fade_out = QPropertyAnimation(self.shine_opacity_effect, b"opacity")
-        self.anim_fade_out.setDuration(200)
-        self.anim_fade_out.setStartValue(1)
-        self.anim_fade_out.setEndValue(0)
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
@@ -181,21 +150,16 @@ class ThumbnailWidget(QWidget):
     def enterEvent(self, event):
         self._hover = True
         self.image_label.raise_()
-        self.shine_label.raise_()
         if self.show_chapter_number and hasattr(self, 'chapter_label'):
             self.chapter_label.raise_()
         self.anim_group_shrink.stop()
         self.anim_group_grow.start()
-        self.anim_fade_out.stop()
-        self.anim_fade_in.start()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self._hover = False
         self.anim_group_grow.stop()
         self.anim_group_shrink.start()
-        self.anim_fade_in.stop()
-        self.anim_fade_out.start()
         super().leaveEvent(event)
 
     def mousePressEvent(self, ev: QMouseEvent) -> None:
@@ -215,7 +179,7 @@ class ThumbnailWidget(QWidget):
         painter = QPainter(rounded)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         path = QPainterPath()
-        path.addRoundedRect(0, 0, cropped.width(), cropped.height(), 0, 0)
+        path.addRoundedRect(0, 0, cropped.width(), cropped.height(), 8, 8)
         painter.setClipPath(path)
         painter.drawPixmap(0, 0, cropped)
         painter.end()
