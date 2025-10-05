@@ -99,7 +99,6 @@ class FolderGrid(QWidget):
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("Search by title, or type / to filter by author/genre")
         self.search_bar.textChanged.connect(self.search_items)
-        self.search_bar.returnPressed.connect(self.handle_return_pressed)
         self.search_bar.setStyleSheet("border: none; background: transparent;")
         self.search_bar.installEventFilter(self)
         search_container_layout.addWidget(self.search_bar, 1)
@@ -212,22 +211,12 @@ class FolderGrid(QWidget):
 
     def handle_completion(self, text):
         current_text = self.search_bar.text()
-        if current_text.startswith("/author:") or current_text.startswith("/genre:"):
+        if current_text.startswith("/author:") or current_text.startswith("/genre:") or current_text.startswith("/theme:") or current_text.startswith("/format:"):
             prefix = current_text.split(":")[0] + ":"
             self.add_token(prefix, text)
             self.search_bar.clear()
         elif current_text.startswith("/"):
             self.search_bar.setText(text)
-
-    def handle_return_pressed(self):
-        text = self.search_bar.text()
-        if text.startswith("/"):
-            parts = text.split(":", 1)
-            if len(parts) == 2 and parts[1]:
-                self.add_token(parts[0] + ":", parts[1])
-                self.search_bar.clear()
-        else:
-            self.apply_filters()
 
     def add_token(self, token_type, token_value):
         token_key = f"{token_type}{token_value}"
@@ -295,33 +284,26 @@ class FolderGrid(QWidget):
 
     def search_items(self, text):
         if text.startswith("/"):
-            if text == "/":
-                model = QStringListModel(["/author:", "/genre:", "/theme:", "/format:"])
-                self.completer.setModel(model)
-            elif text.startswith("/author:"):
+            filtered = []
+            if text.startswith("/author:"):
                 value = text.split(":", 1)[1]
                 authors = self.library_manager.get_all_authors()
-                filtered_authors = [author for author in authors if value.lower() in author.lower()]
-                model = QStringListModel(filtered_authors)
-                self.completer.setModel(model)
+                filtered = [author for author in authors if value.lower() in author.lower()]
             elif text.startswith("/genre:"):
                 value = text.split(":", 1)[1]
                 genres = self.library_manager.get_all_genres()
-                filtered_genres = [genre for genre in genres if value.lower() in genre.lower()]
-                model = QStringListModel(filtered_genres)
-                self.completer.setModel(model)
+                filtered = [genre for genre in genres if value.lower() in genre.lower()]
             elif text.startswith("/theme:"):
                 value = text.split(":", 1)[1]
                 themes = self.library_manager.get_all_themes()
-                filtered_themes = [theme for theme in themes if value.lower() in theme.lower()]
-                model = QStringListModel(filtered_themes)
-                self.completer.setModel(model)
+                filtered = [theme for theme in themes if value.lower() in theme.lower()]
             elif text.startswith("/format:"):
                 value = text.split(":", 1)[1]
                 formats = self.library_manager.get_all_formats()
-                filtered_formats = [format for format in formats if value.lower() in format.lower()]
-                model = QStringListModel(filtered_formats)
-                self.completer.setModel(model)
+                filtered = [format for format in formats if value.lower() in format.lower()]
+            else:
+                filtered = [tag for tag in ["/author:", "/genre:", "/theme:", "/format:"] if text.lower() in tag.lower()]
+            self.completer.setModel(QStringListModel(filtered))
             self.completer.complete()
         else:
             self.apply_filters()
