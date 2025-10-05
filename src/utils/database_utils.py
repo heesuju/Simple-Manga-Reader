@@ -56,6 +56,40 @@ def create_tables():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS themes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS formats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS series_themes (
+        series_id INTEGER,
+        theme_id INTEGER,
+        PRIMARY KEY (series_id, theme_id),
+        FOREIGN KEY (series_id) REFERENCES series (id) ON DELETE CASCADE,
+        FOREIGN KEY (theme_id) REFERENCES themes (id) ON DELETE CASCADE
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS series_formats (
+        series_id INTEGER,
+        format_id INTEGER,
+        PRIMARY KEY (series_id, format_id),
+        FOREIGN KEY (series_id) REFERENCES series (id) ON DELETE CASCADE,
+        FOREIGN KEY (format_id) REFERENCES formats (id) ON DELETE CASCADE
+    )
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS chapters (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         series_id INTEGER NOT NULL,

@@ -23,6 +23,8 @@ class LibraryManager:
             series['chapters'] = self.get_chapters(series)
             series['authors'] = self.get_authors(series['id'])
             series['genres'] = self.get_genres(series['id'])
+            series['themes'] = self.get_themes(series['id'])
+            series['formats'] = self.get_formats(series['id'])
         return series_list
 
     def search_series(self, search_term):
@@ -35,6 +37,8 @@ class LibraryManager:
             series['chapters'] = self.get_chapters(series)
             series['authors'] = self.get_authors(series['id'])
             series['genres'] = self.get_genres(series['id'])
+            series['themes'] = self.get_themes(series['id'])
+            series['formats'] = self.get_formats(series['id'])
         return series_list
 
     def get_recently_opened_series(self, limit=20):
@@ -47,6 +51,8 @@ class LibraryManager:
             series['chapters'] = self.get_chapters(series)
             series['authors'] = self.get_authors(series['id'])
             series['genres'] = self.get_genres(series['id'])
+            series['themes'] = self.get_themes(series['id'])
+            series['formats'] = self.get_formats(series['id'])
         return series_list
 
     def get_authors(self, series_id):
@@ -73,6 +79,30 @@ class LibraryManager:
         conn.close()
         return genres
 
+    def get_themes(self, series_id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.name FROM themes t
+            JOIN series_themes st ON t.id = st.theme_id
+            WHERE st.series_id = ?
+        """, (series_id,))
+        themes = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return themes
+
+    def get_formats(self, series_id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT f.name FROM formats f
+            JOIN series_formats sf ON f.id = sf.format_id
+            WHERE sf.series_id = ?
+        """, (series_id,))
+        formats = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return formats
+
     def get_all_authors(self):
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -88,6 +118,22 @@ class LibraryManager:
         genres = [row['name'] for row in cursor.fetchall()]
         conn.close()
         return genres
+
+    def get_all_themes(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM themes ORDER BY name")
+        themes = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return themes
+
+    def get_all_formats(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM formats ORDER BY name")
+        formats = [row['name'] for row in cursor.fetchall()]
+        conn.close()
+        return formats
 
     def search_series_with_filters(self, search_term, filters):
         conn = get_db_connection()
@@ -112,8 +158,26 @@ class LibraryManager:
                 query += " AND s.id IN (SELECT s.id FROM series s JOIN series_genres sg ON s.id = sg.series_id JOIN genres g ON sg.genre_id = g.id WHERE g.name IN ({})) ".format(', '.join('?'*len(filters['genres'])))
             params.extend(filters['genres'])
 
+        if filters.get('themes'):
+            if not joins:
+                joins += " JOIN series_themes st ON s.id = st.series_id JOIN themes t ON st.theme_id = t.id"
+                query += joins
+                query += " WHERE t.name IN ({})".format(', '.join('?'*len(filters['themes'])))
+            else:
+                query += " AND s.id IN (SELECT s.id FROM series s JOIN series_themes st ON s.id = st.series_id JOIN themes t ON st.theme_id = t.id WHERE t.name IN ({})) ".format(', '.join('?'*len(filters['themes'])))
+            params.extend(filters['themes'])
+
+        if filters.get('formats'):
+            if not joins:
+                joins += " JOIN series_formats sf ON s.id = sf.series_id JOIN formats f ON sf.format_id = f.id"
+                query += joins
+                query += " WHERE f.name IN ({})".format(', '.join('?'*len(filters['formats'])))
+            else:
+                query += " AND s.id IN (SELECT s.id FROM series s JOIN series_formats sf ON s.id = sf.series_id JOIN formats f ON sf.format_id = f.id WHERE f.name IN ({})) ".format(', '.join('?'*len(filters['formats'])))
+            params.extend(filters['formats'])
+
         if search_term:
-            if not filters.get('authors') and not filters.get('genres'):
+            if not filters.get('authors') and not filters.get('genres') and not filters.get('themes') and not filters.get('formats'):
                 query += " WHERE s.name LIKE ?"
             else:
                 query += " AND s.name LIKE ?"
@@ -142,6 +206,8 @@ class LibraryManager:
             series['chapters'] = self.get_chapters(series)
             series['authors'] = self.get_authors(series['id'])
             series['genres'] = self.get_genres(series['id'])
+            series['themes'] = self.get_themes(series['id'])
+            series['formats'] = self.get_formats(series['id'])
             return series
         return None
 
@@ -200,6 +266,28 @@ class LibraryManager:
                                 genre_id = genre_row['id']
                             cursor.execute("INSERT INTO series_genres (series_id, genre_id) VALUES (?, ?)", (series_id, genre_id))
 
+                    if 'themes' in metadata and metadata['themes']:
+                        for theme_name in metadata['themes']:
+                            cursor.execute("SELECT id FROM themes WHERE name = ?", (theme_name,))
+                            theme_row = cursor.fetchone()
+                            if not theme_row:
+                                cursor.execute("INSERT INTO themes (name) VALUES (?) ", (theme_name,))
+                                theme_id = cursor.lastrowid
+                            else:
+                                theme_id = theme_row['id']
+                            cursor.execute("INSERT INTO series_themes (series_id, theme_id) VALUES (?, ?)", (series_id, theme_id))
+
+                    if 'formats' in metadata and metadata['formats']:
+                        for format_name in metadata['formats']:
+                            cursor.execute("SELECT id FROM formats WHERE name = ?", (format_name,))
+                            format_row = cursor.fetchone()
+                            if not format_row:
+                                cursor.execute("INSERT INTO formats (name) VALUES (?) ", (format_name,))
+                                format_id = cursor.lastrowid
+                            else:
+                                format_id = format_row['id']
+                            cursor.execute("INSERT INTO series_formats (series_id, format_id) VALUES (?, ?)", (series_id, format_id))
+
                 conn.commit()
             except Exception as e:
                 print(f"Error adding series: {e}")
@@ -246,6 +334,10 @@ class LibraryManager:
             if 'description' in new_info:
                 cursor.execute("UPDATE series SET description = ? WHERE id = ?", (new_info['description'], series_id))
 
+            # Update cover_image
+            if 'cover_image' in new_info:
+                cursor.execute("UPDATE series SET cover_image = ? WHERE id = ?", (new_info['cover_image'], series_id))
+
             # Update authors
             if 'authors' in new_info:
                 # First, delete existing author links for the series
@@ -273,6 +365,28 @@ class LibraryManager:
                         cursor.execute("INSERT INTO genres (name) VALUES (?) RETURNING id", (genre_name,))
                         genre_id = cursor.fetchone()
                     cursor.execute("INSERT INTO series_genres (series_id, genre_id) VALUES (?, ?)", (series_id, genre_id['id']))
+
+            # Update themes
+            if 'themes' in new_info:
+                cursor.execute("DELETE FROM series_themes WHERE series_id = ?", (series_id,))
+                for theme_name in new_info['themes']:
+                    cursor.execute("SELECT id FROM themes WHERE name = ?", (theme_name,))
+                    theme_id = cursor.fetchone()
+                    if not theme_id:
+                        cursor.execute("INSERT INTO themes (name) VALUES (?) RETURNING id", (theme_name,))
+                        theme_id = cursor.fetchone()
+                    cursor.execute("INSERT INTO series_themes (series_id, theme_id) VALUES (?, ?)", (series_id, theme_id['id']))
+
+            # Update formats
+            if 'formats' in new_info:
+                cursor.execute("DELETE FROM series_formats WHERE series_id = ?", (series_id,))
+                for format_name in new_info['formats']:
+                    cursor.execute("SELECT id FROM formats WHERE name = ?", (format_name,))
+                    format_id = cursor.fetchone()
+                    if not format_id:
+                        cursor.execute("INSERT INTO formats (name) VALUES (?) RETURNING id", (format_name,))
+                        format_id = cursor.fetchone()
+                    cursor.execute("INSERT INTO series_formats (series_id, format_id) VALUES (?, ?)", (series_id, format_id['id']))
 
             conn.commit()
         except Exception as e:

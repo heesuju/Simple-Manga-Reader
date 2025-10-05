@@ -34,16 +34,16 @@ class MainWindow(QMainWindow):
 
     def show_chapter_list(self, series):
         self.current_series = series
-        if series.get('chapters'):
-            self.current_series_has_chapters = True
-            self.chapter_list = ChapterListView(series, self.library_manager, self)
-            self.chapter_list.back_to_library.connect(self.show_folder_grid)
-            self.chapter_list.open_reader.connect(self.show_reader_view)
-            self.stacked_widget.addWidget(self.chapter_list)
-            self.stacked_widget.setCurrentWidget(self.chapter_list)
-        else:
-            self.current_series_has_chapters = False
-            self.show_reader_view(series, None)
+        
+        self.current_series_has_chapters = True
+        self.chapter_list = ChapterListView(series, self.library_manager, self)
+        self.chapter_list.back_to_library.connect(self.show_folder_grid)
+        self.chapter_list.open_reader.connect(self.show_reader_view)
+        self.stacked_widget.addWidget(self.chapter_list)
+        self.stacked_widget.setCurrentWidget(self.chapter_list)
+        # else:
+        #     self.current_series_has_chapters = False
+        #     self.show_reader_view(series, None)
 
     def show_reader_for_recent(self, series):
         last_read_path = series.get('last_read_chapter')
@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
         else:
             self.current_series_has_chapters = False
 
-        if chapter:
+        if chapter and chapter in series['chapters']:
             chapter_files = [ch['path'] for ch in series['chapters']]
             chapter_index = series['chapters'].index(chapter)
             start_file = None # Start from the beginning of the chapter

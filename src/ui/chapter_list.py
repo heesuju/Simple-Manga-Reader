@@ -37,8 +37,12 @@ class ChapterListItemWidget(QWidget):
         self.layout.addStretch()
         self.layout.addWidget(self.page_count_label)
 
-        chapter_number = int(chapter_name.replace("Ch ", ""))
-        self.chapter_number_label.setText(f'{chapter_number:02}')
+        try:
+            chapter_number = int(get_chapter_number(chapter_name))
+            self.chapter_number_label.setText(f'{chapter_number:02}')
+        except (ValueError, TypeError, OverflowError):
+            self.chapter_number_label.setText("-")
+        
         self.chapter_number_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 0px; color: white; background: transparent;")
         self.name_label.setText(Path(chapter['path']).name)
         self.name_label.setStyleSheet("color: white; background: transparent;")
@@ -187,6 +191,7 @@ class ChapterListView(QWidget):
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.gradient_overlay.set_scroll_offset)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.go_back)
 
+        self.display_chapters = []
         self.load_chapters_and_info()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -248,17 +253,28 @@ class ChapterListView(QWidget):
             self.content_layout.addWidget(description_label)
 
         # --- Chapters Header ---
-        chapters = self.series.get('chapters', [])
-        if chapters:
-            chapters_header_label = QLabel(f"Chapters ({len(chapters)})")
+        db_chapters = self.series.get('chapters', [])
+        self.display_chapters = list(db_chapters)
+
+        if not self.display_chapters:
+            series_path = Path(self.series['path'])
+            if series_path.is_dir():
+                images = [p for p in series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
+                if images:
+                    dummy_chapter = {'path': str(series_path), 'name': self.series['name']}
+                    self.display_chapters.append(dummy_chapter)
+
+        if self.display_chapters:
+            chapters_header_label = QLabel(f"Chapters ({len(self.display_chapters)})")
             chapters_header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: white; margin-top: 10px;")
             self.content_layout.addWidget(chapters_header_label)
 
         # --- Chapter List ---
         last_read_chapter = self.series.get('last_read_chapter')
 
-        for i, chapter in enumerate(chapters):
-            item_widget = ChapterListItemWidget(chapter, self.series, f"Ch {i+1}", self.library_manager, self)
+        for i, chapter in enumerate(self.display_chapters):
+            chapter_name = f"Ch {i+1}" if chapter.get('name') != self.series['name'] else self.series['name']
+            item_widget = ChapterListItemWidget(chapter, self.series, chapter_name, self.library_manager, self)
             item_widget.chapter_selected.connect(self.on_chapter_selected)
             self.content_layout.addWidget(item_widget)
             self.chapter_widgets.append(item_widget)
@@ -266,7 +282,7 @@ class ChapterListView(QWidget):
             if chapter['path'] == last_read_chapter:
                 item_widget.set_highlight(True)
 
-            if i < len(chapters) - 1:
+            if i < len(self.display_chapters) - 1:
                 line = QFrame()
                 line.setFrameShape(QFrame.Shape.HLine)
                 line.setFrameShadow(QFrame.Shadow.Sunken)
@@ -274,7 +290,7 @@ class ChapterListView(QWidget):
 
         self.content_layout.addStretch()
 
-        loader = ItemLoader(chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75)
+        loader = ItemLoader(self.display_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75)
         loader.signals.item_loaded.connect(self.on_thumbnail_loaded)
         self.threadpool.start(loader)
 
@@ -289,8 +305,8 @@ class ChapterListView(QWidget):
         self.back_to_library.emit()
 
     def start_reading(self):
-        if self.series.get('chapters'):
-            first_chapter = self.series['chapters'][0]
+        if self.display_chapters:
+            first_chapter = self.display_chapters[0]
             self.open_reader.emit(self.series, first_chapter)
 
     def continue_reading(self):
