@@ -70,7 +70,7 @@ class ThumbnailWidget(QWidget):
 
         self._hover = False
         self._selected = False
-        self._update_style()
+        self.image_container.setStyleSheet(f"QWidget#image_container {{ border: 2px solid transparent; border-radius: 10px; background-color: transparent; }}")
 
         self.setup_animation()
 
@@ -178,15 +178,6 @@ class ThumbnailWidget(QWidget):
         else:
             subprocess.Popen(["xdg-open", self.series['path']])
 
-    def _update_style(self):
-        border_color = "transparent"
-        if self._selected:
-            border_color = "rgba(74, 134, 232, 180)"
-        elif self._hover:
-            border_color = "rgba(100, 100, 100, 180)"
-        
-        self.image_container.setStyleSheet(f"QWidget#image_container {{ border: 2px solid {border_color}; border-radius: 10px; background-color: transparent; }}")
-
     def enterEvent(self, event):
         self._hover = True
         self.image_label.raise_()
@@ -197,7 +188,6 @@ class ThumbnailWidget(QWidget):
         self.anim_group_grow.start()
         self.anim_fade_out.stop()
         self.anim_fade_in.start()
-        self._update_style()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -206,7 +196,6 @@ class ThumbnailWidget(QWidget):
         self.anim_group_shrink.start()
         self.anim_fade_in.stop()
         self.anim_fade_out.start()
-        self._update_style()
         super().leaveEvent(event)
 
     def mousePressEvent(self, ev: QMouseEvent) -> None:
@@ -232,7 +221,3 @@ class ThumbnailWidget(QWidget):
         painter.end()
 
         self.image_label.setPixmap(rounded)
-
-    def set_selected(self, selected: bool):
-        self._selected = selected
-        self._update_style()
