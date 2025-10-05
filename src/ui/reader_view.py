@@ -419,8 +419,8 @@ class ReaderView(QMainWindow):
         w = self.view.width()
         x = event.position().x()
 
-        left_area = w * 0.2
-        right_area = w * 0.8
+        left_area = w * 0.3
+        right_area = w * 0.7
 
         if x <= left_area:
             self.show_prev()

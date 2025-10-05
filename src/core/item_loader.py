@@ -84,7 +84,7 @@ class ItemLoader(QRunnable):
                     if thumbnail_path:
                         pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
                         
-                        if self.library_manager:
+                        if self.library_manager and 'id' in item:
                             self.library_manager.set_chapter_cover_path(item['id'], thumbnail_path)
                         item['cover_path'] = thumbnail_path
             else:
