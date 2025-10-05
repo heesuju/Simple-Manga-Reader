@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable
 from PyQt6.QtGui import QPixmap
-from src.utils.img_utils import is_image_folder, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path, get_chapter_number
+from src.utils.img_utils import is_image_folder, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path, get_chapter_number, is_image_monotone
 
 class ItemLoaderSignals(QObject):
     item_loaded = pyqtSignal(QPixmap, object, int, int, str)  # pix, path, idx, gen, item_type
@@ -12,7 +12,7 @@ class ItemLoaderSignals(QObject):
 
 class ItemLoader(QRunnable):
     """Load thumbnails for folders and images in a separate thread."""
-    def __init__(self, items, generation, item_type='file', thumb_width=150, thumb_height=200, root_dir=None):
+    def __init__(self, items, generation, item_type='file', thumb_width=150, thumb_height=200, root_dir=None, library_manager=None):
         super().__init__()
         self.items = items
         self.generation = generation
@@ -21,6 +21,7 @@ class ItemLoader(QRunnable):
         self.thumb_width = thumb_width
         self.thumb_height = thumb_height
         self.root_dir = root_dir
+        self.library_manager = library_manager
 
     @staticmethod
     def _folder_is_valid(folder_path: Path) -> bool:
@@ -57,24 +58,35 @@ class ItemLoader(QRunnable):
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
                 chapter_path = item['path']
-                thumbnail_path = None
-                
-                cover_path = Path(chapter_path) / 'cover.png' 
-                if not cover_path.exists(): 
-                    cover_path = Path(chapter_path) / 'cover.jpg'
-                
-                if cover_path.exists():
-                    thumbnail_path = str(cover_path)
-                else:
-                    try:
-                        first_image = next(f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
-                        if first_image:
-                            thumbnail_path = str(first_image)
-                    except (StopIteration, PermissionError):
-                        pass
-                
-                if thumbnail_path:
+                thumbnail_path = item.get('cover_path')
+
+                if thumbnail_path and Path(thumbnail_path).exists():
                     pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                else:
+                    thumbnail_path = None
+
+                    for ext in ['jpg', 'png', 'webp']:
+                        cover_path = Path(chapter_path) / f'cover.{ext}'
+                        if cover_path.exists():
+                            thumbnail_path = str(cover_path)
+                            break
+                    
+                    if not thumbnail_path:
+                        try:
+                            image_files = sorted([f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}])
+                            for image_file in image_files:
+                                if not is_image_monotone(str(image_file)):
+                                    thumbnail_path = str(image_file)
+                                    break
+                        except (StopIteration, PermissionError):
+                            pass
+                    
+                    if thumbnail_path:
+                        pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                        
+                        if self.library_manager:
+                            self.library_manager.set_chapter_cover_path(item['id'], thumbnail_path)
+                        item['cover_path'] = thumbnail_path
             else:
                 path_str = str(item_path)
                 crop = None

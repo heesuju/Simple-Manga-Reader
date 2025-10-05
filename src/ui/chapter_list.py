@@ -326,7 +326,7 @@ class ChapterListView(QWidget):
 
         self.content_layout.addStretch()
 
-        loader = ItemLoader(self.display_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75)
+        loader = ItemLoader(self.display_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75, library_manager=self.library_manager)
         loader.signals.item_loaded.connect(self.on_thumbnail_loaded)
         self.threadpool.start(loader)
 

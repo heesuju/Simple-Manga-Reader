@@ -79,6 +79,33 @@ def get_image_size_from_virtual_path(path:str):
 def get_image_ratio(w:int,h:int):
     return round(w / h, 2) if h != 0 else 0.0
 
+def is_image_monotone(image_path: str, threshold: float = 10.0) -> bool:
+    """
+    Check if an image is largely monotone (e.g., all white or all black).
+    It does this by resizing to a small image and checking the standard deviation.
+    """
+    try:
+        # Read file into a numpy array to handle non-ASCII paths correctly
+        with open(image_path, 'rb') as f:
+            nparr = np.frombuffer(f.read(), np.uint8)
+        
+        # Decode image from the array
+        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+
+        if img is None:
+            return True # Treat as monotone if it can't be read
+
+        # Resize to a small image for performance
+        small_img = cv2.resize(img, (8, 8), interpolation=cv2.INTER_AREA)
+        
+        # Calculate the standard deviation of pixel intensities
+        std_dev = np.std(small_img)
+        
+        return std_dev < threshold
+    except Exception:
+        # If any error occurs, assume it's not a valid image for a thumbnail
+        return True
+
 def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
     if pixmap.isNull():
         return pixmap

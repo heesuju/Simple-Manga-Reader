@@ -328,6 +328,18 @@ class LibraryManager:
         finally:
             conn.close()
 
+    def set_chapter_cover_path(self, chapter_id, cover_path):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE chapters SET cover_path = ? WHERE id = ?", (cover_path, chapter_id))
+            conn.commit()
+        except Exception as e:
+            print(f"Error updating chapter cover path: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+
     def update_series_info(self, series_id, new_info):
         conn = get_db_connection()
         cursor = conn.cursor()

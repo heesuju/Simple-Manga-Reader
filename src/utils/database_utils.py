@@ -109,5 +109,10 @@ def create_tables():
     if 'last_opened_date' not in columns:
         cursor.execute("ALTER TABLE series ADD COLUMN last_opened_date DATETIME")
 
+    cursor.execute("PRAGMA table_info(chapters)")
+    columns = [row['name'] for row in cursor.fetchall()]
+    if 'cover_path' not in columns:
+        cursor.execute("ALTER TABLE chapters ADD COLUMN cover_path TEXT")
+
     conn.commit()
     conn.close()
