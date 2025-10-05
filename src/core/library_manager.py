@@ -191,6 +191,8 @@ class LibraryManager:
             series['chapters'] = self.get_chapters(series)
             series['authors'] = self.get_authors(series['id'])
             series['genres'] = self.get_genres(series['id'])
+            series['themes'] = self.get_themes(series['id'])
+            series['formats'] = self.get_formats(series['id'])
         
         return series_list
 
