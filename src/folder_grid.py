@@ -380,9 +380,16 @@ class FolderGrid(QWidget):
             return
         
         widget = ThumbnailWidget(series, self.library_manager, show_chapter_number=len(series["chapters"]) > 0)
-        widget.set_pixmap(pix)
-        widget.set_chapter_number(series)
-        widget.clicked.connect(self.recent_series_selected)
+        
+        series_path = Path(series['path'])
+        if not series_path.exists() or not series_path.is_dir():
+            widget.set_as_missing()
+            widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
+        else:
+            widget.set_pixmap(pix)
+            widget.set_chapter_number(series)
+            widget.clicked.connect(self.recent_series_selected)
+
         widget.remove_requested.connect(self.remove_series)
         self.recent_layout.addWidget(widget)
 
