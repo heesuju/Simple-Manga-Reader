@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu, QGraphicsBlurEffect, QGraphicsOpacityEffect
 )
-from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath
+from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor
 from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup
 from src.utils.img_utils import crop_pixmap, get_chapter_number
 from src.ui.info_dialog import InfoDialog
@@ -185,3 +185,29 @@ class ThumbnailWidget(QWidget):
         painter.end()
 
         self.image_label.setPixmap(rounded)
+
+    def set_as_missing(self):
+        pixmap = QPixmap(self.image_container_size)
+        pixmap.fill(QColor("gray"))
+
+        painter = QPainter(pixmap)
+        
+        # Draw a large question mark
+        font = painter.font()
+        font.setPointSize(60)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(100, 100, 100))
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "?")
+
+        # Draw "Missing" text at the bottom
+        font.setPointSize(12)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(QColor(200, 200, 200))
+        text_rect = pixmap.rect().adjusted(0, 0, 0, -10) # Margin from bottom
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, "Missing")
+        
+        painter.end()
+
+        self.image_label.setPixmap(pixmap)

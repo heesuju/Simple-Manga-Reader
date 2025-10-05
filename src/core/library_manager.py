@@ -408,3 +408,39 @@ class LibraryManager:
             conn.rollback()
         finally:
             conn.close()
+
+    def rescan_series_path(self, series_id, new_path):
+        normalized_path = str(Path(new_path))
+        
+        scanner = LibraryScanner()
+        series_data = scanner.scan_series(normalized_path)
+
+        if not series_data:
+            print(f"New path {new_path} does not seem to be a valid series folder.")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            # 1. Update series path and cover
+            cursor.execute(
+                "UPDATE series SET path = ?, cover_image = ? WHERE id = ?",
+                (normalized_path, series_data['cover_image'], series_id)
+            )
+
+            # 2. Delete old chapters
+            cursor.execute("DELETE FROM chapters WHERE series_id = ?", (series_id,))
+
+            # 3. Insert new chapters
+            for chapter in series_data.get('chapters', []):
+                cursor.execute(
+                    "INSERT INTO chapters (series_id, name, path) VALUES (?, ?, ?)",
+                    (series_id, chapter['name'], chapter['path'])
+                )
+            
+            conn.commit()
+        except Exception as e:
+            print(f"Error rescanning series path: {e}")
+            conn.rollback()
+        finally:
+            conn.close()

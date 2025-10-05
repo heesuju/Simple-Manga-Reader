@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, QSizePolicy,
     QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter
 )
-from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon
+from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon, QCursor
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent, QSize
 
 from src.ui.reader_view import ReaderView
@@ -469,8 +469,15 @@ class FolderGrid(QWidget):
             if item_data is not None:
                 pix, series, item_type = item_data
                 widget = ThumbnailWidget(series, self.library_manager)
-                widget.set_pixmap(pix)
-                widget.clicked.connect(self.item_selected)
+
+                series_path = Path(series['path'])
+                if not series_path.exists() or not series_path.is_dir():
+                    widget.set_as_missing()
+                    widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
+                else:
+                    widget.set_pixmap(pix)
+                    widget.clicked.connect(self.item_selected)
+
                 widget.remove_requested.connect(self.remove_series)
                 self.items.append(widget)
                 
@@ -482,6 +489,25 @@ class FolderGrid(QWidget):
 
     def item_selected(self, series: object):
         self.series_selected.emit(series)
+
+    def missing_item_selected(self, series, widget):
+        menu = QMenu(self)
+        change_dir_action = menu.addAction("Change Directory")
+        remove_action = menu.addAction("Remove")
+        
+        action = menu.exec(QCursor.pos())
+
+        if action == change_dir_action:
+            self.change_series_directory(series)
+        elif action == remove_action:
+            self.remove_series(series)
+
+    def change_series_directory(self, series):
+        new_path = QFileDialog.getExistingDirectory(self, "Select New Folder for " + series['name'])
+        if new_path:
+            self.library_manager.rescan_series_path(series['id'], new_path)
+            self.load_items()
+            self.load_recent_items()
 
     def remove_series(self, series: object):
         self.library_manager.remove_series(series)
