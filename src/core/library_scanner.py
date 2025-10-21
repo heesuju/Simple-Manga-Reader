@@ -34,7 +34,7 @@ class LibraryScanner:
             return None
 
         sub_items = list(item.iterdir())
-        chapter_folders = [p for p in sub_items if p.is_dir() and self.is_chapter_folder(p)]
+        chapter_folders = [p for p in sub_items if p.is_dir()]
         image_files = [p for p in sub_items if self.is_image_file(p)]
 
         if chapter_folders:
