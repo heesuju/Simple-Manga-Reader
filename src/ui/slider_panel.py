@@ -129,7 +129,9 @@ class SliderPanel(QWidget):
 
     def set_range(self, max_value):
         """Sets the range of the slider."""
+        self.slider.blockSignals(True)
         self.slider.setRange(0, max_value)
+        self.slider.blockSignals(False)
         self.page_input.set_total(max_value + 1)
 
     def set_value(self, value):

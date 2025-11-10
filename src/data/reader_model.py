@@ -152,7 +152,7 @@ class ReaderModel(QObject):
         self.current_index = index
         self.load_image()
 
-    def change_chapter(self, chapter:int):
+    def set_chapter(self, chapter:int):
         index = chapter - 1
         total_chapters = len(self.chapters)
         
@@ -165,6 +165,18 @@ class ReaderModel(QObject):
         self.manga_dir = self.chapters[self.chapter_index]
         self.images = [] # force reload
         self.refresh(preserve_view_mode=True)
+
+    def change_chapter(self, direction: int):
+        new_index = self.chapter_index + direction
+        total_chapters = len(self.chapters)
+
+        if 0 <= new_index < total_chapters:
+            self.chapter_index = new_index
+            self.manga_dir = self.chapters[self.chapter_index]
+            self.images = []
+            
+            start_from_end = (direction == -1)
+            self.refresh(start_from_end=start_from_end, preserve_view_mode=True)
 
     def toggle_layout(self, mode:ViewMode=None):
         if isinstance(mode, ViewMode):

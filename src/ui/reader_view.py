@@ -155,7 +155,7 @@ class ReaderView(QMainWindow):
         self.top_panel = TopPanel(self)
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
         self.slider_panel = SliderPanel(self)
-        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.change_chapter)
+        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
 
         # 2. Add control widgets to the panels
         self.top_panel.set_series_title(self.model.series.get("name"))
@@ -168,7 +168,7 @@ class ReaderView(QMainWindow):
         self.slider_panel.speed_changed.connect(self._on_slideshow_speed_changed)
         self.slider_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
         self.slider_panel.page_changed.connect(self.change_page)
-        self.slider_panel.chapter_changed.connect(self.change_chapter)
+        self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
         self.slider_panel.chapter_input_clicked.connect(self._show_chapter_panel)
         self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
@@ -746,25 +746,15 @@ class ReaderView(QMainWindow):
         self.chapter_panel.show_content()
         self._update_panel_geometries()
 
-    def change_chapter(self, chapter:int):
-        self.is_changing_chapter = True
-        self.model.change_chapter(chapter)
+    def set_chapter(self, chapter:int):
+        self.model.set_chapter(chapter)
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
     def _change_chapter(self, direction: int):
-        new_index = self.model.chapter_index + direction
-        total_chapters = len(self.model.chapters)
-
-        if 0 <= new_index < total_chapters:
-            self.model.chapter_index = new_index
-            self.model.manga_dir = self.model.chapters[self.model.chapter_index]
-            self.model.images = []  # force reload
+        current_index = self.model.chapter_index
+        self.model.change_chapter(direction)
+        if self.model.chapter_index != current_index:
             self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-
-            # For 'prev', start from the end of the chapter
-            start_from_end = (direction == -1)
-            self.is_changing_chapter = True
-            self.model.refresh(start_from_end=start_from_end, preserve_view_mode=True)
 
     def _get_adjacent_chapter_from_db(self, direction: int):
         conn = get_db_connection()
