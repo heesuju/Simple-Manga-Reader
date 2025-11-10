@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pageSlider = document.getElementById('page-slider');
     const layoutBtn = document.getElementById('layout-btn');
     const stripView = document.getElementById('strip-view');
+    const chapterTitle = document.getElementById('chapter-title');
 
     let currentPath = '';
     let currentManga = null;
@@ -32,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (x >= middleStart && x <= middleEnd) {
             document.getElementById('reader-controls').classList.toggle('visible');
             closeReaderBtn.classList.toggle('visible');
+            chapterTitle.classList.toggle('visible');
         }
     }
 
@@ -173,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('reader-image-container').style.display = 'flex';
 
         if (chapter) {
+            chapterTitle.innerText = chapter.name;
             chapterList = seriesData.chapters;
             currentChapterIndex = chapterList.findIndex(c => c.path === chapter.path);
             imageList = chapter.images;
@@ -180,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentPage = startPage === 'last' ? imageList.length - 1 : 0;
             displayPage();
         } else { // Series with no chapters
+            chapterTitle.innerText = seriesData.name;
             chapterList = [];
             currentChapterIndex = 0;
             fetch(`/api/images?path=${encodeURIComponent(seriesData.path)}`)
