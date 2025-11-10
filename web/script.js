@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentPath = '';
     let currentManga = null;
+    let currentSeriesData = null;
     let currentPage = 0;
     let imageList = [];
     let chapterList = [];
@@ -158,8 +159,9 @@ document.addEventListener('DOMContentLoaded', () => {
         loadGrid(parentPath);
     });
 
-    function openReader(seriesData, chapter) {
+    function openReader(seriesData, chapter, startPage = 'first') {
         currentManga = seriesData.path;
+        currentSeriesData = seriesData;
         
         gridView.style.display = 'none';
         chapterListView.style.display = 'none';
@@ -172,10 +174,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (chapter) {
             chapterList = seriesData.chapters;
-            currentChapterIndex = chapterList.indexOf(chapter);
+            currentChapterIndex = chapterList.findIndex(c => c.path === chapter.path);
             imageList = chapter.images;
             pageSlider.max = imageList.length - 1;
-            currentPage = 0;
+            currentPage = startPage === 'last' ? imageList.length - 1 : 0;
             displayPage();
         } else { // Series with no chapters
             chapterList = [];
@@ -204,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
             displayPage();
         } else {
             if (currentChapterIndex < chapterList.length - 1) {
-                openReader(chapterList[currentChapterIndex + 1]);
+                openReader(currentSeriesData, chapterList[currentChapterIndex + 1]);
             }
         }
     }
@@ -215,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
             displayPage();
         } else {
             if (currentChapterIndex > 0) {
-                openReader(chapterList[currentChapterIndex - 1], 'last');
+                openReader(currentSeriesData, chapterList[currentChapterIndex - 1], 'last');
             }
         }
     }
@@ -229,10 +231,18 @@ document.addEventListener('DOMContentLoaded', () => {
     prevArea.addEventListener('click', showPrevPage);
 
     closeReaderBtn.addEventListener('click', () => {
-        currentManga = null;
-        gridView.classList.remove('hidden');
-        document.getElementById('controls').classList.remove('hidden');
         readerView.classList.remove('visible');
+
+        if (currentSeriesData && currentSeriesData.chapters && currentSeriesData.chapters.length > 0) {
+            chapterListView.style.display = 'block';
+        } else {
+            gridView.style.display = 'grid';
+        }
+
+        // Reset reader-specific state
+        currentManga = null;
+        imageList = [];
+        currentPage = 0;
     });
 
     document.addEventListener('keydown', (e) => {
