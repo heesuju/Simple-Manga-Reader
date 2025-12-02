@@ -69,6 +69,7 @@ class FolderGrid(QWidget):
         self.threadpool = QThreadPool()
         self.web_server_process = None
 
+        self.setAcceptDrops(True)
         self.init_ui()
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.exit_program)
         self.showFullScreen()
@@ -642,6 +643,48 @@ class FolderGrid(QWidget):
                 self.library_manager.add_series_batch(subfolders, metadata)
                 self.load_recent_items()
                 self.load_items()
+
+    def show_info(self, message):
+        self.info_label.setText(message)
+        self.info_label.show()
+        self.info_label.raise_()
+        QTimer.singleShot(3000, self.info_label.hide)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if any(Path(url.toLocalFile()).is_dir() or url.toLocalFile().lower().endswith('.zip') for url in urls):
+                event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        paths = [Path(url.toLocalFile()) for url in urls]
+        valid_paths = [str(p) for p in paths if p.is_dir() or p.suffix.lower() == '.zip']
+
+        if not valid_paths:
+            return
+
+        if len(valid_paths) == 1:
+            self.add_single(valid_paths[0])
+        else:
+            self.add_multiple(valid_paths)
+
+    def add_single(self, path):
+        self.library_manager.add_series(path)
+        new_series = self.library_manager.get_series_by_path(path)
+        if new_series:
+            info_dialog = InfoDialog(new_series, self.library_manager, self)
+            info_dialog.exec()
+        self.load_recent_items()
+        self.load_items()
+
+    def add_multiple(self, paths):
+        dialog = BatchMetadataDialog(self.library_manager, self)
+        if dialog.exec():
+            metadata = dialog.get_metadata()
+            self.library_manager.add_series_batch(paths, metadata)
+            self.load_recent_items()
+            self.load_items()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
