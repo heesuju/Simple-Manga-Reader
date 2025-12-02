@@ -301,6 +301,10 @@ class LibraryManager:
         for path in paths:
             self.add_series(path, metadata)
 
+    def update_series_batch(self, series_list, metadata):
+        for series in series_list:
+            self.update_series_info(series['id'], metadata)
+
     def remove_series(self, series_to_remove):
         conn = get_db_connection()
         cursor = conn.cursor()

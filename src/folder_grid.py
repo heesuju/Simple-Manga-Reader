@@ -69,6 +69,7 @@ class FolderGrid(QWidget):
         self.threadpool = QThreadPool()
         self.web_server_process = None
 
+        self.is_in_selection_mode = False
         self.setAcceptDrops(True)
         self.init_ui()
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.exit_program)
@@ -122,7 +123,6 @@ class FolderGrid(QWidget):
         self.web_access_btn.setFixedSize(QSize(32, 32))
         self.web_access_btn.clicked.connect(self.toggle_web_access)
 
-        top_layout.addWidget(self.add_btn)
         top_layout.addWidget(self.web_access_btn)
         main_layout.addLayout(top_layout)
 
@@ -133,6 +133,47 @@ class FolderGrid(QWidget):
         self.scroll.setWidget(self.scroll_content)
         main_layout.addWidget(self.scroll)
 
+        # Footer
+        self.footer_container = QWidget()
+        footer_container_layout = QVBoxLayout(self.footer_container)
+        footer_container_layout.setContentsMargins(0,0,0,0)
+        footer_container_layout.setSpacing(0)
+        
+        self.normal_footer = QWidget()
+        normal_footer_layout = QHBoxLayout(self.normal_footer)
+        normal_footer_layout.setContentsMargins(0, 0, 0, 0)
+        normal_footer_layout.addStretch()
+        normal_footer_layout.addWidget(self.add_btn)
+
+        self.more_options_btn = QPushButton("...")
+        self.more_options_btn.setFixedSize(QSize(32, 32))
+        self.more_options_btn.clicked.connect(self.show_more_options_menu)
+        normal_footer_layout.addWidget(self.more_options_btn)
+        
+        self.selection_footer = QWidget()
+        selection_footer_layout = QHBoxLayout(self.selection_footer)
+        selection_footer_layout.setContentsMargins(0, 0, 0, 0)
+        self.selection_count_label = QLabel("0 items selected")
+        self.cancel_selection_btn = QPushButton("Cancel")
+        self.cancel_selection_btn.clicked.connect(lambda: self.toggle_selection_mode(False))
+        self.select_all_btn = QPushButton("Select All")
+        self.select_all_btn.clicked.connect(self.select_all)
+        self.apply_batch_edit_btn = QPushButton("Edit")
+        self.apply_batch_edit_btn.clicked.connect(self.apply_batch_edit)
+        self.remove_selected_btn = QPushButton("Remove")
+        self.remove_selected_btn.clicked.connect(self.remove_selected_series)
+        selection_footer_layout.addWidget(self.selection_count_label)
+        selection_footer_layout.addWidget(self.cancel_selection_btn)
+        selection_footer_layout.addStretch()
+        selection_footer_layout.addWidget(self.select_all_btn)
+        selection_footer_layout.addWidget(self.apply_batch_edit_btn)
+        selection_footer_layout.addWidget(self.remove_selected_btn)
+        self.selection_footer.hide()
+
+        footer_container_layout.addWidget(self.normal_footer)
+        footer_container_layout.addWidget(self.selection_footer)
+        main_layout.addWidget(self.footer_container)
+        
         content_layout = QVBoxLayout(self.scroll_content)
         content_layout.setContentsMargins(0,0,0,0)
         content_layout.setSpacing(0)
@@ -308,6 +349,7 @@ class FolderGrid(QWidget):
             self.completer.complete()
         else:
             self.apply_filters()
+        self.toggle_selection_mode(False)
 
     def lang_changed(self, text):
         self.language = self.lang_combo.currentData()
@@ -487,6 +529,7 @@ class FolderGrid(QWidget):
                     widget.clicked.connect(self.item_selected)
 
                 widget.remove_requested.connect(self.remove_series)
+                widget.checkbox.toggled.connect(self.update_selection_count)
                 self.items.append(widget)
                 
                 row = self.next_item_to_display // num_cols
@@ -622,6 +665,13 @@ class FolderGrid(QWidget):
         elif action == add_multiple_action:
             self.add_multiple_series()
 
+    def show_more_options_menu(self):
+        menu = QMenu(self)
+        edit_action = menu.addAction("Edit")
+        action = menu.exec(self.more_options_btn.mapToGlobal(self.more_options_btn.rect().bottomLeft()))
+        if action == edit_action:
+            self.toggle_selection_mode(True)
+
     def add_single_series(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Manga Series Folder")
         if folder:
@@ -685,6 +735,70 @@ class FolderGrid(QWidget):
             self.library_manager.add_series_batch(paths, metadata)
             self.load_recent_items()
             self.load_items()
+
+    def toggle_selection_mode(self, enabled):
+        self.is_in_selection_mode = enabled
+        
+        self.normal_footer.setVisible(not enabled)
+        self.selection_footer.setVisible(enabled)
+        
+        for widget in self.items:
+            widget.set_selection_mode(enabled)
+            
+        if not enabled:
+            self.select_all_btn.setText("Select All")
+        
+        self.update_selection_count()
+
+    def update_selection_count(self):
+        count = sum(1 for widget in self.items if widget.is_selected())
+        self.selection_count_label.setText(f"{count} items selected")
+
+    def select_all(self):
+        all_selected = all(widget.is_selected() for widget in self.items)
+        
+        select = not all_selected
+        for widget in self.items:
+            widget.checkbox.setChecked(select)
+            
+        if select:
+            self.select_all_btn.setText("Deselect All")
+        else:
+            self.select_all_btn.setText("Select All")
+        
+        self.update_selection_count()
+
+    def apply_batch_edit(self):
+        selected_series = [widget.series for widget in self.items if widget.is_selected()]
+        
+        if not selected_series:
+            self.toggle_selection_mode(False)
+            return
+            
+        dialog = BatchMetadataDialog(self.library_manager, self)
+        if dialog.exec():
+            metadata = dialog.get_metadata()
+            self.library_manager.update_series_batch(selected_series, metadata)
+            self.load_items()
+            
+        self.toggle_selection_mode(False)
+
+    def remove_selected_series(self):
+        selected_series = [widget.series for widget in self.items if widget.is_selected()]
+        
+        if not selected_series:
+            self.toggle_selection_mode(False)
+            return
+            
+        confirm_msg = f"Are you sure you want to remove {len(selected_series)} series from the library? This will not delete the files."
+        reply = QMessageBox.question(self, 'Confirm Removal', confirm_msg, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            for series in selected_series:
+                self.library_manager.remove_series(series)
+        self.toggle_selection_mode(False)
+        self.load_recent_items()
+        self.load_items()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

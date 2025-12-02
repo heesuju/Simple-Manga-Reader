@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu, QGraphicsBlurEffect, QGraphicsOpacityEffect
+    QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox
 )
 from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor
 from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup
@@ -18,6 +18,7 @@ class ThumbnailWidget(QWidget):
         self.series = series
         self.library_manager = library_manager
         self.show_chapter_number = show_chapter_number
+        self.is_in_selection_mode = False
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
@@ -60,6 +61,10 @@ class ThumbnailWidget(QWidget):
         self.layout.addWidget(self.image_container)
         self.layout.addLayout(self.info_layout)
 
+        self.checkbox = QCheckBox(self)
+        self.checkbox.setGeometry(12, 14, 20, 20)
+        self.checkbox.hide()
+
         self._hover = False
         self._selected = False
         self.image_container.setStyleSheet(f"QWidget#image_container {{ border: 2px solid transparent; border-radius: 10px; background-color: transparent; }}")
@@ -71,6 +76,18 @@ class ThumbnailWidget(QWidget):
             self.chapter_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; border-radius: 5px; padding: 2px;")
             self.chapter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.chapter_label.hide()
+
+    def set_selection_mode(self, enabled):
+        self.is_in_selection_mode = enabled
+        if enabled:
+            self.checkbox.show()
+            self.checkbox.raise_()
+        else:
+            self.checkbox.hide()
+            self.checkbox.setChecked(False)
+
+    def is_selected(self):
+        return self.checkbox.isChecked()
 
     def set_chapter_number(self, series_obj):
         if not self.show_chapter_number or 'last_read_chapter' not in series_obj or not series_obj['last_read_chapter']:
@@ -152,6 +169,8 @@ class ThumbnailWidget(QWidget):
         self.image_label.raise_()
         if self.show_chapter_number and hasattr(self, 'chapter_label'):
             self.chapter_label.raise_()
+        if self.is_in_selection_mode:
+            self.checkbox.raise_()
         self.anim_group_shrink.stop()
         self.anim_group_grow.start()
         super().enterEvent(event)
@@ -163,9 +182,14 @@ class ThumbnailWidget(QWidget):
         super().leaveEvent(event)
 
     def mousePressEvent(self, ev: QMouseEvent) -> None:
+        if self.is_in_selection_mode:
+            self.checkbox.toggle()
+            return  # Consume the event
+        
         if ev.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.series)
-        return super().mousePressEvent(ev)
+        
+        super().mousePressEvent(ev)
 
     def set_pixmap(self, pixmap: QPixmap):
         if pixmap.isNull():
