@@ -67,10 +67,17 @@ class InfoDialog(QDialog):
         self.layout.addWidget(self.authors_label)
         self.layout.addWidget(self.authors_input)
 
-        # Save button
+        # Buttons layout
+        button_layout = QHBoxLayout()
         self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(self.save_info)
-        self.layout.addWidget(self.save_button)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        
+        button_layout.addStretch() # Push buttons to the right
+        button_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.cancel_button)
+        self.layout.addLayout(button_layout)
 
     def load_current_cover(self):
         cover_path = self.series.get('cover_image')
