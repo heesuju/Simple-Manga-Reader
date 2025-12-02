@@ -208,7 +208,7 @@ class ChapterListView(QWidget):
         view_size = self.size()
         scaled_pixmap = self.background_pixmap.scaled(view_size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
         x_offset = (scaled_pixmap.width() - view_size.width()) / 2
-        y_offset = (scaled_pixmap.height() - view_size.height()) / 2
+        y_offset = 0  # Anchor to top vertically
         cropped_pixmap = scaled_pixmap.copy(int(x_offset), int(y_offset), view_size.width(), view_size.height())
         self.background_label.setPixmap(cropped_pixmap)
         
