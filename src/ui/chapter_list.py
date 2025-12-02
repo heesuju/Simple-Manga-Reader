@@ -64,10 +64,13 @@ class ChapterListItemWidget(QWidget):
         self.layout.addWidget(self.page_count_label)
 
         try:
-            chapter_number = int(get_chapter_number(chapter_name))
-            self.chapter_number_label.setText(f'{chapter_number:02}')
+            if len(self.series.get("chapters")) > 0:
+                chapter_number = int(get_chapter_number(chapter_name))
+                self.chapter_number_label.setText(f'{chapter_number:02}')
+            else:
+                self.chapter_number_label.setText(f'{1:02}')
         except (ValueError, TypeError, OverflowError):
-            self.chapter_number_label.setText("-")
+            self.chapter_number_label.setText(f'{1:02}')
         
         self.chapter_number_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 0px; color: white; background: transparent;")
         self.name_label.setText(Path(chapter['path']).name)
