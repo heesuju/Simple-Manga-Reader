@@ -100,7 +100,7 @@ class ChapterListItemWidget(QWidget):
     def mouseReleaseEvent(self, event):
         self.pressed = False
         self.update()
-        if self.rect().contains(event.pos()):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             self.chapter_selected.emit(self.chapter)
 
     def set_highlight(self, is_highlighted):
