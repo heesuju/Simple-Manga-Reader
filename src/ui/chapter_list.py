@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect, QSizePolicy
 import os
 from PyQt6.QtGui import QPixmap, QPalette, QColor, QPainter, QLinearGradient, QShortcut, QKeySequence, QMouseEvent
-from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF
+from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF, QObject, QRunnable
 
 from src.core.item_loader import ItemLoader
 from src.ui.clickable_label import ClickableLabel
@@ -10,6 +10,30 @@ from src.ui.reader_view import ReaderView
 from src.utils.img_utils import crop_pixmap
 from pathlib import Path
 from src.utils.img_utils import get_chapter_number
+
+class ChapterListLoaderSignals(QObject):
+    chapter_processed = pyqtSignal(object, int, int)  # chapter, page_count, index
+    finished = pyqtSignal()
+
+class ChapterListLoader(QRunnable):
+    def __init__(self, chapters):
+        super().__init__()
+        self.signals = ChapterListLoaderSignals()
+        self.chapters = chapters
+
+    def run(self):
+        for i, chapter in enumerate(self.chapters):
+            page_count = 0
+            full_chapter_path = Path(chapter['path'])
+            if full_chapter_path.exists() and full_chapter_path.is_dir():
+                try:
+                    images = [p for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
+                    page_count = len(images)
+                except OSError:
+                    page_count = 0
+            self.signals.chapter_processed.emit(chapter, page_count, i)
+        self.signals.finished.emit()
+
 
 class ChapterListItemWidget(QWidget):
     chapter_selected = pyqtSignal(object)
@@ -49,8 +73,7 @@ class ChapterListItemWidget(QWidget):
         self.name_label.setText(Path(chapter['path']).name)
         self.name_label.setStyleSheet("color: white; background: transparent;")
         self.page_count_label.setStyleSheet("color: white; background: transparent;")
-
-        self.update_page_count()
+        self.page_count_label.setText("...")
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -75,11 +98,8 @@ class ChapterListItemWidget(QWidget):
         painter.setPen(border_color)
         painter.drawRoundedRect(rect, 5, 5)
 
-    def update_page_count(self):
-        full_chapter_path = Path(self.chapter['path'])
-        if full_chapter_path.exists() and full_chapter_path.is_dir():
-            images = [p for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
-            self.page_count_label.setText(f'{len(images)} pages')
+    def set_page_count(self, count):
+        self.page_count_label.setText(f'{count} pages')
 
     def set_pixmap(self, pixmap):
         cropped_pixmap = crop_pixmap(pixmap, 75, 38)
@@ -251,6 +271,10 @@ class ChapterListView(QWidget):
 
         self.content_layout.addWidget(tag_container)
 
+    def on_chapter_page_count_loaded(self, chapter, page_count, index):
+        if index < len(self.chapter_widgets):
+            self.chapter_widgets[index].set_page_count(page_count)
+
     def load_chapters_and_info(self):
         # --- Info and Buttons (in scroll area) ---
         button_layout = QHBoxLayout()
@@ -305,9 +329,9 @@ class ChapterListView(QWidget):
             chapters_header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: white; margin-top: 10px;")
             self.content_layout.addWidget(chapters_header_label)
 
-        # --- Chapter List ---
+        # --- Chapter List (Placeholders) ---
         last_read_chapter = self.series.get('last_read_chapter')
-
+        self.chapter_widgets = []
         for i, chapter in enumerate(self.display_chapters):
             chapter_name = f"Ch {i+1}" if chapter.get('name') != self.series['name'] else self.series['name']
             item_widget = ChapterListItemWidget(chapter, self.series, chapter_name, self.library_manager, self)
@@ -326,9 +350,14 @@ class ChapterListView(QWidget):
 
         self.content_layout.addStretch()
 
-        loader = ItemLoader(self.display_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75, library_manager=self.library_manager)
-        loader.signals.item_loaded.connect(self.on_thumbnail_loaded)
-        self.threadpool.start(loader)
+        # --- Background Loaders ---
+        page_count_loader = ChapterListLoader(self.display_chapters)
+        page_count_loader.signals.chapter_processed.connect(self.on_chapter_page_count_loaded)
+        self.threadpool.start(page_count_loader)
+
+        thumb_loader = ItemLoader(self.display_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75, library_manager=self.library_manager)
+        thumb_loader.signals.item_loaded.connect(self.on_thumbnail_loaded)
+        self.threadpool.start(thumb_loader)
 
     def on_chapter_selected(self, chapter):
         self.open_reader.emit(self.series, chapter)
