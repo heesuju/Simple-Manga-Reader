@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QScrollArea, QWidget
 from PyQt6.QtCore import pyqtSignal
-from src.ui.flow_layout import FlowLayout
+from src.ui.components.flow_layout import FlowLayout
 from src.ui.result_widget import ResultWidget
 from src.utils.manga_utils import get_cover_from_manga_dex
 

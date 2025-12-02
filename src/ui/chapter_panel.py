@@ -2,7 +2,7 @@ from typing import List
 from pathlib import Path
 
 from PyQt6.QtCore import QThreadPool
-from src.ui.collapsible_panel import CollapsiblePanel
+from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.core.thumbnail_worker import ThumbnailWorker
 from src.utils.img_utils import _get_first_image_path, draw_text_on_image, load_thumbnail_from_path, load_thumbnail_from_virtual_path

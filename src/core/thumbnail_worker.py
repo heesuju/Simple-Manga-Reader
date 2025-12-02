@@ -1,27 +1,10 @@
 from typing import List, Tuple
-import zipfile
-from pathlib import Path
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QGraphicsView, QGraphicsScene,
-    QGraphicsPixmapItem, QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
-    QMessageBox, QFrame, QScrollArea, QSizePolicy, QPinchGesture
-)
-from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut, QMouseEvent
-from PyQt6.QtCore import Qt, QTimer, QEvent, pyqtSignal, QRunnable, QObject, QThreadPool, QMargins
-from src.ui.collapsible_panel import CollapsiblePanel
-from src.ui.image_view import ImageView
-import re
-import zipfile
-import io
-from pathlib import Path
-from PyQt6.QtGui import QPixmap, QImageReader
-from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import pyqtSignal, QRunnable, QObject
 from src.enums import ViewMode
 from typing import List
-from pathlib import Path
-from PyQt6.QtGui import QImageReader
 from collections import Counter
-from src.utils.img_utils import get_image_size, get_image_size_from_virtual_path, get_image_ratio
+from src.utils.img_utils import get_image_size, get_image_ratio
 
 def get_common_size_ratio(paths:List, tolerance: int = 2) -> Tuple[Tuple[int, int], float, float, float]:
     """Return the most common ratio among the list of images(10 max)."""

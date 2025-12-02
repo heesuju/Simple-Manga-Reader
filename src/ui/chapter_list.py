@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF
 
 from src.core.item_loader import ItemLoader
 from src.ui.clickable_label import ClickableLabel
-from src.ui.flow_layout import FlowLayout
+from src.ui.components.flow_layout import FlowLayout
 from src.ui.reader_view import ReaderView
 from src.utils.img_utils import crop_pixmap
 from pathlib import Path
