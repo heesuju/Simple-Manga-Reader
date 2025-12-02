@@ -23,7 +23,6 @@ from src.ui.image_view import ImageView
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.core.thumbnail_worker import get_common_size_ratio
-from src.utils.segmentation import get_panel_coordinates
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
 
@@ -216,58 +215,6 @@ class ReaderView(QMainWindow):
 
     def _on_slideshow_repeat_changed(self, is_checked: bool):
         self.slideshow_repeat = is_checked
-
-    def start_guided_reading(self):
-        if self.guided_reading_animation and self.guided_reading_animation.state() == QPropertyAnimation.State.Running:
-            self.stop_guided_reading()
-            return
-
-        current_image_path = self.model.images[self.model.current_index]
-        if '|' in current_image_path:
-            # Not supported for zip files yet
-            return
-
-        panel_coordinates = get_panel_coordinates(current_image_path)
-        if not panel_coordinates:
-            return
-
-        # Instantly move to the first panel
-        x, y, w, h = panel_coordinates[0]
-        self.view.setSceneRect(QRectF(x, y, w, h))
-        view_rect = self.view.viewport().rect()
-        x_zoom = view_rect.width() / w
-        y_zoom = view_rect.height() / h
-        target_zoom = min(x_zoom, y_zoom)
-        self.view._zoom = target_zoom
-
-        self.guided_reading_animation = QSequentialAnimationGroup(self)
-        self.guided_reading_animation.addPause(500)
-
-        for x, y, w, h in panel_coordinates[1:]:
-            parallel_animation = QParallelAnimationGroup(self)
-
-            rect_animation = QPropertyAnimation(self.view, b"sceneRect")
-            rect_animation.setDuration(1000)
-            rect_animation.setEndValue(QRectF(x, y, w, h))
-
-            zoom_animation = QPropertyAnimation(self.view, b"_zoom")
-            zoom_animation.setDuration(1000)
-            view_rect = self.view.viewport().rect()
-            x_zoom = view_rect.width() / w
-            y_zoom = view_rect.height() / h
-            target_zoom = min(x_zoom, y_zoom)
-            zoom_animation.setEndValue(target_zoom)
-
-            parallel_animation.addAnimation(rect_animation)
-            parallel_animation.addAnimation(zoom_animation)
-
-            self.guided_reading_animation.addAnimation(parallel_animation)
-            self.guided_reading_animation.addPause(1000)
-
-        self.guided_reading_animation.finished.connect(lambda: self.stop_guided_reading(user_interrupted=False))
-        self.guided_reading_animation.start()
-        self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
-
 
     def set_continuous_play(self, enabled: bool):
         self.continuous_play = enabled

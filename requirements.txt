@@ -1,7 +1,5 @@
 pyqt6
-easyocr
 opencv-python
-deepl
 Pillow
 requests
 python-dotenv
