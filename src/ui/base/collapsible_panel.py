@@ -13,16 +13,33 @@ class HorizontalScrollArea(QScrollArea):
         self.animation.setDuration(50)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
-    def snapToItem(self, index:int):
-        item_width = 110
+    def snapToItem(self, index:int, width:int=110):
         current_value = self.horizontalScrollBar().value()
-        target_value = (item_width * index // item_width) * item_width
+        target_value = (width * index // width) * width
         self.animation.setStartValue(current_value)
         self.animation.setEndValue(target_value)
         self.animation.start()
 
+    def snapToItemIfOutOfView(self, index: int, width: int = 110):
+        target_item_start_x = index * width
+        target_item_end_x = (index + 1) * width
+
+        viewport_start_x = self.horizontalScrollBar().value()
+        viewport_end_x = viewport_start_x + self.viewport().width()
+
+        # Check if the item is entirely outside the current view
+        if target_item_end_x < viewport_start_x or target_item_start_x > viewport_end_x:
+            self.snapToItem(index, width)
+        # Check if the item is partially visible but its start is out of view (scrolling right)
+        elif target_item_start_x < viewport_start_x:
+            self.snapToItem(index, width)
+        # Check if the item is partially visible but its end is out of view (scrolling left)
+        elif target_item_end_x > viewport_end_x:
+            self.snapToItem(index, width)
+            
     def wheelEvent(self, event):
         if self.animation.state() == QPropertyAnimation.State.Running:
+
             return
 
         delta = event.angleDelta().y()

@@ -52,7 +52,7 @@ class ChapterPanel(CollapsiblePanel):
         if index < len(self.chapter_thumbnail_widgets):
             self.current_chapter_thumbnail = self.chapter_thumbnail_widgets[index]
             self.current_chapter_thumbnail.set_selected(True)
-            self.content_area.snapToItem(index)
+            self.content_area.snapToItemIfOutOfView(index, self.current_chapter_thumbnail.width())
 
     def _change_chapter_by_thumbnail(self, index: int):
         self.on_chapter_changed(index + 1)

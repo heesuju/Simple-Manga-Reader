@@ -149,6 +149,8 @@ class ReaderView(QMainWindow):
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
         self.slider_panel = SliderPanel(self)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
+        self.chapter_panel._update_chapter_thumbnails(self.model.chapters) # Load chapter thumbnails once
+
 
         # 2. Add control widgets to the panels
         self.top_panel.set_series_title(self.model.series.get("name"))
@@ -292,7 +294,6 @@ class ReaderView(QMainWindow):
             QMessageBox.information(self, "No images", f"No images found in: {self.model.manga_dir}")
         
         self.page_panel._update_page_thumbnails(self.model)
-        self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
         
         if self.model.images:
