@@ -13,8 +13,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QSize
-
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, pyqtSignal, QSize
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
 from src.ui.chapter_panel import ChapterPanel
@@ -25,6 +24,7 @@ from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals
 
 class FitInViewAnimation(QPropertyAnimation):
     def __init__(self, target, parent=None):
@@ -33,73 +33,6 @@ class FitInViewAnimation(QPropertyAnimation):
 
     def updateCurrentValue(self, value):
         self.targetObject().fitInView(value, Qt.AspectRatioMode.KeepAspectRatio)
-
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, QSequentialAnimationGroup, QRectF, QParallelAnimationGroup, pyqtSignal, QRunnable, pyqtSlot, QObject
-
-class WorkerSignals(QObject):
-    finished = pyqtSignal(int, QPixmap)
-
-class ChapterLoaderSignals(QObject):
-    finished = pyqtSignal(dict)
-
-class ChapterLoaderWorker(QRunnable):
-    def __init__(self, manga_dir: str, start_from_end: bool, load_pixmap_func):
-        super().__init__()
-        self.manga_dir = manga_dir
-        self.start_from_end = start_from_end
-        self.load_pixmap = load_pixmap_func
-        self.signals = ChapterLoaderSignals()
-
-    @pyqtSlot()
-    def run(self):
-        # Perform blocking I/O and processing here
-        image_list = self._get_image_list()
-        image_list = sorted(image_list, key=get_chapter_number)
-        
-        initial_index = 0
-        if self.start_from_end:
-            initial_index = len(image_list) - 1
-        
-        initial_pixmap = None
-        if image_list:
-            initial_pixmap = self.load_pixmap(image_list[initial_index])
-
-        result = {
-            "manga_dir": self.manga_dir,
-            "images": image_list,
-            "initial_index": initial_index,
-            "initial_pixmap": initial_pixmap
-        }
-        self.signals.finished.emit(result)
-
-    def _get_image_list(self):
-        if not self.manga_dir:
-            return []
-        manga_path = Path(self.manga_dir)
-        if self.manga_dir.endswith('.zip'):
-            try:
-                with zipfile.ZipFile(self.manga_dir, 'r') as zf:
-                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                    return [f"{self.manga_dir}|{name}" for name in image_files]
-            except zipfile.BadZipFile:
-                return []
-        elif manga_path.is_dir():
-            exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-            return [str(p) for p in sorted(manga_path.iterdir()) if p.suffix.lower() in exts and p.is_file()]
-        return []
-
-class PixmapLoader(QRunnable):
-    def __init__(self, path: str, index: int, reader_view):
-        super().__init__()
-        self.path = path
-        self.index = index
-        self.reader_view = reader_view
-        self.signals = WorkerSignals()
-
-    @pyqtSlot()
-    def run(self):
-        pixmap = self.reader_view._load_pixmap(self.path)
-        self.signals.finished.emit(self.index, pixmap)
 
 class ReaderView(QMainWindow):
     back_pressed = pyqtSignal()

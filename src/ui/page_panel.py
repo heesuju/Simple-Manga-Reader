@@ -1,7 +1,7 @@
 from PyQt6.QtCore import QThreadPool, QTimer
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
-from src.core.thumbnail_worker import ThumbnailWorker
+from src.workers.thumbnail_worker import ThumbnailWorker
 from src.data.reader_model import ReaderModel
 from src.enums import ViewMode
 from src.utils.img_utils import empty_placeholder, load_thumbnail_from_path, load_thumbnail_from_virtual_path
