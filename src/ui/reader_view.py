@@ -5,6 +5,7 @@ import cv2
 import os
 import shutil
 from pathlib import Path
+import zipfile
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene,QGraphicsView,QGraphicsPixmapItem, 
@@ -22,7 +23,6 @@ from src.ui.slider_panel import SliderPanel
 from src.ui.image_view import ImageView
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
-from src.core.thumbnail_worker import get_common_size_ratio
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
 
@@ -38,6 +38,55 @@ from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAni
 
 class WorkerSignals(QObject):
     finished = pyqtSignal(int, QPixmap)
+
+class ChapterLoaderSignals(QObject):
+    finished = pyqtSignal(dict)
+
+class ChapterLoaderWorker(QRunnable):
+    def __init__(self, manga_dir: str, start_from_end: bool, load_pixmap_func):
+        super().__init__()
+        self.manga_dir = manga_dir
+        self.start_from_end = start_from_end
+        self.load_pixmap = load_pixmap_func
+        self.signals = ChapterLoaderSignals()
+
+    @pyqtSlot()
+    def run(self):
+        # Perform blocking I/O and processing here
+        image_list = self._get_image_list()
+        image_list = sorted(image_list, key=get_chapter_number)
+        
+        initial_index = 0
+        if self.start_from_end:
+            initial_index = len(image_list) - 1
+        
+        initial_pixmap = None
+        if image_list:
+            initial_pixmap = self.load_pixmap(image_list[initial_index])
+
+        result = {
+            "manga_dir": self.manga_dir,
+            "images": image_list,
+            "initial_index": initial_index,
+            "initial_pixmap": initial_pixmap
+        }
+        self.signals.finished.emit(result)
+
+    def _get_image_list(self):
+        if not self.manga_dir:
+            return []
+        manga_path = Path(self.manga_dir)
+        if self.manga_dir.endswith('.zip'):
+            try:
+                with zipfile.ZipFile(self.manga_dir, 'r') as zf:
+                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
+                    return [f"{self.manga_dir}|{name}" for name in image_files]
+            except zipfile.BadZipFile:
+                return []
+        elif manga_path.is_dir():
+            exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+            return [str(p) for p in sorted(manga_path.iterdir()) if p.suffix.lower() in exts and p.is_file()]
+        return []
 
 class PixmapLoader(QRunnable):
     def __init__(self, path: str, index: int, reader_view):
@@ -116,9 +165,14 @@ class ReaderView(QMainWindow):
 
         self._setup_ui()
         self.showFullScreen()
-        self.model.refresh()
+        self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
 
     def _setup_ui(self):
+        self.loading_label = QLabel("Loading...", self)
+        self.loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.loading_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; font-size: 24px;")
+        self.loading_label.hide()
+
         self.back_icon = QIcon("assets/icons/back.png")
 
         self.scene = QGraphicsScene()
@@ -291,10 +345,12 @@ class ReaderView(QMainWindow):
         self.model.update_layout()
 
     def on_layout_updated(self, view_mode):
-        self.page_panel._update_page_thumbnails(self.model)
-
         # The number of thumbnails is the number of steps for the slider
-        num_pages = len(self.page_panel.page_thumbnail_widgets)
+        images = self.model.images
+        if self.model.view_mode == ViewMode.DOUBLE:
+            images = self.model._get_double_view_images()
+        num_pages = len(images)
+        
         if num_pages > 0:
             self.slider_panel.set_range(num_pages - 1)
             self.slider_panel.set_value(self.model.current_index)
@@ -314,6 +370,7 @@ class ReaderView(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.loading_label.setGeometry(0, 0, self.width(), self.height())
         self._update_panel_geometries()
 
     def _update_panel_geometries(self):
@@ -459,8 +516,7 @@ class ReaderView(QMainWindow):
 
     def _load_pixmap(self, path: str) -> QPixmap:
         if path == "placeholder":
-            common_size, _, _, _ = get_common_size_ratio(self.model.images)
-            return empty_placeholder(common_size[0], common_size[1])
+            return empty_placeholder()
 
         pixmap = QPixmap()
         
@@ -694,14 +750,48 @@ class ReaderView(QMainWindow):
         self._update_panel_geometries()
 
     def set_chapter(self, chapter:int):
-        self.model.set_chapter(chapter)
-        self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+        if self.model.set_chapter(chapter):
+            self._load_chapter_async(start_from_end=False)
+            self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
     def _change_chapter(self, direction: int):
-        current_index = self.model.chapter_index
-        self.model.change_chapter(direction)
-        if self.model.chapter_index != current_index:
+        start_from_end = direction == -1
+        if self.model.change_chapter(direction):
+            self._load_chapter_async(start_from_end=start_from_end)
             self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+            
+    def _load_chapter_async(self, start_from_end: bool):
+        self.loading_label.show()
+        self.scene.clear()
+        
+        worker = ChapterLoaderWorker(
+            manga_dir=self.model.manga_dir,
+            start_from_end=start_from_end,
+            load_pixmap_func=self._load_pixmap
+        )
+        worker.signals.finished.connect(self._on_chapter_loaded)
+        self.thread_pool.start(worker)
+        
+    def _on_chapter_loaded(self, result: dict):
+        # Ensure this result is for the currently selected chapter
+        if result["manga_dir"] != self.model.manga_dir:
+            return
+
+        self.loading_label.hide()
+        
+        self.model.images = result["images"]
+        self.model.current_index = result["initial_index"]
+        
+        if result["initial_pixmap"]:
+            self._set_pixmap(result["initial_pixmap"])
+            self.view.reset_zoom_state()
+            QTimer.singleShot(0, self.apply_last_zoom)
+        else:
+            self.scene.clear() # Clear if no image was loaded
+
+        # Now that the model is updated, refresh all UI components
+        self.model.refresh()
+        self.model.layout_updated.emit(self.model.view_mode)
 
     def _get_adjacent_chapter_from_db(self, direction: int):
         conn = get_db_connection()

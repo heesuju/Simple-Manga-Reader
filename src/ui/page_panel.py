@@ -1,10 +1,10 @@
-from PyQt6.QtCore import QThreadPool
+from PyQt6.QtCore import QThreadPool, QTimer
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.core.thumbnail_worker import ThumbnailWorker
 from src.data.reader_model import ReaderModel
 from src.enums import ViewMode
-from src.utils.img_utils import empty_placeholder
+from src.utils.img_utils import empty_placeholder, load_thumbnail_from_path, load_thumbnail_from_virtual_path
 
 class PagePanel(CollapsiblePanel):
     def __init__(self, parent=None, model:ReaderModel=None, on_page_changed=None):
@@ -15,18 +15,46 @@ class PagePanel(CollapsiblePanel):
         self.on_page_changed = on_page_changed
         self.page_thumbnail_widgets = []
         self.current_page_thumbnails = []
+
+        self.BATCH_SIZE = 20
+        self.image_paths_to_load = []
+        self.current_batch_index = 0
+        self.batch_timer = QTimer(self)
+        self.batch_timer.setSingleShot(True)
+        self.batch_timer.timeout.connect(self._add_next_thumbnail_batch)
+
+    def _load_thumbnail(self, path: str):
+        if '|' in path:
+            return load_thumbnail_from_virtual_path(path, 150, 200)
+        else:
+            return load_thumbnail_from_path(path, 150, 200)
         
     def _update_page_thumbnails(self, model:ReaderModel):
+        self.batch_timer.stop()
+        
         for i in reversed(range(self.thumbnails_layout.count() - 1)):
-            self.thumbnails_layout.itemAt(i).widget().setParent(None)
+            widget = self.thumbnails_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
         self.page_thumbnail_widgets.clear()
 
         images = model.images
         if model.view_mode == ViewMode.DOUBLE:
             images = model._get_double_view_images()
 
-        for i, image_path in enumerate(images):
-            widget = PageThumbnail(i, str(i+1))
+        self.image_paths_to_load = images
+        self.current_batch_index = 0
+        
+        if self.image_paths_to_load:
+            self.batch_timer.start(10) # Start loading the first batch
+
+    def _add_next_thumbnail_batch(self):
+        start_index = self.current_batch_index
+        end_index = min(start_index + self.BATCH_SIZE, len(self.image_paths_to_load))
+
+        for i in range(start_index, end_index):
+            image_path = self.image_paths_to_load[i]
+            widget = PageThumbnail(i, str(i + 1))
             widget.clicked.connect(self._change_page_by_thumbnail)
             self.thumbnails_layout.insertWidget(i, widget)
             self.page_thumbnail_widgets.append(widget)
@@ -37,8 +65,12 @@ class PagePanel(CollapsiblePanel):
                 worker = ThumbnailWorker(i, image_path, self._load_thumbnail)
                 worker.signals.finished.connect(self._on_page_thumbnail_loaded)
                 self.thread_pool.start(worker)
-        
-        self._update_page_selection(model.current_index)
+
+        self.current_batch_index = end_index
+        if self.current_batch_index < len(self.image_paths_to_load):
+            self.batch_timer.start(10) # Schedule the next batch
+
+        self._update_page_selection(self.model.current_index)
 
     def _on_page_thumbnail_loaded(self, index, pixmap):
         if index < len(self.page_thumbnail_widgets):

@@ -35,50 +35,6 @@ def is_image_folder(folder: Union[Path, str]) -> bool:
     files = [f for f in folder.iterdir() if f.is_file()]
     return bool(files) and all(f.suffix.lower() in IMG_EXTS for f in files)
 
-def get_image_size(path: Union[str, Path]):
-    path = str(path)
-    if '|' in path:
-        return get_image_size_from_virtual_path(path)
-    else:
-        return get_image_size_from_path(path)
-
-def get_image_size_from_path(path: str) -> tuple[int,int]:
-    """Return width/height ratio of image."""
-    reader = QImageReader(str(path))
-    size = reader.size()
-    height = size.height()
-    width = size.width()
-    if height == 0:
-        return width, height, 0
-    
-    return width, height
-
-def get_image_size_from_virtual_path(path:str):
-    try:
-        zip_path, image_name = path.split('|', 1)
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            with zf.open(image_name) as f:
-                image_data = f.read()
-                
-                byte_array = QByteArray(image_data)
-                buffer = QBuffer(byte_array)
-                buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-
-                reader = QImageReader(buffer, QByteArray())
-                size = reader.size()
-                height = size.height()
-                width = size.width()
-                if height == 0:
-                    return width, height, 0
-                
-                return width, height
-            
-    except (zipfile.BadZipFile, KeyError):
-        return None
-    
-def get_image_ratio(w:int,h:int):
-    return round(w / h, 2) if h != 0 else 0.0
-
 def is_image_monotone(image_path: str, threshold: float = 10.0) -> bool:
     """
     Check if an image is largely monotone (e.g., all white or all black).

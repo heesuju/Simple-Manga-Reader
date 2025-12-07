@@ -18,8 +18,7 @@ from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
 from src.core.item_loader import ItemLoader
-from src.utils.img_utils import get_chapter_number, get_image_size
-from src.core.thumbnail_worker import get_common_size_ratio, get_image_ratio
+from src.utils.img_utils import get_chapter_number
 from src.enums import ViewMode
 import math
 import json
@@ -33,15 +32,6 @@ def run_server(script_path, root_dir):
     import subprocess
     import sys
     subprocess.run([sys.executable, script_path, root_dir])
-
-
-def is_double_page(size, common_ratio):
-    ratio = get_image_ratio(size[0]/2, size[1])
-
-    if math.isclose(ratio, common_ratio):
-        return True
-    else:
-        return False
 
 class FolderGrid(QWidget):
     """Shows a grid of folders and images."""

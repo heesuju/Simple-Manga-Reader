@@ -1,24 +1,11 @@
 from typing import List
 from pathlib import Path
-import zipfile
-import math
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from src.enums import ViewMode
-from src.utils.img_utils import get_chapter_number, get_image_size
-from src.core.thumbnail_worker import get_default_view_mode, get_common_size_ratio, get_image_ratio
-
-def is_double_page(size, common_ratio):
-    if size[0] == 0 or size[1] == 0:
-        return False
-    ratio = get_image_ratio(size[0]/2, size[1])
-
-    if math.isclose(ratio, common_ratio):
-        return True
-    else:
-        return False
-
+from src.utils.img_utils import get_chapter_number
+from src.core.thumbnail_worker import get_default_view_mode
 
 class ReaderModel(QObject):
     refreshed = pyqtSignal()
@@ -42,92 +29,9 @@ class ReaderModel(QObject):
         if self.chapters:
             self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
 
-    def refresh(self, start_from_end:bool=False, preserve_view_mode:bool=False):
-        if not self.images:
-            self.images = self._get_image_list()
-            self.images = sorted(self.images, key=get_chapter_number)
-
-            # Split wide images
-            common_size, ratio, _, _ = get_common_size_ratio(self.images)
-            if common_size[0] > 0:
-                new_items = []
-                for item in self.images:
-                    size = get_image_size(item)
-                    
-                    if is_double_page(size, ratio):
-                        new_items.append(str(item) + "_right")
-                        new_items.append(str(item) + "_left")
-                    else:
-                        new_items.append(item)
-                self.images = new_items
-        
-        if not preserve_view_mode:
-            self.view_mode = get_default_view_mode(self.images)
-
-        if hasattr(self, 'start_file') and self.start_file:
-            try:
-                self.current_index = self.images.index(self.start_file)
-            except (ValueError, IndexError):
-                self.current_index = 0
-            self.start_file = None
-        elif start_from_end:
-            self.current_index = len(self.images) - 1
-        else:
-            self.current_index = 0
-
+    def refresh(self):
+        """Should be called after model data is updated to refresh the view."""
         self.refreshed.emit()
-
-    def _get_image_list(self):
-        if not self.manga_dir:
-            return []
-        manga_path = Path(self.manga_dir)
-        if self.manga_dir.endswith('.zip'):
-            try:
-                with zipfile.ZipFile(self.manga_dir, 'r') as zf:
-                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                    return [f"{self.manga_dir}|{name}" for name in image_files]
-            except zipfile.BadZipFile:
-                return []
-        elif manga_path.is_dir():
-            exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-            return [str(p) for p in sorted(manga_path.iterdir()) if p.suffix.lower() in exts and p.is_file()]
-        return []
-
-    def _get_double_view_images(self, right_to_left:bool=True):
-        new_images = list(self.images)
-        i = 0
-        last_pair_end = -1
-        while i < len(new_images):
-            img = new_images[i]
-            if str(img).endswith("_right"):
-                if i % 2 != 0:
-                    if last_pair_end == -1:
-                        new_images.insert(0, "placeholder")
-                    else:
-                        new_images.insert(last_pair_end + 1, "placeholder")
-                    i += 1 # we inserted an element, so we need to increment i to continue from the same image in the next iteration
-                    continue
-                last_pair_end = i + 1
-            i += 1
-        
-        if len(new_images) % 2 != 0:
-            new_images.append("placeholder")
-
-        result = [None] * len(new_images)
-        
-        if right_to_left:
-            for i, val in enumerate(new_images):
-                if i % 2 == 0:  # even
-                    new_index = i + 1
-                else:             # odd
-                    new_index = i - 1
-                
-                if 0 <= new_index < len(new_images):  # avoid out-of-range
-                    result[new_index] = val
-                else:
-                    result[i] = val
-
-        return result
 
     def load_image(self):
         if not self.images or not (0 <= self.current_index < len(self.images)):
@@ -152,7 +56,7 @@ class ReaderModel(QObject):
         self.current_index = index
         self.load_image()
 
-    def set_chapter(self, chapter:int):
+    def set_chapter(self, chapter:int) -> bool:
         index = chapter - 1
         total_chapters = len(self.chapters)
         
@@ -161,22 +65,26 @@ class ReaderModel(QObject):
         elif index > total_chapters - 1:
             index = total_chapters - 1
         
+        if self.chapter_index == index:
+            return False
+
         self.chapter_index = index
         self.manga_dir = self.chapters[self.chapter_index]
         self.images = [] # force reload
-        self.refresh(preserve_view_mode=True)
+        return True
 
-    def change_chapter(self, direction: int):
+    def change_chapter(self, direction: int) -> bool:
         new_index = self.chapter_index + direction
         total_chapters = len(self.chapters)
 
         if 0 <= new_index < total_chapters:
+            if self.chapter_index == new_index:
+                return False
             self.chapter_index = new_index
             self.manga_dir = self.chapters[self.chapter_index]
             self.images = []
-            
-            start_from_end = (direction == -1)
-            self.refresh(start_from_end=start_from_end, preserve_view_mode=True)
+            return True
+        return False
 
     def toggle_layout(self, mode:ViewMode=None):
         if isinstance(mode, ViewMode):
