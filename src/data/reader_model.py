@@ -33,6 +33,26 @@ class ReaderModel(QObject):
         """Should be called after model data is updated to refresh the view."""
         self.refreshed.emit()
 
+    def _get_double_view_images(self, right_to_left:bool=True):
+        new_images = list(self.images)
+        i = 0
+
+        result = [None] * len(new_images)
+        
+        if right_to_left:
+            for i, val in enumerate(new_images):
+                if i % 2 == 0:  # even
+                    new_index = i + 1
+                else:             # odd
+                    new_index = i - 1
+                
+                if 0 <= new_index < len(new_images):  # avoid out-of-range
+                    result[new_index] = val
+                else:
+                    result[i] = val
+
+        return result
+
     def load_image(self):
         if not self.images or not (0 <= self.current_index < len(self.images)):
             return
