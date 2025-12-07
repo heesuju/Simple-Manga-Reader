@@ -1,11 +1,14 @@
 import math
-from typing import List
+from typing import List, Union
 import numpy as np
 import cv2
 import os
 import shutil
 from pathlib import Path
 import zipfile
+import io
+from PIL import Image, ImageQt
+
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene,QGraphicsView,QGraphicsPixmapItem, 
@@ -24,7 +27,7 @@ from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, AnimationFrameLoaderWorker
 
 class FitInViewAnimation(QPropertyAnimation):
     def __init__(self, target, parent=None):
@@ -83,6 +86,10 @@ class ReaderView(QMainWindow):
         self.slideshow_speeds = [4000, 2000, 500] # ms
         self.current_slideshow_speed_index = 0
         self.slideshow_repeat = False
+
+        self.animation_timer = QTimer(self)
+        self.animation_frames = []
+        self.current_frame_index = 0
 
         self.user_interrupted_animation = False
         self.is_dragging_animation = False
@@ -180,6 +187,30 @@ class ReaderView(QMainWindow):
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.mouseReleaseEvent = self._overlay_mouse_release
         self.view.resizeEvent = self.resizeEvent
+
+        self.animation_timer.timeout.connect(self._show_next_frame)
+
+    def _show_next_frame(self):
+        if not self.animation_frames:
+            return
+        
+        self.current_frame_index = (self.current_frame_index + 1) % len(self.animation_frames)
+        self._set_pixmap(self.animation_frames[self.current_frame_index])
+        self.apply_last_zoom()
+
+    def _on_animation_loaded(self, result: dict):
+        self.loading_label.hide()
+        frames = result["frames"]
+        duration = result["duration"]
+        path = result["path"]
+        if path != self.model.images[self.model.current_index]:
+            return  # Ignore if not the current image
+
+        if frames:
+            self.animation_frames = frames
+            # The first frame is already displayed, so we start the timer
+            # to show the next one.
+            self.animation_timer.start(duration)
 
     def _on_slideshow_speed_changed(self):
         if self.model.view_mode == ViewMode.STRIP:
@@ -447,23 +478,26 @@ class ReaderView(QMainWindow):
                 
         return super().eventFilter(obj, event)
 
-    def _load_pixmap(self, path: str) -> QPixmap:
-        if path == "placeholder":
+    def _load_pixmap(self, image_source: Union[str, bytes]) -> QPixmap:
+        if image_source == "placeholder":
             return empty_placeholder()
 
         pixmap = QPixmap()
         
-        path_str = str(path)
+        path_str = ""
         crop = None
-        if path_str.endswith("_left"):
-            path_str = path_str[:-5]
-            crop = "left"
-        elif path_str.endswith("_right"):
-            path_str = path_str[:-6]
-            crop = "right"
 
-        if '|' in path_str:
-            image_data = get_image_data_from_zip(path_str)
+        if isinstance(image_source, str):
+            path_str = image_source
+            if path_str.endswith("_left"):
+                path_str = path_str[:-5]
+                crop = "left"
+            elif path_str.endswith("_right"):
+                path_str = path_str[:-6]
+                crop = "right"
+
+        if isinstance(image_source, bytes) or '|' in path_str:
+            image_data = image_source if isinstance(image_source, bytes) else get_image_data_from_zip(path_str)
             if image_data:
                 pixmap.loadFromData(image_data)
         else:
@@ -480,41 +514,51 @@ class ReaderView(QMainWindow):
         return pixmap
 
     def _load_image(self, path: str):
-        self.movie = None
-        if path.lower().endswith(".gif"):
-            # Use QMovie for animated gif
-            self.movie = QMovie(path)
-            self.movie.frameChanged.connect(self._update_movie_frame)
-            self.movie.start()
-            self.view.reset_zoom_state()
-            QTimer.singleShot(0, self.apply_last_zoom)
-            self.page_panel._update_page_selection(self.model.current_index)
-            self.slider_panel.set_value(self.model.current_index)
+        # Stop any ongoing animations
+        self.animation_timer.stop()
+        self.animation_frames.clear()
+        self.current_frame_index = 0
+        
+        # Handle animated images
+        if path.lower().endswith((".gif", ".webp")):
+            image_data = None
+            if '|' in path:
+                image_data = get_image_data_from_zip(path)
+            elif os.path.exists(path):
+                with open(path, 'rb') as f:
+                    image_data = f.read()
+            
+            if image_data:
+                try:
+                    img = Image.open(io.BytesIO(image_data))
+                    # Display first frame synchronously
+                    img.seek(0)
+                    first_frame_pixmap = ImageQt.toqpixmap(img)
+                    self._set_pixmap(first_frame_pixmap)
+
+                    # If animated, start worker for the rest
+                    if img.is_animated and img.n_frames > 1:
+                        self.loading_label.show()
+                        worker = AnimationFrameLoaderWorker(path, image_data)
+                        worker.signals.finished.connect(self._on_animation_loaded)
+                        self.thread_pool.start(worker)
+                    
+                except Exception:
+                    # Fallback to static image loading on error
+                    self.original_pixmap = self._load_pixmap(path)
+                    self._set_pixmap(self.original_pixmap)
+
         else:
+            # Fallback for non-animated types
             self.original_pixmap = self._load_pixmap(path)
             self._set_pixmap(self.original_pixmap)
-            self.view.reset_zoom_state()
-            QTimer.singleShot(0, self.apply_last_zoom)
-            self.page_panel._update_page_selection(self.model.current_index)
-            self.slider_panel.set_value(self.model.current_index)
-            # QTimer.singleShot(0, self._fit_current_image)
+
+        # Common UI updates for all image types
+        self.view.reset_zoom_state()
+        QTimer.singleShot(0, self.apply_last_zoom)
+        self.page_panel._update_page_selection(self.model.current_index)
+        self.slider_panel.set_value(self.model.current_index)
     
-    def _update_movie_frame(self, frame_number: int):
-        if self.movie:
-            pixmap = self.movie.currentPixmap()
-            if pixmap.isNull():
-                return
-
-            # Scale GIF smoothly to match view size
-            target_size = self.view.viewport().size()  # or any QSize you want
-            scaled_pixmap = pixmap.scaled(
-                target_size,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-
-            self._set_pixmap(scaled_pixmap)
-
     def _set_pixmap(self, pixmap: QPixmap):
         self.scene.clear()
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
