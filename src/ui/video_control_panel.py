@@ -1,0 +1,129 @@
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+
+
+class VideoControlPanel(QWidget):
+    play_pause_clicked = pyqtSignal()
+    repeat_clicked = pyqtSignal(bool)
+    speed_clicked = pyqtSignal()
+    volume_changed = pyqtSignal(int)
+    position_changed = pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+        self.is_playing = False
+        self.is_repeat = False
+
+    def init_ui(self):
+        self.play_icon = QIcon.fromTheme("media-playback-start", QIcon("assets/icons/play.png"))
+        self.pause_icon = QIcon.fromTheme("media-playback-pause", QIcon("assets/icons/pause.png"))
+        self.repeat_on_icon = QIcon.fromTheme("media-playlist-repeat", QIcon("assets/icons/repeat_on.png"))
+        self.repeat_off_icon = QIcon.fromTheme("media-playlist-repeat", QIcon("assets/icons/repeat_off.png"))
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(10)
+
+        self.play_pause_btn = QPushButton(self.play_icon, "")
+        self.play_pause_btn.clicked.connect(self.play_pause_clicked.emit)
+        self.play_pause_btn.setFlat(True)
+        layout.addWidget(self.play_pause_btn)
+        
+        self.current_time_label = QLabel("00:00")
+        layout.addWidget(self.current_time_label)
+
+        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.position_slider.sliderMoved.connect(self.position_changed.emit)
+        layout.addWidget(self.position_slider)
+
+        self.duration_label = QLabel("00:00")
+        layout.addWidget(self.duration_label)
+
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(100)
+        self.volume_slider.setFixedWidth(100)
+        self.volume_slider.valueChanged.connect(self.volume_changed.emit)
+        layout.addWidget(self.volume_slider)
+
+        self.speed_btn = QPushButton("1.0x")
+        self.speed_btn.setFlat(True)
+        self.speed_btn.clicked.connect(self.speed_clicked.emit)
+        layout.addWidget(self.speed_btn)
+        
+        self.repeat_btn = QPushButton(self.repeat_off_icon, "")
+        self.repeat_btn.setCheckable(True)
+        self.repeat_btn.clicked.connect(self.toggle_repeat)
+        self.repeat_btn.setFlat(True)
+        layout.addWidget(self.repeat_btn)
+
+        self.setLayout(layout)
+
+        self.setStyleSheet("""
+            VideoControlPanel {
+                background-color: rgba(0, 0, 0, 180);
+                color: white;
+                border-radius: 10px;
+            }
+            QPushButton {
+                color: white;
+                background-color: transparent;
+                border: none;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 50);
+            }
+            QSlider::groove:horizontal {
+                border: 1px solid #999999;
+                height: 8px;
+                background: #333;
+                margin: 2px 0;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #ccc;
+                border: 1px solid #5c5c5c;
+                width: 16px;
+                margin: -4px 0;
+                border-radius: 8px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #5c5c5c;
+                border: 1px solid #999999;
+                height: 8px;
+                border-radius: 4px;
+            }
+            QLabel {
+                color: white;
+            }
+        """)
+
+    def set_playing(self, playing):
+        self.is_playing = playing
+        self.play_pause_btn.setIcon(self.pause_icon if playing else self.play_icon)
+
+    def set_duration(self, duration_ms):
+        total_seconds = duration_ms // 1000
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        self.duration_label.setText(f"{minutes:02d}:{seconds:02d}")
+        self.position_slider.setRange(0, duration_ms)
+
+    def set_position(self, position_ms):
+        total_seconds = position_ms // 1000
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        self.current_time_label.setText(f"{minutes:02d}:{seconds:02d}")
+        self.position_slider.setValue(position_ms)
+
+    def toggle_repeat(self, checked):
+        self.is_repeat = checked
+        self.repeat_btn.setIcon(self.repeat_on_icon if checked else self.repeat_off_icon)
+        self.repeat_clicked.emit(checked)
+        
+    def set_speed_text(self, text):
+        self.speed_btn.setText(text)
+

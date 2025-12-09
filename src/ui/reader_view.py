@@ -26,6 +26,7 @@ from src.ui.page_panel import PagePanel
 from src.ui.chapter_panel import ChapterPanel
 from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
+from src.ui.video_control_panel import VideoControlPanel
 from src.ui.image_view import ImageView
 # removed: VideoPlayerWidget
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
@@ -116,6 +117,10 @@ class ReaderView(QMainWindow):
         self.media_player.setAudioOutput(self.audio_output)
         self.video_item: QGraphicsVideoItem | None = None  # will be created and added to scene when needed
 
+        self.playback_speeds = [1.0, 1.25, 1.5, 1.75, 2.0, 0.5, 0.75]
+        self.current_speed_index = 0
+        self.video_repeat = False
+
         self._setup_ui()
         self.showFullScreen()
         self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
@@ -166,12 +171,13 @@ class ReaderView(QMainWindow):
         # 1. Create all panel widgets first, with main_container as parent
         self.top_panel = TopPanel(main_container)
         self.page_panel = PagePanel(main_container, model=self.model, on_page_changed=self.change_page)
+        self.video_control_panel = VideoControlPanel(main_container)
         self.slider_panel = SliderPanel(main_container)
         self.chapter_panel = ChapterPanel(main_container, model=self.model, on_chapter_changed=self.set_chapter)
 
         # Add panels to the layout, stacked on top
         main_layout.addWidget(self.top_panel, 0, 0, Qt.AlignmentFlag.AlignTop)
-
+        
         # Create a container for the bottom panels
         bottom_container = QWidget(main_container)
         bottom_layout = QVBoxLayout()
@@ -181,6 +187,7 @@ class ReaderView(QMainWindow):
 
         bottom_layout.addWidget(self.page_panel)
         bottom_layout.addWidget(self.chapter_panel)
+        bottom_layout.addWidget(self.video_control_panel)
         bottom_layout.addWidget(self.slider_panel)
 
         main_layout.addWidget(bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
@@ -193,6 +200,13 @@ class ReaderView(QMainWindow):
         self.top_panel.add_layout_button(self.layout_btn)
 
         # 3. Connect signals from all panels
+        self.video_control_panel.play_pause_clicked.connect(self._toggle_play_pause)
+        self.video_control_panel.volume_changed.connect(self._set_volume)
+        self.video_control_panel.position_changed.connect(self._set_video_position)
+        self.video_control_panel.speed_clicked.connect(self._change_playback_speed)
+        self.video_control_panel.repeat_clicked.connect(self._set_video_repeat)
+        self.video_control_panel.hide()
+
         self.slider_panel.valueChanged.connect(self.change_page_from_slider)
         self.slider_panel.slideshow_button_clicked.connect(self.start_page_slideshow)
         self.slider_panel.speed_changed.connect(self._on_slideshow_speed_changed)
@@ -218,6 +232,9 @@ class ReaderView(QMainWindow):
         # Connect media player signals if you want to monitor playback state etc.
         # For example stop video when finished:
         self.media_player.playbackStateChanged.connect(self._on_media_playback_state_changed)
+        self.media_player.durationChanged.connect(self.video_control_panel.set_duration)
+        self.media_player.positionChanged.connect(self.video_control_panel.set_position)
+
 
     # ---------- Multimedia helper methods (Option C) ----------
     def _ensure_video_item(self):
@@ -254,9 +271,13 @@ class ReaderView(QMainWindow):
 
         self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
         self.media_player.play()
+        self.video_control_panel.show()
 
     def _stop_video(self):
         """Stop playback, hide the video item, and completely detach audio/source."""
+        self.video_control_panel.hide()
+        if self.panels_visible:
+            self.slider_panel.show()
         # Stop playback
         if self.media_player:
             try:
@@ -305,17 +326,37 @@ class ReaderView(QMainWindow):
                 pass
 
     def _on_media_playback_state_changed(self, state):
-        # optional: handle ended playback etc. (QMediaPlayer.PlaybackState)
-        from PyQt6.QtMultimedia import QMediaPlayer as _MP
-        if state == _MP.PlaybackState.StoppedState:
-            # when a video ends, you might want to auto-next or reset UI
-            pass
+        self.video_control_panel.set_playing(state == QMediaPlayer.PlaybackState.PlayingState)
+        if state == QMediaPlayer.PlaybackState.StoppedState and self.video_repeat:
+            self.media_player.play()
+
+    def _toggle_play_pause(self):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+        else:
+            self.media_player.play()
+
+    def _set_volume(self, volume):
+        self.audio_output.setVolume(volume / 100.0)
+
+    def _set_video_position(self, position):
+        self.media_player.setPosition(position)
+
+    def _change_playback_speed(self):
+        self.current_speed_index = (self.current_speed_index + 1) % len(self.playback_speeds)
+        speed = self.playback_speeds[self.current_speed_index]
+        self.media_player.setPlaybackRate(speed)
+        self.video_control_panel.set_speed_text(f"{speed}x")
+
+    def _set_video_repeat(self, repeat):
+        self.video_repeat = repeat
 
     # ---------- End multimedia helpers ----------
 
     def _show_next_frame(self):
         if not self.animation_frames:
             return
+
 
         self.current_frame_index = (self.current_frame_index + 1) % len(self.animation_frames)
         self._set_pixmap(self.animation_frames[self.current_frame_index])
@@ -508,9 +549,12 @@ class ReaderView(QMainWindow):
         if self.panels_visible:
             self.top_panel.show()
             self.slider_panel.show()
+            if self.video_item and self.video_item.isVisible():
+                self.video_control_panel.show()
         else:
             self.top_panel.hide()
             self.slider_panel.hide()
+            self.video_control_panel.hide()
 
             if self.page_panel.content_area.isVisible():
                 self.page_panel.hide_content()
