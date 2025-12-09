@@ -28,14 +28,14 @@ class ItemLoader(QRunnable):
         """Checks if a folder contains images or subfolders with images (1 level deep)."""
         try:
             # Check for images in the folder itself
-            if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} for f in folder_path.iterdir()):
+            if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} for f in folder_path.iterdir()):
                 return True
 
             # Check subfolders for images
             for subfolder in folder_path.iterdir():
                 if subfolder.is_dir():
                     try:
-                        if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} for f in subfolder.iterdir()):
+                        if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} for f in subfolder.iterdir()):
                             return True
                     except PermissionError:
                         continue
@@ -73,7 +73,7 @@ class ItemLoader(QRunnable):
                     
                     if not thumbnail_path:
                         try:
-                            image_files = sorted([f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}])
+                            image_files = sorted([f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'}])
                             for image_file in image_files:
                                 if not is_image_monotone(str(image_file)):
                                     thumbnail_path = str(image_file)
@@ -107,7 +107,7 @@ class ItemLoader(QRunnable):
                         continue
                     item_type = 'folder'
                     try:
-                        first_image = next(f for f in Path(path_str).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'})
+                        first_image = next(f for f in Path(path_str).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'})
                         if first_image:
                             pix = load_thumbnail_from_path(str(first_image), self.thumb_width, self.thumb_height)
                     except (StopIteration, PermissionError):

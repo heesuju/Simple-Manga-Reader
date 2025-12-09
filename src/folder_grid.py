@@ -591,7 +591,7 @@ class FolderGrid(QWidget):
 
         # Get all images in the chapter
         chapter_path = Path(chapter['path'])
-        images = [str(p) for p in chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
+        images = [str(p) for p in chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'}]
         images = sorted(images, key=get_chapter_number)
 
         self.reader = ReaderView(chapter_files, chapter_index, start_file=start_file, images=images, language=self.language)
