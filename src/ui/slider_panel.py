@@ -18,6 +18,7 @@ class SliderPanel(QWidget):
     repeat_changed = pyqtSignal(bool)
     zoom_mode_changed = pyqtSignal(str)
     zoom_reset = pyqtSignal()
+    fullscreen_requested = pyqtSignal() # New signal
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,6 +32,8 @@ class SliderPanel(QWidget):
         self.repeat_on_icon = QIcon("assets/icons/repeat_on.png")
         self.repeat_off_icon = QIcon("assets/icons/repeat_off.png")
         self.zoom_fit_icon = QIcon("assets/icons/fit.png")
+        # Fullscreen icon - using text for now, could be an icon later
+        self.fullscreen_icon = QIcon("assets/icons/fit.png") # Reusing fit icon for now, consider adding a new one
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 5, 10, 5)
@@ -103,8 +106,14 @@ class SliderPanel(QWidget):
         self.reset_zoom_button.setFixedSize(button_size)
         self.reset_zoom_button.clicked.connect(self.zoom_reset)
 
+        # New fullscreen button
+        self.fullscreen_button = QPushButton("Full Screen") # Using text for now
+        self.fullscreen_button.setFixedSize(button_size)
+        self.fullscreen_button.clicked.connect(self.fullscreen_requested.emit)
+        
         bottom_layout.addWidget(self.zoom_combobox)
         bottom_layout.addWidget(self.reset_zoom_button)
+        bottom_layout.addWidget(self.fullscreen_button) # Add new button to layout
 
         main_layout.addWidget(top_widget)
         main_layout.addWidget(bottom_widget)

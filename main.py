@@ -3,6 +3,9 @@ import sys
 import json
 import os
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget
+from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import Qt
+
 from src.folder_grid import FolderGrid
 from src.ui.chapter_list import ChapterListView
 from src.utils.img_utils import get_chapter_number
@@ -23,6 +26,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Manga Reader")
         self.library_manager = library_manager
         self.current_series_has_chapters = False
+        self.reader_view = None # Initialize reader_view attribute
 
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
@@ -31,6 +35,16 @@ class MainWindow(QMainWindow):
         self.folder_grid.series_selected.connect(self.show_chapter_list)
         self.folder_grid.recent_series_selected.connect(self.show_reader_for_recent)
         self.stacked_widget.addWidget(self.folder_grid)
+
+        # Global Escape key shortcut
+        self.escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self.escape_shortcut.activated.connect(self._handle_escape_key)
+
+    def _handle_escape_key(self):
+        if self.isFullScreen():
+            self.showNormal()
+        elif self.reader_view and self.stacked_widget.currentWidget() == self.reader_view:
+            self.handle_reader_back()
 
     def show_chapter_list(self, series):
         self.current_series = series
@@ -101,6 +115,7 @@ class MainWindow(QMainWindow):
 
         self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images)
         self.reader_view.back_pressed.connect(self.handle_reader_back)
+        self.reader_view.request_fullscreen_toggle.connect(self.toggle_fullscreen)
         self.stacked_widget.addWidget(self.reader_view)
         self.stacked_widget.setCurrentWidget(self.reader_view)
 
@@ -112,6 +127,12 @@ class MainWindow(QMainWindow):
                 self.stacked_widget.setCurrentWidget(self.chapter_list)
         else:
             self.stacked_widget.setCurrentWidget(self.folder_grid)
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

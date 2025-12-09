@@ -45,13 +45,13 @@ class FitInViewAnimation(QPropertyAnimation):
         self.targetObject().fitInView(value, Qt.AspectRatioMode.KeepAspectRatio)
 
 
-class ReaderView(QMainWindow):
+class ReaderView(QWidget):
     back_pressed = pyqtSignal()
     zoom_changed = pyqtSignal(str)
+    request_fullscreen_toggle = pyqtSignal()
 
     def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
         super().__init__()
-        self.setWindowTitle("Manga Reader")
         self.grabGesture(Qt.GestureType.PinchGesture)
 
         self.model = ReaderModel(series, manga_dirs, index, start_file, images)
@@ -122,7 +122,6 @@ class ReaderView(QMainWindow):
         self.video_repeat = False
 
         self._setup_ui()
-        self.showFullScreen()
         self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
 
     def _setup_ui(self):
@@ -157,29 +156,41 @@ class ReaderView(QMainWindow):
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, activated=self.show_prev)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
         QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
-        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.back_to_grid)
 
-        main_container = QWidget()
-        main_layout = QGridLayout()
+        main_layout = QGridLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        main_container.setLayout(main_layout)
-        self.setCentralWidget(main_container)
 
         main_layout.addWidget(self.media_stack, 0, 0)
 
-        # 1. Create all panel widgets first, with main_container as parent
-        self.top_panel = TopPanel(main_container)
-        self.page_panel = PagePanel(main_container, model=self.model, on_page_changed=self.change_page)
-        self.video_control_panel = VideoControlPanel(main_container)
-        self.slider_panel = SliderPanel(main_container)
-        self.chapter_panel = ChapterPanel(main_container, model=self.model, on_chapter_changed=self.set_chapter)
+        # Create and add the scroll area for vertical view, but hide it initially
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setMouseTracking(True)
+        self.scroll_area.viewport().setMouseTracking(True)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.vertical_container = QWidget()
+        self.vbox = QVBoxLayout(self.vertical_container)
+        self.vbox.setSpacing(0)
+        self.vbox.setContentsMargins(0, 0, 0, 0)
+        self.scroll_area.setWidget(self.vertical_container)
+        self.scroll_area.verticalScrollBar().valueChanged.connect(self._update_visible_images)
+        self.scroll_area.viewport().installEventFilter(self)
+        main_layout.addWidget(self.scroll_area, 0, 0)
+        self.scroll_area.hide()
+
+        # 1. Create all panel widgets first, with self as parent
+        self.top_panel = TopPanel(self)
+        self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
+        self.video_control_panel = VideoControlPanel(self)
+        self.slider_panel = SliderPanel(self)
+        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
 
         # Add panels to the layout, stacked on top
         main_layout.addWidget(self.top_panel, 0, 0, Qt.AlignmentFlag.AlignTop)
         
         # Create a container for the bottom panels
-        bottom_container = QWidget(main_container)
+        bottom_container = QWidget(self)
         bottom_layout = QVBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
@@ -217,6 +228,7 @@ class ReaderView(QMainWindow):
         self.slider_panel.chapter_input_clicked.connect(self._show_chapter_panel)
         self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
         self.slider_panel.zoom_reset.connect(self.reset_zoom)
+        self.slider_panel.fullscreen_requested.connect(self.toggle_fullscreen)
 
         self.zoom_changed.connect(self.slider_panel.set_zoom_text)
 
@@ -984,16 +996,10 @@ class ReaderView(QMainWindow):
         return None
 
     def toggle_fullscreen(self):
-        if self.isFullScreen():
-            self.showNormal()
-        else:
-            self.showFullScreen()
-        QTimer.singleShot(0, self._fit_current_image)
+        self.request_fullscreen_toggle.emit()
 
     def exit_if_not_fullscreen(self):
-        if self.isFullScreen():
-            self.showNormal()
-            QTimer.singleShot(0, self._fit_current_image)
+        self.request_fullscreen_toggle.emit()
 
     def showEvent(self, ev):
         super().showEvent(ev)
@@ -1017,27 +1023,7 @@ class ReaderView(QMainWindow):
     def _show_vertical_layout(self):
         self.page_panel.hide()
         self.media_stack.hide()
-
-        if self.scroll_area is None:
-            self.scroll_area = QScrollArea(self.centralWidget())
-            self.scroll_area.setMouseTracking(True)
-            self.scroll_area.viewport().setMouseTracking(True)
-            self.scroll_area.setWidgetResizable(True)
-            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.vertical_container = QWidget()
-            self.vbox = QVBoxLayout(self.vertical_container)
-            self.vbox.setSpacing(0)
-            self.vbox.setContentsMargins(0, 0, 0, 0)
-            self.scroll_area.setWidget(self.vertical_container)
-            self.scroll_area.setContentsMargins(0, 0, 0, 0)
-            self.vertical_container.setContentsMargins(0, 0, 0, 0)
-
-            main_layout = self.centralWidget().layout()
-            main_layout.insertWidget(1, self.scroll_area)
-
-            self.scroll_area.verticalScrollBar().valueChanged.connect(self._update_visible_images)
-            self.scroll_area.viewport().installEventFilter(self)
-
+        self.scroll_area.show()
         self.scroll_area.verticalScrollBar().setValue(0)
 
         self._strip_zoom_factor = 1.0
@@ -1146,14 +1132,7 @@ class ReaderView(QMainWindow):
                 widget._update_margins(QMargins(0,0,10,0))
 
         if self.scroll_area:
-            main_layout = self.centralWidget().layout()
-            main_layout.removeWidget(self.scroll_area)
-            self.scroll_area.deleteLater()
-            self.scroll_area = None
-            self.vertical_container = None
-            self.vbox = None
-            self.v_labels = []
-            self.vertical_pixmaps = []
+            self.scroll_area.hide()
         self.media_stack.show()
 
     def _change_page_by_strip_thumbnail(self, index: int):
