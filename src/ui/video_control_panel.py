@@ -1,6 +1,8 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSignal
+
+from src.ui.components.volume_control import VolumeControl
 
 
 class VideoControlPanel(QWidget):
@@ -18,10 +20,10 @@ class VideoControlPanel(QWidget):
         self.is_repeat = False
 
     def init_ui(self):
-        self.play_icon = QIcon.fromTheme("media-playback-start", QIcon("assets/icons/play.png"))
-        self.pause_icon = QIcon.fromTheme("media-playback-pause", QIcon("assets/icons/pause.png"))
-        self.repeat_on_icon = QIcon.fromTheme("media-playlist-repeat", QIcon("assets/icons/repeat_on.png"))
-        self.repeat_off_icon = QIcon.fromTheme("media-playlist-repeat", QIcon("assets/icons/repeat_off.png"))
+        self.play_icon = QIcon("assets/icons/play.png")
+        self.pause_icon = QIcon("assets/icons/pause.png")
+        self.repeat_on_icon = QIcon("assets/icons/repeat_on.png")
+        self.repeat_off_icon = QIcon("assets/icons/repeat_off.png")
 
         layout = QHBoxLayout()
         layout.setContentsMargins(10, 5, 10, 5)
@@ -44,12 +46,9 @@ class VideoControlPanel(QWidget):
         self.duration_label = QLabel("00:00")
         layout.addWidget(self.duration_label)
 
-        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(100)
-        self.volume_slider.setFixedWidth(100)
-        self.volume_slider.valueChanged.connect(self.volume_changed.emit)
-        layout.addWidget(self.volume_slider)
+        self.volume_control = VolumeControl(self)
+        self.volume_control.volume_changed.connect(self.volume_changed.emit)
+        layout.addWidget(self.volume_control)
 
         self.speed_btn = QPushButton("1.0x")
         self.speed_btn.setFlat(True)
