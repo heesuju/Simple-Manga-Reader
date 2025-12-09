@@ -135,7 +135,9 @@ class ReaderView(QWidget):
         # Scene/view (we will render both pixmaps and video inside the same scene)
         self.scene = QGraphicsScene()
         self.view = ImageView(manga_reader=self)
+        self.view.viewport().setMouseTracking(True)
         self.view.setScene(self.scene)
+        self.view.viewport().installEventFilter(self)
 
         # NOTE: We removed the separate VideoPlayerWidget and will use a QGraphicsVideoItem in the scene.
         # Keep compatibility with your code that used a stacked widget by adding only the view.
@@ -183,6 +185,7 @@ class ReaderView(QWidget):
         self.top_panel = TopPanel(self)
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
         self.video_control_panel = VideoControlPanel(self)
+        self.video_control_panel.raise_()
         self.slider_panel = SliderPanel(self)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
 
@@ -198,7 +201,7 @@ class ReaderView(QWidget):
 
         bottom_layout.addWidget(self.page_panel)
         bottom_layout.addWidget(self.chapter_panel)
-        bottom_layout.addWidget(self.video_control_panel)
+        # bottom_layout.addWidget(self.video_control_panel) # Removed from layout
         bottom_layout.addWidget(self.slider_panel)
 
         main_layout.addWidget(bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
@@ -283,7 +286,7 @@ class ReaderView(QWidget):
 
         self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
         self.media_player.play()
-        self.video_control_panel.show()
+        self._reposition_video_control_panel()
 
     def _stop_video(self):
         """Stop playback, hide the video item, and completely detach audio/source."""
@@ -561,12 +564,9 @@ class ReaderView(QWidget):
         if self.panels_visible:
             self.top_panel.show()
             self.slider_panel.show()
-            if self.video_item and self.video_item.isVisible():
-                self.video_control_panel.show()
         else:
             self.top_panel.hide()
             self.slider_panel.hide()
-            self.video_control_panel.hide()
 
             if self.page_panel.content_area.isVisible():
                 self.page_panel.hide_content()
@@ -579,6 +579,24 @@ class ReaderView(QWidget):
             if event.type() == QEvent.Type.MouseButtonPress:
                 if self.guided_reading_animation and self.guided_reading_animation.state() == QPropertyAnimation.State.Running:
                     self.stop_guided_reading(user_interrupted=True)
+            elif event.type() == QEvent.Type.MouseMove:
+                if self.video_item and self.video_item.isVisible():
+                    view_height = self.height()
+                    y = event.position().y()
+
+                    bottom_area_height = view_height * 0.3  # pixels
+
+                    # Show when cursor is in the bottom area
+                    if view_height - y < bottom_area_height:
+                        if not self.video_control_panel.isVisible():
+                            self.video_control_panel.show()
+                            self._reposition_video_control_panel()
+                    # Hide when cursor is outside the bottom area
+                    else:
+                        if self.video_control_panel.isVisible():
+                            # don't hide if mouse is over the panel itself
+                            if not self.video_control_panel.underMouse():
+                                self.video_control_panel.hide()
 
         # Handle resize for strip mode (existing logic)
         if self.model.view_mode == ViewMode.STRIP and self.scroll_area and obj is self.scroll_area.viewport():
@@ -1154,6 +1172,20 @@ class ReaderView(QWidget):
         # emit after stopping to avoid race conditions
         self.back_pressed.emit()
 
+    def _reposition_video_control_panel(self):
+        view_width = self.width()
+        
+        panel_width = int(view_width * 0.6)
+        panel_height = self.video_control_panel.sizeHint().height()
+        
+        x = (view_width - panel_width) // 2
+
+        slider_height = self.slider_panel.height() if self.slider_panel.isVisible() else 0
+        margin = 40
+        y = self.height() - panel_height - slider_height - margin
+        
+        self.video_control_panel.setGeometry(x, y, panel_width, panel_height)
+
     def _on_translation_ready(self, modified_image):
         # Convert cv2 image (BGR) to QImage (RGB)
         height, width, channel = modified_image.shape
@@ -1175,5 +1207,8 @@ class ReaderView(QWidget):
             self.video_item.setSize(QSizeF(vp.width(), vp.height()))
             self.video_item.setPos(0, 0)
             self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
+        
+        self._reposition_video_control_panel()
+        
         # if pixmap present, keep fit behavior (call fit on next tick)
         QTimer.singleShot(0, self.apply_last_zoom)

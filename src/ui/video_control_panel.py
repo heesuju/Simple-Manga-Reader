@@ -14,6 +14,7 @@ class VideoControlPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._is_scrubbing = False
         self.init_ui()
         self.is_playing = False
@@ -65,7 +66,7 @@ class VideoControlPanel(QWidget):
 
         self.setStyleSheet("""
             VideoControlPanel {
-                background-color: rgba(0, 0, 0, 180);
+                background-color: rgba(0, 0, 0, 100);
                 color: white;
                 border-radius: 10px;
             }
@@ -78,25 +79,35 @@ class VideoControlPanel(QWidget):
             QPushButton:hover {
                 background-color: rgba(255, 255, 255, 50);
             }
+            QSlider {
+                background: transparent;
+            }
             QSlider::groove:horizontal {
-                border: 1px solid #999999;
-                height: 8px;
-                background: #333;
+                border: none;
+                height: 4px;
+                background: transparent;
                 margin: 2px 0;
-                border-radius: 4px;
+                border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background: #ccc;
-                border: 1px solid #5c5c5c;
-                width: 16px;
+                background: #fff;
+                border: 1px solid #ccc;
+                width: 12px;
+                height: 12px;
                 margin: -4px 0;
-                border-radius: 8px;
+                border-radius: 6px;
             }
             QSlider::sub-page:horizontal {
-                background: #5c5c5c;
-                border: 1px solid #999999;
-                height: 8px;
-                border-radius: 4px;
+                background: #fff;
+                border: none;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::add-page:horizontal {
+                background: rgba(255, 255, 255, 50);
+                border: none;
+                height: 4px;
+                border-radius: 2px;
             }
             QLabel {
                 color: white;
