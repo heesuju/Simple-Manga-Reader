@@ -676,11 +676,13 @@ class ReaderView(QWidget):
         is_video = os.path.splitext(path)[1].lower() in video_extensions
 
         if is_video:
-            # Play video inside the scene (Option C)
+            if self.model.view_mode != ViewMode.SINGLE:
+                self.model.toggle_layout(ViewMode.SINGLE)
             self._play_video(path)
+            self.layout_btn.hide()
         else:
-            # If we were previously playing a video, stop and hide the video item
             self._stop_video()
+            self.layout_btn.show()
 
             self.media_stack.setCurrentWidget(self.view)
             # Handle animated images
