@@ -12,6 +12,7 @@ class VideoControlPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._is_scrubbing = False
         self.init_ui()
         self.is_playing = False
         self.is_repeat = False
@@ -35,7 +36,9 @@ class VideoControlPanel(QWidget):
         layout.addWidget(self.current_time_label)
 
         self.position_slider = QSlider(Qt.Orientation.Horizontal)
-        self.position_slider.sliderMoved.connect(self.position_changed.emit)
+        self.position_slider.sliderPressed.connect(self._on_slider_pressed)
+        self.position_slider.sliderReleased.connect(self._on_slider_released)
+        self.position_slider.sliderMoved.connect(self._on_slider_moved)
         layout.addWidget(self.position_slider)
 
         self.duration_label = QLabel("00:00")
@@ -101,6 +104,16 @@ class VideoControlPanel(QWidget):
             }
         """)
 
+    def _on_slider_pressed(self):
+        self._is_scrubbing = True
+
+    def _on_slider_released(self):
+        self._is_scrubbing = False
+        self.position_changed.emit(self.position_slider.value())
+
+    def _on_slider_moved(self, position):
+        self.position_changed.emit(position)
+
     def set_playing(self, playing):
         self.is_playing = playing
         self.play_pause_btn.setIcon(self.pause_icon if playing else self.play_icon)
@@ -113,11 +126,12 @@ class VideoControlPanel(QWidget):
         self.position_slider.setRange(0, duration_ms)
 
     def set_position(self, position_ms):
-        total_seconds = position_ms // 1000
-        minutes = total_seconds // 60
-        seconds = total_seconds % 60
-        self.current_time_label.setText(f"{minutes:02d}:{seconds:02d}")
-        self.position_slider.setValue(position_ms)
+        if not self._is_scrubbing:
+            total_seconds = position_ms // 1000
+            minutes = total_seconds // 60
+            seconds = total_seconds % 60
+            self.current_time_label.setText(f"{minutes:02d}:{seconds:02d}")
+            self.position_slider.setValue(position_ms)
 
     def toggle_repeat(self, checked):
         self.is_repeat = checked
