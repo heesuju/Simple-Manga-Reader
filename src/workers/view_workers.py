@@ -9,6 +9,10 @@ from PyQt6.QtGui import QPixmap
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
 
+# New: list of video extensions we want to treat as media
+VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
+IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}
+
 class AnimationFrameLoaderSignals(QObject):
     finished = pyqtSignal(dict)
 
@@ -21,18 +25,41 @@ class AnimationFrameLoaderWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        """
+        Load frames for animated images (GIF, animated WEBP). If the path refers to a video
+        file (mp4, webm, etc.) we skip processing here — videos are handled by the media player.
+        """
         frames = []
         duration = 100
+
+        # Normalize path for zip entries like "archive.zip|file.ext"
+        path_lower = self.path.lower() if isinstance(self.path, str) else ""
+        if '|' in path_lower:
+            ext = Path(path_lower.split('|', 1)[1]).suffix.lower()
+        else:
+            ext = Path(path_lower).suffix.lower()
+
+        # Skip video formats entirely (they are handled by the video playback path)
+        if ext in VIDEO_EXTS:
+            result = {"path": self.path, "frames": [], "duration": duration}
+            self.signals.finished.emit(result)
+            return
+
         try:
             img = Image.open(io.BytesIO(self.image_data))
-            if img.is_animated:
+            if getattr(img, "is_animated", False):
+                # prefer duration from info if available
                 duration = img.info.get('duration', 100)
-                for i in range(img.n_frames):
-                    img.seek(i)
-                    q_image = ImageQt.toqpixmap(img)
-                    frames.append(q_image)
+                for i in range(getattr(img, "n_frames", 1)):
+                    try:
+                        img.seek(i)
+                        q_image = ImageQt.toqpixmap(img)
+                        frames.append(q_image)
+                    except Exception:
+                        # If a single frame fails, skip it and continue
+                        continue
         except Exception:
-            frames = [] # Return empty list on error
+            frames = []  # Return empty list on error
 
         result = {
             "path": self.path,
@@ -57,15 +84,22 @@ class ChapterLoaderWorker(QRunnable):
         # Perform blocking I/O and processing here
         image_list = self._get_image_list()
         image_list = sorted(image_list, key=get_chapter_number)
-        
+
         initial_index = 0
         if self.start_from_end:
             initial_index = len(image_list) - 1
-        
+
         initial_pixmap = None
         if image_list:
             if 0 <= initial_index < len(image_list):
-                initial_pixmap = self.load_pixmap(image_list[initial_index])
+                # only try to load a pixmap if the initial item is an image (not a video)
+                candidate = image_list[initial_index]
+                # candidate may be "zip|name" or a file path
+                suffix = Path(candidate.split('|')[-1]).suffix.lower()
+                if suffix in IMAGE_EXTS:
+                    initial_pixmap = self.load_pixmap(candidate)
+                else:
+                    initial_pixmap = None
 
         result = {
             "manga_dir": self.manga_dir,
@@ -76,19 +110,27 @@ class ChapterLoaderWorker(QRunnable):
         self.signals.finished.emit(result)
 
     def _get_image_list(self):
+        """
+        Return list of media file paths (strings). For ZIPs we return "zip_path|entry"
+        so upstream can detect zip entries. Include both images and videos.
+        """
         if not self.manga_dir:
             return []
         manga_path = Path(self.manga_dir)
         if self.manga_dir.endswith('.zip'):
             try:
                 with zipfile.ZipFile(self.manga_dir, 'r') as zf:
-                    image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
+                    # include image and video extensions
+                    valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS))
+                    image_files = sorted([f for f in zf.namelist()
+                                          if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX')])
                     return [f"{self.manga_dir}|{name}" for name in image_files]
             except zipfile.BadZipFile:
                 return []
         elif manga_path.is_dir():
-            exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
-            return [str(p) for p in sorted(manga_path.iterdir()) if p.suffix.lower() in exts and p.is_file()]
+            exts = IMAGE_EXTS.union(VIDEO_EXTS)
+            return [str(p) for p in sorted(manga_path.iterdir())
+                    if p.suffix.lower() in exts and p.is_file()]
         return []
 
 class WorkerSignals(QObject):
@@ -104,5 +146,9 @@ class PixmapLoader(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        """
+        For videos the reader_view._load_pixmap will likely return a null QPixmap.
+        That's expected — callers should handle the absence of a pixmap (e.g. play video instead).
+        """
         pixmap = self.reader_view._load_pixmap(self.path)
         self.signals.finished.emit(self.index, pixmap)

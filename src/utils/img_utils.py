@@ -96,23 +96,57 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
                 return pixmap
     except FileNotFoundError:
         return None # Original file not found
+        
+    video_extensions = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
+    file_ext = Path(path_str).suffix.lower()
 
-    reader = QImageReader(path_str)
-    original_size = reader.size()
-    
-    if crop:
-        if original_size.width() > original_size.height():
-            if crop == 'left':
-                reader.setClipRect(QRect(0, 0, original_size.width() // 2, original_size.height()))
-            elif crop == 'right':
-                reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
+    pixmap = None
 
-    pixmap = load_thumbnail(reader, width, height)
-    
+    if file_ext in video_extensions:
+        try:
+            cap = cv2.VideoCapture(path_str)
+            if cap.isOpened():
+                # Try to capture a frame from 2 seconds into the video
+                cap.set(cv2.CAP_PROP_POS_MSEC, 2000)
+                ret, frame = cap.read()
+                if not ret:
+                    # if that fails, try the very first frame
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+
+                if ret:
+                    # Convert BGR frame to RGB
+                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w, ch = rgb_frame.shape
+                    bytes_per_line = ch * w
+                    q_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+                    pixmap = QPixmap.fromImage(q_image)
+            cap.release()
+        except Exception as e:
+            print(f"Error creating video thumbnail: {e}")
+            pixmap = None # Ensure pixmap is None on error
+    else:
+        # Existing image loading logic
+        reader = QImageReader(path_str)
+        original_size = reader.size()
+        
+        if crop:
+            if original_size.width() > original_size.height():
+                if crop == 'left':
+                    reader.setClipRect(QRect(0, 0, original_size.width() // 2, original_size.height()))
+                elif crop == 'right':
+                    reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
+
+        pixmap = load_thumbnail(reader, width, height)
+
     if pixmap and not pixmap.isNull():
-        pixmap.save(str(cached_thumb_path), "PNG")
+        # Scale and save the thumbnail
+        scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        scaled_pixmap.save(str(cached_thumb_path), "PNG")
+        return scaled_pixmap
 
-    return pixmap
+    # Return a placeholder if everything failed
+    return empty_placeholder(width, height)
 
 def load_thumbnail_from_zip(path, width=150, height=200):
     path_str = str(path)

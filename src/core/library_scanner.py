@@ -1,7 +1,11 @@
-
 import os
 from pathlib import Path
 import re
+
+# prefer treating images and video separately for cover-selection vs listing
+IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'}
+VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
+ALL_MEDIA_EXTS = IMAGE_EXTS.union(VIDEO_EXTS)
 
 def find_number(text:str)->int:
     numbers = re.findall(r'\d+', text)
@@ -13,7 +17,7 @@ def get_chapter_number(path):
         name = Path(path.split('|')[1]).name
     else:
         name = Path(path).name
-    
+
     match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
     if match:
         return int(match.group(1))
@@ -25,8 +29,13 @@ class LibraryScanner:
         name = path.name.lower()
         return 'ch' in name or 'chapter' in name or any(char.isdigit() for char in name)
 
+    def is_media_file(self, path: Path):
+        """Return True for image or video files (used for scanning)."""
+        return path.is_file() and path.suffix.lower() in ALL_MEDIA_EXTS
+
     def is_image_file(self, path: Path):
-        return path.is_file() and path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']
+        """Return True only for actual image file extensions (used for cover selection)."""
+        return path.is_file() and path.suffix.lower() in IMAGE_EXTS
 
     def scan_series(self, series_path):
         item = Path(series_path)
@@ -35,7 +44,7 @@ class LibraryScanner:
 
         sub_items = list(item.iterdir())
         chapter_folders = [p for p in sub_items if p.is_dir()]
-        image_files = [p for p in sub_items if self.is_image_file(p)]
+        image_files = [p for p in sub_items if self.is_media_file(p)]
 
         if chapter_folders:
             series_name = item.name
@@ -48,14 +57,19 @@ class LibraryScanner:
                 "chapters": chapters,
                 "root_dir": str(item.parent)
             }
-        elif image_files: # It's a series with no chapters
+        elif image_files:  # It's a series with no chapters but contains media
             series_name = item.name
             cover_image = self.find_cover(item, [])
+            # This series has no chapter folders, so treat the series folder as a single chapter
+            chapters = [{
+                "name": series_name,
+                "path": str(item)
+            }]
             return {
                 "name": series_name,
                 "path": str(item),
                 "cover_image": str(cover_image) if cover_image else None,
-                "chapters": [],
+                "chapters": chapters,
                 "root_dir": str(item.parent)
             }
         return None
@@ -70,21 +84,31 @@ class LibraryScanner:
         return sorted(chapters, key=lambda x: get_chapter_number(x['name']))
 
     def find_cover(self, series_path: Path, chapters):
-        # Look for cover.jpg or cover.png
+        # Look for cover.jpg or cover.png (image only)
         for item in series_path.iterdir():
             if item.is_file() and item.name.lower() in ['cover.jpg', 'cover.png']:
                 return item
 
-        # If no cover, use first image of first chapter
+        # If no explicit cover, prefer first image (not video) of first chapter
         if chapters:
             first_chapter_path = Path(chapters[0]['path'])
+            # iterate sorted to keep consistent order
             for item in sorted(first_chapter_path.iterdir()):
                 if self.is_image_file(item):
                     return item
-        
-        # If no chapters, use first image in series folder
+            # if no images in chapter, fall back to any media (including video)
+            for item in sorted(first_chapter_path.iterdir()):
+                if self.is_media_file(item):
+                    return item
+
+        # If no chapters, use first image in series folder (prefer images)
         for item in sorted(series_path.iterdir()):
             if self.is_image_file(item):
+                return item
+
+        # fallback: any media in series folder
+        for item in sorted(series_path.iterdir()):
+            if self.is_media_file(item):
                 return item
 
         return None

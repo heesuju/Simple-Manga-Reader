@@ -11,23 +11,29 @@ from PIL import Image, ImageQt
 
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QGraphicsScene,QGraphicsView,QGraphicsPixmapItem, 
+    QMainWindow, QWidget, QGraphicsScene, QGraphicsView, QGraphicsPixmapItem,
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
-    QMessageBox, QScrollArea, QSizePolicy, QPinchGesture
+    QMessageBox, QScrollArea, QSizePolicy, QPinchGesture, QStackedWidget, QGridLayout
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, pyqtSignal, QSize, QUrl, QRectF, QSizeF
+# NEW imports for multimedia
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
+
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
 from src.ui.chapter_panel import ChapterPanel
 from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
 from src.ui.image_view import ImageView
+# removed: VideoPlayerWidget
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
 from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, AnimationFrameLoaderWorker
+
 
 class FitInViewAnimation(QPropertyAnimation):
     def __init__(self, target, parent=None):
@@ -36,6 +42,7 @@ class FitInViewAnimation(QPropertyAnimation):
 
     def updateCurrentValue(self, value):
         self.targetObject().fitInView(value, Qt.AspectRatioMode.KeepAspectRatio)
+
 
 class ReaderView(QMainWindow):
     back_pressed = pyqtSignal()
@@ -103,6 +110,12 @@ class ReaderView(QMainWindow):
 
         self.last_zoom_mode = "Fit Page"
 
+        # Multimedia objects (Option C)
+        self.media_player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)
+        self.media_player.setAudioOutput(self.audio_output)
+        self.video_item: QGraphicsVideoItem | None = None  # will be created and added to scene when needed
+
         self._setup_ui()
         self.showFullScreen()
         self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
@@ -115,9 +128,16 @@ class ReaderView(QMainWindow):
 
         self.back_icon = QIcon("assets/icons/back.png")
 
+        # Scene/view (we will render both pixmaps and video inside the same scene)
         self.scene = QGraphicsScene()
         self.view = ImageView(manga_reader=self)
         self.view.setScene(self.scene)
+
+        # NOTE: We removed the separate VideoPlayerWidget and will use a QGraphicsVideoItem in the scene.
+        # Keep compatibility with your code that used a stacked widget by adding only the view.
+        self.media_stack = QStackedWidget()
+        self.media_stack.addWidget(self.view)
+        # video widget is no longer a separate widget, so we do NOT add one here
 
         self.back_btn = QPushButton()
         self.back_btn.setIcon(self.back_icon)
@@ -128,29 +148,44 @@ class ReaderView(QMainWindow):
 
         self.layout_btn = QPushButton("Double")
         self.layout_btn.clicked.connect(self.toggle_layout)
-        
+
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, activated=self.show_prev)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
         QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.back_to_grid)
 
-        main_layout = QVBoxLayout()
+        main_container = QWidget()
+        main_layout = QGridLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        main_layout.addWidget(self.view, 1)
+        main_container.setLayout(main_layout)
+        self.setCentralWidget(main_container)
 
-        container = QWidget()
-        container.setLayout(main_layout)
-        container.setContentsMargins(0, 0, 0, 0)
-        self.setCentralWidget(container)
+        main_layout.addWidget(self.media_stack, 0, 0)
 
-        # 1. Create all panel widgets first
-        self.top_panel = TopPanel(self)
-        self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
-        self.slider_panel = SliderPanel(self)
-        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
+        # 1. Create all panel widgets first, with main_container as parent
+        self.top_panel = TopPanel(main_container)
+        self.page_panel = PagePanel(main_container, model=self.model, on_page_changed=self.change_page)
+        self.slider_panel = SliderPanel(main_container)
+        self.chapter_panel = ChapterPanel(main_container, model=self.model, on_chapter_changed=self.set_chapter)
+
+        # Add panels to the layout, stacked on top
+        main_layout.addWidget(self.top_panel, 0, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Create a container for the bottom panels
+        bottom_container = QWidget(main_container)
+        bottom_layout = QVBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(0)
+        bottom_container.setLayout(bottom_layout)
+
+        bottom_layout.addWidget(self.page_panel)
+        bottom_layout.addWidget(self.chapter_panel)
+        bottom_layout.addWidget(self.slider_panel)
+
+        main_layout.addWidget(bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
+
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters) # Load chapter thumbnails once
-
 
         # 2. Add control widgets to the panels
         self.top_panel.set_series_title(self.model.series.get("name"))
@@ -174,28 +209,114 @@ class ReaderView(QMainWindow):
         self.page_panel.hide_content()
         self.chapter_panel.hide_content()
 
-        self.top_panel.raise_()
-        self.page_panel.raise_()
-        self.slider_panel.raise_()
-        self.chapter_panel.raise_()
-
-        self.top_panel.installEventFilter(self)
-        self.page_panel.installEventFilter(self)
-        self.slider_panel.installEventFilter(self)
-        self.chapter_panel.installEventFilter(self)
-        
         self.original_view_mouse_press = self.view.mousePressEvent
         self.original_view_mouse_release = self.view.mouseReleaseEvent
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.mouseReleaseEvent = self._overlay_mouse_release
-        self.view.resizeEvent = self.resizeEvent
+        # removed: video_widget mouse event override (video is inside QGraphicsScene now)
 
-        self.animation_timer.timeout.connect(self._show_next_frame)
+        # Connect media player signals if you want to monitor playback state etc.
+        # For example stop video when finished:
+        self.media_player.playbackStateChanged.connect(self._on_media_playback_state_changed)
+
+    # ---------- Multimedia helper methods (Option C) ----------
+    def _ensure_video_item(self):
+        """Create the QGraphicsVideoItem once and keep it in the scene (hidden until used)."""
+        if self.video_item is None:
+            self.video_item = QGraphicsVideoItem()
+            # Start invisible
+            self.video_item.setVisible(False)
+            # Add to scene at z-value 0 (images will be z 0 too); pixmap_item will be managed separately.
+            self.scene.addItem(self.video_item)
+
+    def _play_video(self, path: str):
+        """Play a local file path in the scene via QGraphicsVideoItem."""
+        self._ensure_video_item()
+        # Stop any previous media
+        try:
+            self.media_player.stop()
+        except Exception:
+            pass
+
+        self.media_player.setVideoOutput(self.video_item)
+        self.media_player.setSource(QUrl.fromLocalFile(path))
+        # Make video item visible and sized to the view/scene
+        self.video_item.setVisible(True)
+        # Hide pixmap item if present
+        if hasattr(self, "pixmap_item") and self.pixmap_item:
+            self.pixmap_item.setVisible(False)
+
+        # set size to match viewport (we'll update size on resizeEvent / fit)
+        vp = self.view.viewport().size()
+        self.video_item.setSize(QSizeF(vp.width(), vp.height()))
+        # Position at origin of scene
+        self.video_item.setPos(0, 0)
+
+        self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
+        self.media_player.play()
+
+    def _stop_video(self):
+        """Stop playback, hide the video item, and completely detach audio/source."""
+        # Stop playback
+        if self.media_player:
+            try:
+                self.media_player.stop()
+            except Exception:
+                pass
+
+            # Clear source to ensure backend releases the file/stream
+            try:
+                # Setting an empty QUrl clears the current source
+                self.media_player.setSource(QUrl())
+            except Exception:
+                # older/newer Qt versions differ; ignore if not supported
+                pass
+
+            # Detach the video output (so it's not holding references)
+            try:
+                self.media_player.setVideoOutput(None)
+            except Exception:
+                pass
+
+            # Detach audio output as well
+            try:
+                # stop audio output explicitly
+                if self.audio_output:
+                    self.audio_output.stop()
+                # detach audio output from media_player
+                self.media_player.setAudioOutput(None)
+            except Exception:
+                pass
+
+        # Hide or remove the video item in the scene
+        if self.video_item:
+            try:
+                self.video_item.setVisible(False)
+                # Optionally remove from scene to free resources:
+                # self.scene.removeItem(self.video_item)
+            except Exception:
+                pass
+
+        # Restore pixmap visibility if present
+        if hasattr(self, "pixmap_item") and self.pixmap_item:
+            try:
+                self.pixmap_item.setVisible(True)
+            except Exception:
+                pass
+
+    def _on_media_playback_state_changed(self, state):
+        # optional: handle ended playback etc. (QMediaPlayer.PlaybackState)
+        from PyQt6.QtMultimedia import QMediaPlayer as _MP
+        if state == _MP.PlaybackState.StoppedState:
+            # when a video ends, you might want to auto-next or reset UI
+            pass
+
+    # ---------- End multimedia helpers ----------
 
     def _show_next_frame(self):
         if not self.animation_frames:
             return
-        
+
         self.current_frame_index = (self.current_frame_index + 1) % len(self.animation_frames)
         self._set_pixmap(self.animation_frames[self.current_frame_index])
         self.apply_last_zoom()
@@ -292,10 +413,10 @@ class ReaderView(QMainWindow):
     def on_model_refreshed(self):
         if not self.model.images:
             QMessageBox.information(self, "No images", f"No images found in: {self.model.manga_dir}")
-        
+
         self.page_panel._update_page_thumbnails(self.model)
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-        
+
         if self.model.images:
             self.slider_panel.set_range(len(self.model.images) - 1)
             self.slider_panel.set_value(self.model.current_index)
@@ -315,7 +436,7 @@ class ReaderView(QMainWindow):
         if self.model.view_mode == ViewMode.DOUBLE:
             images = self.model._get_double_view_images()
         num_pages = len(images)
-        
+
         if num_pages > 0:
             self.slider_panel.set_range(num_pages - 1)
             self.slider_panel.set_value(self.model.current_index)
@@ -333,35 +454,10 @@ class ReaderView(QMainWindow):
             self.layout_btn.setText("Strip")
             self._show_vertical_layout()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.loading_label.setGeometry(0, 0, self.width(), self.height())
-        self._update_panel_geometries()
-
-    def _update_panel_geometries(self):
-        if not self.slider_panel:  # Guard against calls before setup is complete
-            return
-
-        top_panel_height = 50 if self.top_panel.isVisible() else 0
-        self.top_panel.setGeometry(0, 0, self.width(), top_panel_height)
-
-        slider_panel_height = 80 if self.slider_panel.isVisible() else 0
-        self.slider_panel.setGeometry(0, self.height() - slider_panel_height, self.width(), slider_panel_height)
-
-        page_panel_height = 180 if self.page_panel.content_area.isVisible() else 0
-        page_panel_y = self.height() - slider_panel_height - page_panel_height
-        self.page_panel.setGeometry(0, page_panel_y, self.width(), page_panel_height)
-
-        chapter_panel_height = 180 if self.chapter_panel.content_area.isVisible() else 0
-        chapter_panel_y = self.height() - slider_panel_height - chapter_panel_height
-        self.chapter_panel.setGeometry(0, chapter_panel_y, self.width(), chapter_panel_height)
-
-
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.BackButton:
             self.back_to_grid()
         return super().mousePressEvent(event)
-
 
     def _overlay_mouse_press(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -402,7 +498,7 @@ class ReaderView(QMainWindow):
         original_state = self.panels_visible
 
         if visible is not None:
-            self.panels_visible = visible    
+            self.panels_visible = visible
         else:
             self.panels_visible = not self.panels_visible
 
@@ -415,14 +511,12 @@ class ReaderView(QMainWindow):
         else:
             self.top_panel.hide()
             self.slider_panel.hide()
-            
+
             if self.page_panel.content_area.isVisible():
                 self.page_panel.hide_content()
 
             if self.chapter_panel.content_area.isVisible():
                 self.chapter_panel.hide_content()
-
-        self._update_panel_geometries()
 
     def eventFilter(self, obj, event):
         if obj is self.view.viewport():
@@ -476,7 +570,7 @@ class ReaderView(QMainWindow):
 
             if event.type() == QEvent.Type.Resize:
                 QTimer.singleShot(0, self._resize_vertical_images)
-                
+
         return super().eventFilter(obj, event)
 
     def _load_pixmap(self, image_source: Union[str, bytes]) -> QPixmap:
@@ -484,7 +578,7 @@ class ReaderView(QMainWindow):
             return empty_placeholder()
 
         pixmap = QPixmap()
-        
+
         path_str = ""
         crop = None
 
@@ -515,59 +609,97 @@ class ReaderView(QMainWindow):
         return pixmap
 
     def _load_image(self, path: str):
-        # Stop any ongoing animations
+        # Stop any ongoing animations or video
         self.animation_timer.stop()
         self.animation_frames.clear()
         self.current_frame_index = 0
-        
-        # Handle animated images
-        if path.lower().endswith((".gif", ".webp")):
-            image_data = None
-            if '|' in path:
-                image_data = get_image_data_from_zip(path)
-            elif os.path.exists(path):
-                with open(path, 'rb') as f:
-                    image_data = f.read()
-            
-            if image_data:
-                try:
-                    img = Image.open(io.BytesIO(image_data))
-                    # Display first frame synchronously
-                    img.seek(0)
-                    first_frame_pixmap = ImageQt.toqpixmap(img)
-                    self._set_pixmap(first_frame_pixmap)
+        # Stop any playing video (now using media player)
+        self._stop_video()
 
-                    # If animated, start worker for the rest
-                    if img.is_animated and img.n_frames > 1:
-                        self.loading_label.show()
-                        worker = AnimationFrameLoaderWorker(path, image_data)
-                        worker.signals.finished.connect(self._on_animation_loaded)
-                        self.thread_pool.start(worker)
-                    
-                except Exception:
-                    # Fallback to static image loading on error
-                    self.original_pixmap = self._load_pixmap(path)
-                    self._set_pixmap(self.original_pixmap)
+        video_extensions = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
+        is_video = os.path.splitext(path)[1].lower() in video_extensions
 
+        if is_video:
+            # Play video inside the scene (Option C)
+            self._play_video(path)
         else:
-            # Fallback for non-animated types
-            self.original_pixmap = self._load_pixmap(path)
-            self._set_pixmap(self.original_pixmap)
+            # If we were previously playing a video, stop and hide the video item
+            self._stop_video()
+
+            self.media_stack.setCurrentWidget(self.view)
+            # Handle animated images
+            if path.lower().endswith((".gif", ".webp")):
+                image_data = None
+                if '|' in path:
+                    image_data = get_image_data_from_zip(path)
+                elif os.path.exists(path):
+                    with open(path, 'rb') as f:
+                        image_data = f.read()
+
+                if image_data:
+                    try:
+                        img = Image.open(io.BytesIO(image_data))
+                        # Display first frame synchronously
+                        img.seek(0)
+                        first_frame_pixmap = ImageQt.toqpixmap(img)
+                        self._set_pixmap(first_frame_pixmap)
+
+                        # If animated, start worker for the rest
+                        if img.is_animated and img.n_frames > 1:
+                            self.loading_label.show()
+                            worker = AnimationFrameLoaderWorker(path, image_data)
+                            worker.signals.finished.connect(self._on_animation_loaded)
+                            self.thread_pool.start(worker)
+
+                    except Exception:
+                        # Fallback to static image loading on error
+                        self.original_pixmap = self._load_pixmap(path)
+                        self._set_pixmap(self.original_pixmap)
+
+            else:
+                # Fallback for non-animated types
+                self.original_pixmap = self._load_pixmap(path)
+                self._set_pixmap(self.original_pixmap)
 
         # Common UI updates for all image types
         self.view.reset_zoom_state()
         QTimer.singleShot(0, self.apply_last_zoom)
         self.page_panel._update_page_selection(self.model.current_index)
         self.slider_panel.set_value(self.model.current_index)
-    
+
     def _set_pixmap(self, pixmap: QPixmap):
-        self.scene.clear()
+        # Clear scene except keep video_item if exists
+        if self.video_item:
+            # keep the video_item in the scene but hide it
+            self.video_item.setVisible(False)
+
+        # remove previous pixmap_item if any
+        if hasattr(self, "pixmap_item") and self.pixmap_item:
+            try:
+                self.scene.removeItem(self.pixmap_item)
+            except Exception:
+                pass
+
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
         self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        # place pixmap at origin
+        self.pixmap_item.setPos(0, 0)
         self.scene.addItem(self.pixmap_item)
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
+        # make sure pixmap is visible (video_item will be hidden if any)
+        if hasattr(self, "pixmap_item"):
+            self.pixmap_item.setVisible(True)
 
     def _load_double_images(self, image1_path, image2_path):
+        # stop any video
+        self._stop_video()
+
+        self.media_stack.setCurrentWidget(self.view)
+        # remove previous pixmap(s)
+        # clear scene but keep video item if present
+        if self.video_item:
+            self.video_item.setVisible(False)
+
         self.scene.clear()
 
         pix1 = self._load_pixmap(image1_path)
@@ -590,6 +722,9 @@ class ReaderView(QMainWindow):
             total_height = max(pix1.height(), pix2.height())
 
         self.scene.setSceneRect(0, 0, total_width, total_height)
+        # keep a reference to last pixmap item (pointing to item1)
+        self.pixmap_item = item1
+
         self.view.reset_zoom_state()
         QTimer.singleShot(0, self.apply_last_zoom)
         self.page_panel._update_page_selection(self.model.current_index)
@@ -617,7 +752,7 @@ class ReaderView(QMainWindow):
             self._resize_vertical_images()
             return
 
-        if not self.pixmap_item:
+        if not hasattr(self, "pixmap_item"):
             return
 
         if mode == "Fit Page":
@@ -645,7 +780,7 @@ class ReaderView(QMainWindow):
 
     def apply_last_zoom(self):
         self.set_zoom_mode(self.last_zoom_mode)
-    
+
     def _fit_current_image(self):
         """Fit image to view and reset zoom factor (handles single-image and vertical modes)."""
         if self.model.view_mode == ViewMode.STRIP:
@@ -719,13 +854,11 @@ class ReaderView(QMainWindow):
         if self.chapter_panel.content_area.isVisible():
             self.chapter_panel.hide_content()
         self.page_panel.show_content()
-        self._update_panel_geometries()
 
     def _show_chapter_panel(self):
         if self.page_panel.content_area.isVisible():
             self.page_panel.hide_content()
         self.chapter_panel.show_content()
-        self._update_panel_geometries()
 
     def set_chapter(self, chapter:int):
         if self.model.set_chapter(chapter):
@@ -737,11 +870,12 @@ class ReaderView(QMainWindow):
         if self.model.change_chapter(direction):
             self._load_chapter_async(start_from_end=start_from_end)
             self.chapter_panel._update_chapter_selection(self.model.chapter_index)
-            
+
     def _load_chapter_async(self, start_from_end: bool):
         self.loading_label.show()
         self.scene.clear()
-        
+        # keep video_item if exists (recreate later)
+        self.video_item = None
         worker = ChapterLoaderWorker(
             manga_dir=self.model.manga_dir,
             start_from_end=start_from_end,
@@ -749,17 +883,17 @@ class ReaderView(QMainWindow):
         )
         worker.signals.finished.connect(self._on_chapter_loaded)
         self.thread_pool.start(worker)
-        
+
     def _on_chapter_loaded(self, result: dict):
         # Ensure this result is for the currently selected chapter
         if result["manga_dir"] != self.model.manga_dir:
             return
 
         self.loading_label.hide()
-        
+
         self.model.images = result["images"]
         self.model.current_index = result["initial_index"]
-        
+
         if result["initial_pixmap"]:
             self._set_pixmap(result["initial_pixmap"])
             self.view.reset_zoom_state()
@@ -832,13 +966,13 @@ class ReaderView(QMainWindow):
             else:
                 widget._update_margins(QMargins(0,0,10,0))
 
-        self.view.show()
+        self.media_stack.show()
         if self.scroll_area:
             self.scroll_area.hide()
 
     def _show_vertical_layout(self):
         self.page_panel.hide()
-        self.view.hide()
+        self.media_stack.hide()
 
         if self.scroll_area is None:
             self.scroll_area = QScrollArea(self.centralWidget())
@@ -912,7 +1046,7 @@ class ReaderView(QMainWindow):
             if lbl.y() >= viewport_top:
                 topmost_visible_index = i
                 break
-        
+
         if topmost_visible_index != -1 and self.model.current_index != topmost_visible_index:
             self.model.current_index = topmost_visible_index
             self.page_panel._update_page_selection(self.model.current_index)
@@ -976,7 +1110,7 @@ class ReaderView(QMainWindow):
             self.vbox = None
             self.v_labels = []
             self.vertical_pixmaps = []
-        self.view.show()
+        self.media_stack.show()
 
     def _change_page_by_strip_thumbnail(self, index: int):
         self._scroll_to_page(index)
@@ -987,6 +1121,12 @@ class ReaderView(QMainWindow):
             self.scroll_area.verticalScrollBar().setValue(label.y())
 
     def back_to_grid(self):
+        # ensure media fully stopped before navigating away
+        try:
+            self._stop_video()
+        except Exception:
+            pass
+        # emit after stopping to avoid race conditions
         self.back_pressed.emit()
 
     def _on_translation_ready(self, modified_image):
@@ -994,9 +1134,21 @@ class ReaderView(QMainWindow):
         height, width, channel = modified_image.shape
         bytes_per_line = 3 * width
         q_image = QImage(modified_image.data, width, height, bytes_per_line, QImage.Format.Format_BGR888)
-        
+
         # Convert QImage to QPixmap
         pixmap = QPixmap.fromImage(q_image)
-        
+
         # Update the scene
         self._set_pixmap(pixmap)
+
+    # override resizeEvent to keep video item sized to viewport and keep overlay panels visible
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        # Update video item size & scene rect so it fits the view
+        if self.video_item and self.video_item.isVisible():
+            vp = self.view.viewport().size()
+            self.video_item.setSize(QSizeF(vp.width(), vp.height()))
+            self.video_item.setPos(0, 0)
+            self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
+        # if pixmap present, keep fit behavior (call fit on next tick)
+        QTimer.singleShot(0, self.apply_last_zoom)
