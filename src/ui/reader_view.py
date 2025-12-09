@@ -828,7 +828,24 @@ class ReaderView(QWidget):
             self._resize_vertical_images()
             return
 
-        if not hasattr(self, "pixmap_item"):
+        # Handle video zoom
+        if self.video_item and self.video_item.isVisible():
+            if mode == "Fit Page":
+                self.view.resetTransform()
+                self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+                self.view.reset_zoom_state()
+                self.zoom_changed.emit("Fit Page")
+            else:
+                try:
+                    # Handle percentages like "150%"
+                    zoom_value = float(mode.replace('%', '')) / 100.0
+                    self.view._zoom_factor = zoom_value
+                    self._update_zoom(zoom_value)
+                except ValueError:
+                    pass # Ignore invalid text
+            return
+
+        if not hasattr(self, "pixmap_item") or not self.pixmap_item:
             return
 
         if mode == "Fit Page":
