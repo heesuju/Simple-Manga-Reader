@@ -8,6 +8,7 @@ from src.ui.components.volume_control import VolumeControl
 class VideoControlPanel(QWidget):
     play_pause_clicked = pyqtSignal()
     repeat_clicked = pyqtSignal(bool)
+    auto_play_toggled = pyqtSignal(bool) # NEW signal
     speed_clicked = pyqtSignal()
     volume_changed = pyqtSignal(int)
     position_changed = pyqtSignal(int)
@@ -19,13 +20,16 @@ class VideoControlPanel(QWidget):
         self.init_ui()
         self.is_playing = False
         self.is_repeat = False
+        self.is_auto_play = False # NEW state
 
     def init_ui(self):
         self.play_icon = QIcon("assets/icons/play.png")
         self.pause_icon = QIcon("assets/icons/pause.png")
         self.repeat_on_icon = QIcon("assets/icons/repeat_on.png")
         self.repeat_off_icon = QIcon("assets/icons/repeat_off.png")
-
+        # Reuse repeat icon or use text for now since we might not have a dedicated icon
+        self.auto_play_icon = QIcon("assets/icons/auto_play.png") # Assuming exists or use fallback
+        
         layout = QHBoxLayout()
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(10)
@@ -60,7 +64,17 @@ class VideoControlPanel(QWidget):
         self.repeat_btn.setCheckable(True)
         self.repeat_btn.clicked.connect(self.toggle_repeat)
         self.repeat_btn.setFlat(True)
+        self.repeat_btn.setToolTip("Repeat Video")
         layout.addWidget(self.repeat_btn)
+
+        # Auto Play Button
+        self.auto_play_btn = QPushButton("Auto")
+        self.auto_play_btn.setCheckable(True)
+        self.auto_play_btn.clicked.connect(self.toggle_auto_play)
+        self.auto_play_btn.setFlat(True)
+        self.auto_play_btn.setToolTip("Auto Play Next Video")
+        self.auto_play_btn.setStyleSheet("font-weight: bold; color: #888;") # Dimmed when off
+        layout.addWidget(self.auto_play_btn)
 
         self.setLayout(layout)
 
@@ -147,6 +161,15 @@ class VideoControlPanel(QWidget):
         self.is_repeat = checked
         self.repeat_btn.setIcon(self.repeat_on_icon if checked else self.repeat_off_icon)
         self.repeat_clicked.emit(checked)
+    
+    def toggle_auto_play(self, checked):
+        self.is_auto_play = checked
+        # Visual feedback
+        if checked:
+            self.auto_play_btn.setStyleSheet("font-weight: bold; color: #4CAF50;") # Green when on
+        else:
+            self.auto_play_btn.setStyleSheet("font-weight: bold; color: #888;") # Dimmed when off
+        self.auto_play_toggled.emit(checked)
         
     def set_speed_text(self, text):
         self.speed_btn.setText(text)

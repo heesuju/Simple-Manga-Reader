@@ -33,7 +33,7 @@ from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, AnimationFrameLoaderWorker, VideoFrameExtractorWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, AnimationFrameLoaderWorker, VideoFrameExtractorWorker, VIDEO_EXTS
 
 
 class FitInViewAnimation(QPropertyAnimation):
@@ -120,6 +120,7 @@ class ReaderView(QWidget):
         self.playback_speeds = [1.0, 1.25, 1.5, 1.75, 2.0, 0.5, 0.75]
         self.current_speed_index = 0
         self.video_repeat = False
+        self.auto_play = False # Auto Play Next Video
 
         self._setup_ui()
         self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
@@ -219,6 +220,7 @@ class ReaderView(QWidget):
         self.video_control_panel.position_changed.connect(self._set_video_position)
         self.video_control_panel.speed_clicked.connect(self._change_playback_speed)
         self.video_control_panel.repeat_clicked.connect(self._set_video_repeat)
+        self.video_control_panel.auto_play_toggled.connect(self._set_auto_play)
         self.video_control_panel.hide()
 
         self.slider_panel.valueChanged.connect(self.change_page_from_slider)
@@ -444,8 +446,24 @@ class ReaderView(QWidget):
 
     def _on_media_playback_state_changed(self, state):
         self.video_control_panel.set_playing(state == QMediaPlayer.PlaybackState.PlayingState)
-        if state == QMediaPlayer.PlaybackState.StoppedState and self.video_repeat:
-            self.media_player.play()
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            if self.video_repeat:
+                self.media_player.play()
+            elif self.auto_play:
+                # Search for the next video file in the list
+                start_index = self.model.current_index + 1
+                found_index = -1
+                for i in range(start_index, len(self.model.images)):
+                    next_file = self.model.images[i]
+                    ext = os.path.splitext(next_file)[1].lower()
+                    if ext in VIDEO_EXTS:
+                        found_index = i
+                        break
+                
+                if found_index != -1:
+                    # Found a video! Jump to it.
+                    # change_page expects 1-based index
+                    self.change_page(found_index + 1)
 
     def _toggle_play_pause(self):
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -467,6 +485,9 @@ class ReaderView(QWidget):
 
     def _set_video_repeat(self, repeat):
         self.video_repeat = repeat
+
+    def _set_auto_play(self, enabled):
+        self.auto_play = enabled
 
     # ---------- End multimedia helpers ----------
 
