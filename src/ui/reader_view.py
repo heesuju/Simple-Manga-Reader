@@ -749,12 +749,10 @@ class ReaderView(QWidget):
             # keep the video_item in the scene but hide it
             self.video_item.setVisible(False)
 
-        # remove previous pixmap_item if any
-        if hasattr(self, "pixmap_item") and self.pixmap_item:
-            try:
-                self.scene.removeItem(self.pixmap_item)
-            except Exception:
-                pass
+        # remove all previous pixmap items
+        for item in self.scene.items():
+            if isinstance(item, QGraphicsPixmapItem):
+                self.scene.removeItem(item)
 
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
         self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
