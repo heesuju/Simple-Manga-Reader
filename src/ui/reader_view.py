@@ -249,17 +249,49 @@ class ReaderView(QWidget):
         self.media_player.playbackStateChanged.connect(self._on_media_playback_state_changed)
         self.media_player.durationChanged.connect(self.video_control_panel.set_duration)
         self.media_player.positionChanged.connect(self.video_control_panel.set_position)
+        self.media_player.positionChanged.connect(self._check_underlay_visibility)
 
 
     # ---------- Multimedia helper methods (Option C) ----------
     def _ensure_video_item(self):
         """Create the QGraphicsVideoItem once and keep it in the scene (hidden until used)."""
         if self.video_item is None:
+            # Create the last frame item which sits behind the video
+            self.video_last_frame_item = QGraphicsPixmapItem()
+            self.video_last_frame_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+            self.video_last_frame_item.setZValue(-1) # Behind video
+            self.scene.addItem(self.video_last_frame_item)
+            
             self.video_item = QGraphicsVideoItem()
             # Start invisible
             self.video_item.setVisible(False)
             # Add to scene at z-value 0 (images will be z 0 too); pixmap_item will be managed separately.
             self.scene.addItem(self.video_item)
+
+    def _update_video_underlay_geometry(self):
+        """Scale and center the last frame underlay to match the video item behavior."""
+        if not (hasattr(self, 'video_last_frame_item') and 
+                self.video_last_frame_item and 
+                self.video_last_frame_item.isVisible() and
+                hasattr(self, 'last_frame_pixmap') and 
+                self.last_frame_pixmap):
+            return
+
+        vp = self.view.viewport().size()
+        
+        # Scale pixmap to fit viewport maintaining aspect ratio
+        scaled_pixmap = self.last_frame_pixmap.scaled(
+            vp.width(), vp.height(), 
+            Qt.AspectRatioMode.KeepAspectRatio, 
+            Qt.TransformationMode.SmoothTransformation
+        )
+        
+        self.video_last_frame_item.setPixmap(scaled_pixmap)
+        
+        # Center the item
+        x = (vp.width() - scaled_pixmap.width()) / 2
+        y = (vp.height() - scaled_pixmap.height()) / 2
+        self.video_last_frame_item.setPos(x, y)
 
     def _play_video(self, path: str):
         """Play a local file path in the scene via QGraphicsVideoItem."""
@@ -269,6 +301,42 @@ class ReaderView(QWidget):
             self.media_player.stop()
         except Exception:
             pass
+
+        # --- EXTRACT LAST FRAME LOGIC ---
+        try:
+            cap = cv2.VideoCapture(path)
+            if cap.isOpened():
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                # Grab the last frame (or very close to it)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
+                ret, frame = cap.read()
+                if ret:
+                    # Convert BGR to RGB
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w, ch = frame.shape
+                    bytes_per_line = ch * w
+                    q_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+                    pixmap = QPixmap.fromImage(q_image)
+                    
+                    
+                    self.last_frame_pixmap = pixmap # Store original for resizing
+                    # Delay visibility until video starts to avoid showing end frame at start
+                    self.video_last_frame_item.setVisible(False)
+                    # Geometry will be set later
+                else:
+                    self.video_last_frame_item.setVisible(False)
+                    self.last_frame_pixmap = None
+                cap.release()
+            else:
+                self.video_last_frame_item.setVisible(False)
+                self.last_frame_pixmap = None
+        except Exception as e:
+            print(f"Error extracting last frame: {e}")
+            self.video_last_frame_item.setVisible(False)
+            self.last_frame_pixmap = None
+        # --------------------------------
+    
+
 
         self.media_player.setVideoOutput(self.video_item)
         self.media_player.setSource(QUrl.fromLocalFile(path))
@@ -283,10 +351,28 @@ class ReaderView(QWidget):
         self.video_item.setSize(QSizeF(vp.width(), vp.height()))
         # Position at origin of scene
         self.video_item.setPos(0, 0)
-
+        
+        # Update underlay geometry
+        self._update_video_underlay_geometry()
+        
         self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
         self.media_player.play()
         self._reposition_video_control_panel()
+
+    def _check_underlay_visibility(self, position):
+        """Show the underlay only after video has started playing to avoid glitches."""
+        # Check if we have a valid underlay to show
+        if (hasattr(self, 'video_last_frame_item') and 
+            self.video_last_frame_item and 
+            hasattr(self, 'last_frame_pixmap') and 
+            self.last_frame_pixmap):
+            
+            # If currently hidden and we are playing (position > 100ms), show it.
+            # 100ms is a heuristic to ensure first frame of video is likely rendered.
+            if not self.video_last_frame_item.isVisible() and position > 100:
+                self.video_last_frame_item.setVisible(True)
+                # Ensure geometry is correct
+                self._update_video_underlay_geometry()
 
     def _stop_video(self):
         """Stop playback, hide the video item, and completely detach audio/source."""
@@ -328,8 +414,9 @@ class ReaderView(QWidget):
         if self.video_item:
             try:
                 self.video_item.setVisible(False)
-                # Optionally remove from scene to free resources:
-                # self.scene.removeItem(self.video_item)
+                # Also hide the last frame underlay
+                if hasattr(self, 'video_last_frame_item'):
+                    self.video_last_frame_item.setVisible(False)
             except Exception:
                 pass
 
@@ -339,6 +426,28 @@ class ReaderView(QWidget):
                 self.pixmap_item.setVisible(True)
             except Exception:
                 pass
+
+    # ... (rest of file) ...
+    # Skip unchanged methods until resizeEvent
+
+    # override resizeEvent to keep video item sized to viewport and keep overlay panels visible
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        # Update video item size & scene rect so it fits the view
+        if self.video_item and self.video_item.isVisible():
+            vp = self.view.viewport().size()
+            self.video_item.setSize(QSizeF(vp.width(), vp.height()))
+            self.video_item.setPos(0, 0)
+            
+            # Updating last frame item size to match
+            self._update_video_underlay_geometry()
+            
+            self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
+        
+        self._reposition_video_control_panel()
+        
+        # if pixmap present, keep fit behavior (call fit on next tick)
+        QTimer.singleShot(0, self.apply_last_zoom)
 
     def _on_media_playback_state_changed(self, state):
         self.video_control_panel.set_playing(state == QMediaPlayer.PlaybackState.PlayingState)
@@ -748,10 +857,15 @@ class ReaderView(QWidget):
         if self.video_item:
             # keep the video_item in the scene but hide it
             self.video_item.setVisible(False)
+            if hasattr(self, 'video_last_frame_item') and self.video_last_frame_item:
+                self.video_last_frame_item.setVisible(False)
 
         # remove all previous pixmap items
         for item in self.scene.items():
             if isinstance(item, QGraphicsPixmapItem):
+                # Don't remove the video last frame item if it exists
+                if hasattr(self, 'video_last_frame_item') and item == self.video_last_frame_item:
+                    continue
                 self.scene.removeItem(item)
 
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
@@ -775,6 +889,10 @@ class ReaderView(QWidget):
             self.video_item.setVisible(False)
 
         self.scene.clear()
+        # Since we cleared the scene, the video items are removed.
+        # We reset them to None so they are recreated next time _play_video is called.
+        self.video_item = None
+        self.video_last_frame_item = None
 
         pix1 = self._load_pixmap(image1_path)
         pix2 = self._load_pixmap(image2_path) if image2_path else None
