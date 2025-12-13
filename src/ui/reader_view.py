@@ -96,6 +96,7 @@ class ReaderView(QWidget):
         self.slideshow_repeat = False
 
         self.animation_timer = QTimer(self)
+        self.animation_timer.timeout.connect(self._show_next_frame)
         self.animation_frames = []
         self.current_frame_index = 0
 
