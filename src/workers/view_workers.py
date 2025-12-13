@@ -5,7 +5,7 @@ import os
 from PIL import Image, ImageQt
 
 from PyQt6.QtCore import QRunnable, pyqtSlot, QObject, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QImage
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
 
@@ -152,3 +152,38 @@ class PixmapLoader(QRunnable):
         """
         pixmap = self.reader_view._load_pixmap(self.path)
         self.signals.finished.emit(self.index, pixmap)
+
+class VideoFrameExtractorSignals(QObject):
+    finished = pyqtSignal(str, QImage)
+
+class VideoFrameExtractorWorker(QRunnable):
+    def __init__(self, path: str):
+        super().__init__()
+        self.path = path
+        self.signals = VideoFrameExtractorSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            import cv2
+            cap = cv2.VideoCapture(self.path)
+            if cap.isOpened():
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                # Grab the last frame
+                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
+                ret, frame = cap.read()
+                if ret:
+                    # Convert BGR to RGB
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w, ch = frame.shape
+                    # Robust bytes per line calculation
+                    bytes_per_line = frame.strides[0]
+                    q_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+                    # We must make a copy of the data, because 'frame' (numpy array) will be garbage collected
+                    q_image = q_image.copy()
+                    pass
+                    self.signals.finished.emit(self.path, q_image)
+                cap.release()
+        except Exception as e:
+            print(f"Error in async video extraction: {e}")
+

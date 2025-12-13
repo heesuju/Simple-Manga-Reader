@@ -33,7 +33,7 @@ from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, AnimationFrameLoaderWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, AnimationFrameLoaderWorker, VideoFrameExtractorWorker
 
 
 class FitInViewAnimation(QPropertyAnimation):
@@ -302,39 +302,17 @@ class ReaderView(QWidget):
         except Exception:
             pass
 
-        # --- EXTRACT LAST FRAME LOGIC ---
-        try:
-            cap = cv2.VideoCapture(path)
-            if cap.isOpened():
-                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                # Grab the last frame (or very close to it)
-                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
-                ret, frame = cap.read()
-                if ret:
-                    # Convert BGR to RGB
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    h, w, ch = frame.shape
-                    bytes_per_line = ch * w
-                    q_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-                    pixmap = QPixmap.fromImage(q_image)
-                    
-                    
-                    self.last_frame_pixmap = pixmap # Store original for resizing
-                    # Delay visibility until video starts to avoid showing end frame at start
-                    self.video_last_frame_item.setVisible(False)
-                    # Geometry will be set later
-                else:
-                    self.video_last_frame_item.setVisible(False)
-                    self.last_frame_pixmap = None
-                cap.release()
-            else:
-                self.video_last_frame_item.setVisible(False)
-                self.last_frame_pixmap = None
-        except Exception as e:
-            print(f"Error extracting last frame: {e}")
+        # --- EXTRACT LAST FRAME LOGIC (ASYNC) ---
+        worker = VideoFrameExtractorWorker(path)
+        worker.signals.finished.connect(self._on_last_frame_extracted)
+        self.thread_pool.start(worker)
+        # ----------------------------------------
+        
+        # Delay visibility until video starts to avoid showing end frame at start
+        # This will be handled by _check_underlay_visibility via positionChanged
+        if hasattr(self, 'video_last_frame_item') and self.video_last_frame_item:
             self.video_last_frame_item.setVisible(False)
-            self.last_frame_pixmap = None
-        # --------------------------------
+        self.last_frame_pixmap = None # Clear until loaded
     
 
 
@@ -358,6 +336,21 @@ class ReaderView(QWidget):
         self.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
         self.media_player.play()
         self._reposition_video_control_panel()
+
+    def _on_last_frame_extracted(self, path, q_image):
+        # Verify if we are still playing the same video
+        current_source = self.media_player.source().toLocalFile()
+        
+        # Normalize paths for comparison (handle case and separators)
+        path_norm = os.path.normcase(os.path.normpath(path))
+        current_norm = os.path.normcase(os.path.normpath(current_source))
+        if path_norm != current_norm:
+             return
+
+        pixmap = QPixmap.fromImage(q_image)
+        self.last_frame_pixmap = pixmap
+        # NOTE: We do NOT make it visible here. We wait for _check_underlay_visibility 
+        # (connected to positionChanged) to show it once playback has started.
 
     def _check_underlay_visibility(self, position):
         """Show the underlay only after video has started playing to avoid glitches."""
