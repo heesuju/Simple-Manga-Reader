@@ -5,8 +5,9 @@ from typing import Set
 
 from PyQt6.QtCore import QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog
-from PyQt6.QtGui import QAction, QCursor
+from PyQt6.QtGui import QAction, QCursor, QKeySequence
 import uuid
+import subprocess
 
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
@@ -45,7 +46,7 @@ class PagePanel(CollapsiblePanel):
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
     def keyPressEvent(self, event):
-        if event.matches(QAction.StandardKey.Paste) or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V):
+        if event.matches(QKeySequence.StandardKey.Paste) or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V):
             self._paste_as_alternate()
             event.accept()
             return
@@ -226,6 +227,12 @@ class PagePanel(CollapsiblePanel):
         add_file_action = QAction("Add Alternate from File...", self)
         add_file_action.triggered.connect(self._add_alt_from_file)
         menu.addAction(add_file_action)
+        
+        menu.addSeparator()
+        
+        open_explorer_action = QAction("Reveal in File Explorer", self)
+        open_explorer_action.triggered.connect(lambda: self._open_in_explorer(index))
+        menu.addAction(open_explorer_action)
 
         menu.exec(QCursor.pos())
 
@@ -360,6 +367,25 @@ class PagePanel(CollapsiblePanel):
         if file_paths:
             self._add_alts_logic(file_paths)
 
+    def _open_in_explorer(self, index: int):
+        page = self.model.images[index]
+        if not page:
+             return
+             
+        # Resolve path if it's a virtual path (zip) or just a file
+        # We want to highlight the file itself.
+        path = page.images[0] # Use the first image (main)
+        if '|' in path:
+            path = path.split('|')[0] # Get the zip file path
+            
+        path = os.path.normpath(path)
+        
+        if os.name == 'nt':
+            subprocess.Popen(['explorer', '/select,', str(path)])
+        # elif os.name == 'posix': # Mac/Linux support if needed
+        #     subprocess.Popen(['open', '-R', str(path)]) # Mac
+        #     # Linux usually varies (xdg-open doesn't support select usually)
+
     def _add_alts_logic(self, file_paths: list[str]):
         if not self.edit_selected_indices:
             target_idx = -1
@@ -411,10 +437,19 @@ class PagePanel(CollapsiblePanel):
                 continue
 
             try:
-                shutil.copy2(src_path, dst_path)
+                # Check if source is in the same directory as the target main file
+                # If so, MOVE instead of COPY
+                target_parent = Path(target_main_file).parent.resolve()
+                src_parent = src_path.parent.resolve()
+                
+                if src_parent == target_parent:
+                     shutil.move(src_path, dst_path)
+                else:
+                     shutil.copy2(src_path, dst_path)
+                     
                 files_to_link.append(str(dst_path))
             except Exception as e:
-                print(f"Error copying file {src_path}: {e}")
+                print(f"Error processing file {src_path}: {e}")
 
         if files_to_link:
             AltManager.link_pages(series_path, chapter_name, target_main_file, files_to_link)
