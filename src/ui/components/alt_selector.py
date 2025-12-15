@@ -10,7 +10,7 @@ class AltSelector(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("""
             AltSelector {
-                background-color: rgba(0, 0, 0, 170);
+                background-color: rgba(0, 0, 0, 0);
                 color: white;
                 border-radius: 5px;
             }
@@ -32,7 +32,7 @@ class AltSelector(QWidget):
         """)
         
         self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(5, 5, 5, 5)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(5)
 
         self.play_icon = QIcon("assets/icons/play.png")
