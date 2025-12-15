@@ -531,6 +531,7 @@ class ReaderView(QWidget):
             self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
     def _load_chapter_async(self, start_from_end: bool):
+        self.page_panel.stop_loading_thumbnails()
         self.loading_label.show()
         # Clean current view
         if self.current_viewer:
@@ -570,6 +571,7 @@ class ReaderView(QWidget):
 
 
     def back_to_grid(self):
+        self.page_panel.stop_loading_thumbnails()
         if self.current_viewer:
              self.current_viewer.cleanup()
         self.back_pressed.emit()

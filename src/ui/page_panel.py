@@ -23,6 +23,7 @@ class PagePanel(CollapsiblePanel):
         super().__init__(parent, "Page")
         self.thumbnails_layout.setSpacing(0)
         self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(2)
         self.model = model
         self.on_page_changed = on_page_changed
         self.page_thumbnail_widgets = []
@@ -81,6 +82,11 @@ class PagePanel(CollapsiblePanel):
             return load_thumbnail_from_virtual_path(path, 150, 200)
         else:
             return load_thumbnail_from_path(path, 150, 200)
+
+    def stop_loading_thumbnails(self):
+        self.batch_timer.stop()
+        self.thread_pool.clear()
+        self.image_paths_to_load = []
         
     def _update_page_thumbnails(self, model:ReaderModel):
         self.batch_timer.stop()
