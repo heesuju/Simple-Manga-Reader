@@ -19,7 +19,7 @@ class AltSelector(QWidget):
                 color: white;
                 border: 1px solid rgba(255, 255, 255, 50);
                 border-radius: 3px;
-                padding: 4px 8px;
+                padding: 0px;
                 font-weight: bold;
             }
             QPushButton:hover {
