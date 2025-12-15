@@ -9,7 +9,7 @@ class PageThumbnail(QWidget):
     clicked = pyqtSignal(int)
     right_clicked = pyqtSignal(int)
 
-    def __init__(self, index, text, show_label=True, fixed_width=None, parent=None):
+    def __init__(self, index, text, show_label=True, fixed_width=None, parent=None, alt_count=0):
         super().__init__(parent)
         self.index = index
         self.fixed_width = fixed_width
@@ -27,11 +27,28 @@ class PageThumbnail(QWidget):
         self.text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if not show_label:
             self.text_label.hide()
+            
+        # Alt Count Label
+        self.alt_label = QLabel(str(alt_count), self.image_container)
+        self.alt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.alt_label.setStyleSheet("""
+            background-color: rgba(0, 0, 0, 160);
+            color: white;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 4px;
+        """)
+        self.alt_label.adjustSize()
+        if alt_count <= 1:
+            self.alt_label.hide()
 
         if self.fixed_width is None:
             self.image_container.setFixedSize(100, 140)
             self.image_label.setFixedSize(100, 140)
             self.text_label.setGeometry(0, 120, 100, 20)
+            # Position alt label
+            self.alt_label.move(100 - self.alt_label.width() - 5, 5)
 
         self._hover = False
         self._selected = False      # Active page (navigation)
@@ -102,9 +119,14 @@ class PageThumbnail(QWidget):
             self.image_container.setFixedSize(pixmap.size())
             self.image_label.setFixedSize(pixmap.size())
             self.text_label.setGeometry(0, pixmap.height() - 20, pixmap.width(), 20)
+            
+            # Reposition alt label for variable size
+            self.alt_label.move(pixmap.width() - self.alt_label.width() - 5, 5)
+            self.alt_label.raise_()
         else:
             cropped = crop_pixmap(pixmap, 100, 140)
             self.image_label.setPixmap(cropped)
+            self.alt_label.raise_()
 
     def set_selected(self, selected: bool):
         self._selected = selected

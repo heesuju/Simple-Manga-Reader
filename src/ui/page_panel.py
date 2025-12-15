@@ -109,8 +109,11 @@ class PagePanel(CollapsiblePanel):
             page_obj = self.image_paths_to_load[i]
             
             thumb_label = str(i + 1)
+            alt_count = 0
+            if page_obj and page_obj != "placeholder":
+                alt_count = len(page_obj.images)
             
-            widget = PageThumbnail(i, thumb_label)
+            widget = PageThumbnail(i, thumb_label, alt_count=alt_count)
             widget.clicked.connect(self._on_thumbnail_clicked)
             widget.right_clicked.connect(self._on_thumbnail_right_clicked)
             
