@@ -790,6 +790,10 @@ class FolderGrid(QWidget):
         self.load_recent_items()
         self.load_items()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self.relayout_items)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.relayout_items()
