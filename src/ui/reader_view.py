@@ -266,34 +266,37 @@ class ReaderView(QWidget):
         self.page_panel._update_page_thumbnails(self.model)
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
-        if self.model.images:
+        if self.slider_panel:
             self.slider_panel.set_range(len(self.model.images) - 1)
             self.slider_panel.set_value(self.model.current_index)
+            self.slider_panel.set_chapter(self.model.chapter_index + 1, len(self.model.chapters))
+            self.slider_panel.update_alt_indicators(self.model.images)
         else:
             self.slider_panel.set_range(0)
             self.slider_panel.set_value(0)
 
-        total_chapters = len(self.model.chapters)
-        current_chapter = self.model.chapter_index + 1
-        self.slider_panel.set_chapter(current_chapter, total_chapters)
+        self.page_panel._update_page_selection(self.model.current_index)
 
         self.model.update_layout()
 
-    def on_layout_updated(self, view_mode):
-        images = self.model.images
-        if self.model.view_mode == ViewMode.DOUBLE:
-            images = self.model._get_double_view_images()
-        num_pages = len(images)
+        if self.model.view_mode == ViewMode.STRIP:
+            self.strip_viewer.setup_items(self.model.images)
 
-        if num_pages > 0:
-            self.slider_panel.set_range(num_pages - 1)
+    def on_layout_updated(self):
+        self.page_panel.model = self.model
+        self.page_panel._update_page_thumbnails(self.model)
+        self.page_panel._update_page_selection(self.model.current_index)
+        
+        if self.slider_panel:
+            self.slider_panel.set_range(len(self.model.images) - 1)
             self.slider_panel.set_value(self.model.current_index)
+            self.slider_panel.update_alt_indicators(self.model.images)
         else:
             self.slider_panel.set_range(0)
             self.slider_panel.set_value(0)
 
         # Switch Viewer
-        if view_mode == ViewMode.STRIP:
+        if self.model.view_mode == ViewMode.STRIP:
              new_viewer = self.strip_viewer
         else:
              # Default to image viewer, but if it is actually video, _load_image will handle deferred?
@@ -314,15 +317,15 @@ class ReaderView(QWidget):
             self.current_viewer = new_viewer
             self.current_viewer.set_active(True)
             
-        if view_mode == ViewMode.SINGLE:
+        if self.model.view_mode == ViewMode.SINGLE:
             self.layout_btn.setText("Single")
-        elif view_mode == ViewMode.DOUBLE:
+        elif self.model.view_mode == ViewMode.DOUBLE:
             self.layout_btn.setText("Double")
         else:
             self.layout_btn.setText("Strip")
 
         # Reload content
-        if view_mode == ViewMode.STRIP:
+        if self.model.view_mode == ViewMode.STRIP:
             self.strip_viewer.load(None) 
         else:
              if self.model.images and self.model.current_index < len(self.model.images):
@@ -330,6 +333,10 @@ class ReaderView(QWidget):
 
     def on_page_updated(self, page_index: int):
         self.page_panel.refresh_thumbnail(page_index)
+        
+        # Update slider indicators
+        if self.slider_panel:
+            self.slider_panel.update_alt_indicators(self.model.images)
         
         # If the updated page is the current one (or visible in double view), reload the viewer
         should_reload = False

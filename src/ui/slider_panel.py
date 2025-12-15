@@ -3,7 +3,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.ui.components.input_label import InputLabel
 from src.ui.components.alt_selector import AltSelector
-
+from src.ui.components.alt_slider import AltSlider
 
 class SliderPanel(QWidget):
     """
@@ -40,7 +40,7 @@ class SliderPanel(QWidget):
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(10)
 
-        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider = AltSlider(Qt.Orientation.Horizontal)
         self.slider.valueChanged.connect(self.on_slider_value_changed)
 
         self.chapter_input = InputLabel("Chapter", 1, 1)
@@ -105,6 +105,13 @@ class SliderPanel(QWidget):
         self.slider.setRange(0, max_value)
         self.slider.blockSignals(False)
         self.page_input.set_total(max_value + 1)
+    
+    def update_alt_indicators(self, images):
+        alt_indices = []
+        for i, page in enumerate(images):
+            if len(page.images) > 1:
+                alt_indices.append(i)
+        self.slider.set_alt_indices(alt_indices)
 
     def set_value(self, value):
         """Sets the current value of the slider and updates the label."""
