@@ -4,22 +4,19 @@ from typing import Union, List
 from PIL import Image, ImageQt
 
 from PyQt6.QtWidgets import QGraphicsPixmapItem
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPixmap, QMovie
+from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
-from src.workers.view_workers import AnimationFrameLoaderWorker
 from src.enums import ViewMode
 
 class ImageViewer(BaseViewer):
     def __init__(self, reader_view):
         super().__init__(reader_view)
         self.pixmap_item = None
-        self.animation_timer = QTimer(reader_view)
-        self.animation_timer.timeout.connect(self._show_next_frame)
-        self.animation_frames = []
-        self.current_frame_index = 0
+        self.movie = None
+        self.movie_buffer = None # Keep reference to buffer
         self.original_pixmap = None
 
     def set_active(self, active: bool):
@@ -29,58 +26,69 @@ class ImageViewer(BaseViewer):
             self.reader_view.media_stack.show()
             self.reader_view.media_stack.setCurrentWidget(self.reader_view.view)
             self.reader_view.layout_btn.show()
+            
+            if self.movie and self.movie.state() == QMovie.MovieState.NotRunning:
+                self.movie.start()
         else:
             if self.pixmap_item:
                 self.pixmap_item.setVisible(False)
-            self.animation_timer.stop()
-            self.reader_view.layout_btn.hide() # Hide layout button when not in image mode (e.g. video)
+            
+            if self.movie:
+                self.movie.setPaused(True)
+                
+            self.reader_view.layout_btn.hide()
 
     def load(self, item):
-        # Stop any ongoing animations
-        self.animation_timer.stop()
-        self.animation_frames.clear()
-        self.current_frame_index = 0
-
+        self._stop_movie()
+        
         # item can be a single path (str) or a tuple of paths (for double view) or None
         if isinstance(item, tuple) or (isinstance(item, list) and len(item) == 2):
              self._load_double_images(item[0], item[1])
         elif isinstance(item, str):
              self._load_single_image(item)
         else:
-            # Maybe just clear?
             pass
+
+    def _stop_movie(self):
+        if self.movie:
+             self.movie.stop()
+             self.movie = None
+        if self.movie_buffer:
+             self.movie_buffer.close()
+             self.movie_buffer = None
 
     def _load_single_image(self, path: str):
         self._clear_scene_pixmaps()
         
-        # Handle animated images
+        # Handle animated images via QMovie
         if path.lower().endswith((".gif", ".webp")):
-            image_data = None
+            self.movie = QMovie()
+            self.movie.setCacheMode(QMovie.CacheMode.CacheAll)
+            
+            loaded = False
             if '|' in path:
                 image_data = get_image_data_from_zip(path)
+                if image_data:
+                    self.movie_buffer = QBuffer()
+                    self.movie_buffer.setData(QByteArray(image_data))
+                    self.movie_buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+                    self.movie.setDevice(self.movie_buffer)
+                    loaded = True
             elif os.path.exists(path):
-                with open(path, 'rb') as f:
-                    image_data = f.read()
+                self.movie.setFileName(path)
+                loaded = True
+                
+            if loaded and self.movie.isValid():
+                self.movie.frameChanged.connect(self._on_movie_frame_changed)
+                self.movie.start()
+                # Initial frame
+                self.original_pixmap = self.movie.currentPixmap()
+                self._set_pixmap(self.original_pixmap)
+            else:
+                # Fallback if QMovie fails
+                self.original_pixmap = self._load_pixmap(path)
+                self._set_pixmap(self.original_pixmap)
 
-            if image_data:
-                try:
-                    img = Image.open(io.BytesIO(image_data))
-                    # Display first frame synchronously
-                    img.seek(0)
-                    first_frame_pixmap = ImageQt.toqpixmap(img)
-                    self._set_pixmap(first_frame_pixmap)
-
-                    # If animated, start worker for the rest
-                    if getattr(img, "is_animated", False) and getattr(img, "n_frames", 1) > 1:
-                        self.reader_view.loading_label.show()
-                        worker = AnimationFrameLoaderWorker(path, image_data)
-                        worker.signals.finished.connect(self._on_animation_loaded)
-                        self.reader_view.thread_pool.start(worker)
-
-                except Exception:
-                    # Fallback to static image loading on error
-                    self.original_pixmap = self._load_pixmap(path)
-                    self._set_pixmap(self.original_pixmap)
         else:
             # Normal image
             self.original_pixmap = self._load_pixmap(path)
@@ -88,6 +96,12 @@ class ImageViewer(BaseViewer):
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
+
+    def _on_movie_frame_changed(self, frame_number):
+        if self.movie and self.pixmap_item:
+            pixmap = self.movie.currentPixmap()
+            if not pixmap.isNull():
+                 self.pixmap_item.setPixmap(pixmap)
 
     def _load_double_images(self, image1_path, image2_path):
         self._clear_scene_pixmaps()
@@ -113,7 +127,7 @@ class ImageViewer(BaseViewer):
             total_height = max(pix1.height(), pix2.height())
 
         self.reader_view.scene.setSceneRect(0, 0, total_width, total_height)
-        self.pixmap_item = item1 # Tracking one of them for visibility control
+        self.pixmap_item = item1 
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
@@ -161,49 +175,10 @@ class ImageViewer(BaseViewer):
         self.reader_view.scene.addItem(self.pixmap_item)
         self.reader_view.scene.setSceneRect(self.pixmap_item.boundingRect())
         
-        # Ensure underlying video items are hidden is handled by set_active or the video viewer, 
-        # but here we just ensure this one is visible
         self.pixmap_item.setVisible(True)
 
     def _clear_scene_pixmaps(self):
-        # Remove all QGraphicsPixmapItem except potentially the video underlay if we want to be safe,
-        # but simpler is:
-        for item in self.reader_view.scene.items():
-            if isinstance(item, QGraphicsPixmapItem):
-                # We need to distinguish regular pixmaps from video underlays.
-                # In ReaderView refactor, we should probably let VideoViewer handle its underlay item exclusively
-                # or give it a special tag.
-                # For now, let's assume VideoViewer manages its own setVisible in set_active(False)
-                # and we just add things here.
-                # However, scene.clear() was used in ReaderView. 
-                # Let's try to remove only items we own or clear scene if we are sure.
-                # Use removeItem is safer.
-                
-                # Check if it is the video_last_frame_item from ReaderView (we will need to expose it or move it)
-                # Let's assume we won't touch items we didn't create if possible, 
-                # BUT the current ReaderView clears scene.
-                pass
-                
-        # Better approach: Clear scene if we are switching major modes? 
-        # But we share the scene with video player.
-        # Let's clean up OUR items.
-        if self.pixmap_item and self.pixmap_item.scene():
-            self.reader_view.scene.removeItem(self.pixmap_item)
-        
-        # Also clean up double page items if any
-        # This is tricky without tracking them all. 
-        # We can implement a "clear()" method that removes all standard PixmapItems
-        
-        # Simplification: Clear entire scene and let VideoViewer restore its item if needed? 
-        # No, VideoViewer keeps its item in scene.
-        
-        # Let's try to remove all QGraphicsPixmapItems that are NOT the video underlay.
-        # We need a way to identify the video underlay.
         video_underlay = getattr(self.reader_view, 'video_last_frame_item', None)
-        # Note: video_last_frame_item is not in reader_view anymore, it is in VideoViewer.
-        # But we don't have access to VideoViewer easily here unless we go via reader_view.video_viewer
-        
-        video_underlay = None
         if hasattr(self.reader_view, 'video_viewer') and self.reader_view.video_viewer:
              video_underlay = self.reader_view.video_viewer.video_last_frame_item
 
@@ -217,30 +192,8 @@ class ImageViewer(BaseViewer):
 
         self.pixmap_item = None
 
-    def _on_animation_loaded(self, result: dict):
-        self.reader_view.loading_label.hide()
-        frames = result["frames"]
-        duration = result["duration"]
-        path = result["path"]
-        
-        # Check against current model image
-        if path != self.reader_view.model.images[self.reader_view.model.current_index]:
-            return
-
-        if frames:
-            self.animation_frames = frames
-            self.animation_timer.start(duration)
-
-    def _show_next_frame(self):
-        if not self.animation_frames:
-            return
-        self.current_frame_index = (self.current_frame_index + 1) % len(self.animation_frames)
-        self._set_pixmap(self.animation_frames[self.current_frame_index])
-        self.reader_view.apply_last_zoom()
-
     def zoom(self, mode: str):
         if not self.pixmap_item and not (isinstance(mode, str) and mode.startswith("Fit")): 
-            # Allow Fit even if no pixmap potentially? No.
             pass
             
         if mode == "Fit Page":
@@ -265,20 +218,11 @@ class ImageViewer(BaseViewer):
                 pass
 
     def show_next(self):
-        # Delegate to model via reader view or directly? 
-        # ReaderView's show_next handles index incrementing. 
-        # Viewer just shows what it's told? 
-        # Actually ReaderView.show_next calls model.load_image which calls reader_view._load_image.
-        # So we don't need to implement navigation logic here, it is driven by ReaderView.
-        # BaseViewer.show_next was intended to be "do I handle next?" 
-        # But really ReaderView handles next.
         pass
 
     def cleanup(self):
-        self.animation_timer.stop()
+        self._stop_movie()
 
     def reset(self):
+        self._stop_movie()
         self.pixmap_item = None
-        self.animation_timer.stop()
-        self.animation_frames.clear()
-        self.current_frame_index = 0
