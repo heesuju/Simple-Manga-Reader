@@ -31,7 +31,9 @@ class PagePanel(CollapsiblePanel):
         self.current_page_thumbnails = []
         self.edit_selected_indices: Set[int] = set()
 
-        self.BATCH_SIZE = 20
+        self.edit_selected_indices: Set[int] = set()
+        
+        self.BATCH_SIZE = 10
         self.image_paths_to_load = []
         self.current_batch_index = 0
         self.batch_timer = QTimer(self)
@@ -92,10 +94,11 @@ class PagePanel(CollapsiblePanel):
     def _update_page_thumbnails(self, model:ReaderModel):
         self.batch_timer.stop()
         
-        for i in reversed(range(self.thumbnails_layout.count() - 1)):
-            widget = self.thumbnails_layout.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
+        while self.thumbnails_layout.count():
+            item = self.thumbnails_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+                
         self.page_thumbnail_widgets.clear()
         self.edit_selected_indices.clear()
 
@@ -107,45 +110,53 @@ class PagePanel(CollapsiblePanel):
         self.current_batch_index = 0
         
         if self.image_paths_to_load:
-            self.batch_timer.start(10) # Start loading the first batch
+            self.batch_timer.start(50) # Start loading the first batch
 
     def _add_next_thumbnail_batch(self):
         start_index = self.current_batch_index
         end_index = min(start_index + self.BATCH_SIZE, len(self.image_paths_to_load))
 
-        for i in range(start_index, end_index):
-            page_obj = self.image_paths_to_load[i]
-            
-            thumb_label = str(i + 1)
-            alt_count = 0
-            if page_obj and page_obj != "placeholder":
-                alt_count = len(page_obj.images)
-            
-            widget = PageThumbnail(i, thumb_label, alt_count=alt_count)
-            widget.clicked.connect(self._on_thumbnail_clicked)
-            widget.right_clicked.connect(self._on_thumbnail_right_clicked)
-            
-            self.thumbnails_layout.insertWidget(i, widget)
-            self.page_thumbnail_widgets.append(widget)
+        # Disable updates to prevent flicker and unnecessary layout calcs during batch
+        self.content_area.setUpdatesEnabled(False)
+        try:
+            for i in range(start_index, end_index):
+                page_obj = self.image_paths_to_load[i]
+                
+                thumb_label = str(i + 1)
+                alt_count = 0
+                if page_obj and page_obj != "placeholder":
+                    alt_count = len(page_obj.images)
+                
+                widget = PageThumbnail(i, thumb_label, alt_count=alt_count)
+                widget.clicked.connect(self._on_thumbnail_clicked)
+                widget.right_clicked.connect(self._on_thumbnail_right_clicked)
+                
+                self.thumbnails_layout.insertWidget(i, widget)
+                self.page_thumbnail_widgets.append(widget)
 
-            if page_obj is None or page_obj == "placeholder":
-                 self._on_page_thumbnail_loaded(i, empty_placeholder())
-            else:
-                worker = ThumbnailWorker(i, page_obj.path, self._load_thumbnail)
-                worker.signals.finished.connect(self._on_page_thumbnail_loaded)
-                self.thread_pool.start(worker)
+                if page_obj is None or page_obj == "placeholder":
+                     self._on_page_thumbnail_loaded(i, empty_placeholder())
+                else:
+                    worker = ThumbnailWorker(i, page_obj.path, self._load_thumbnail)
+                    worker.signals.finished.connect(self._on_page_thumbnail_loaded)
+                    self.thread_pool.start(worker)
+        except Exception as e:
+            print(f"Error adding batch: {e}")
+        finally:
+            self.content_area.setUpdatesEnabled(True)
 
         self.current_batch_index = end_index
         if self.current_batch_index < len(self.image_paths_to_load):
-            self.batch_timer.start(10) # Schedule the next batch
+            self.batch_timer.start(50) # Schedule the next batch
 
-        self._update_page_selection(self.model.current_index)
+        should_snap = (start_index <= self.model.current_index < end_index)
+        self._update_page_selection(self.model.current_index, snap=should_snap)
 
     def _on_page_thumbnail_loaded(self, index, pixmap):
         if index < len(self.page_thumbnail_widgets):
             self.page_thumbnail_widgets[index].set_pixmap(pixmap)
 
-    def _update_page_selection(self, index):
+    def _update_page_selection(self, index, snap=True):
         for thumbnail in self.current_page_thumbnails:
             thumbnail.set_selected(False)
         self.current_page_thumbnails.clear()
@@ -158,7 +169,8 @@ class PagePanel(CollapsiblePanel):
             current_thumb = self.page_thumbnail_widgets[index]
             current_thumb.set_selected(True)
             self.current_page_thumbnails.append(current_thumb)
-            self.content_area.snapToItemIfOutOfView(index)
+            if snap:
+                self.content_area.snapToItemIfOutOfView(index)
 
             if index + 1 < len(self.page_thumbnail_widgets):
                 next_thumb = self.page_thumbnail_widgets[index + 1]
@@ -168,7 +180,8 @@ class PagePanel(CollapsiblePanel):
             current_thumb = self.page_thumbnail_widgets[index]
             current_thumb.set_selected(True)
             self.current_page_thumbnails.append(current_thumb)
-            self.content_area.snapToItemIfOutOfView(index, current_thumb.width())
+            if snap:
+                self.content_area.snapToItemIfOutOfView(index, current_thumb.width())
 
     def _on_thumbnail_clicked(self, index: int):
         modifiers = QApplication.keyboardModifiers()

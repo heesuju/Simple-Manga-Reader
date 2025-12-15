@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect, QSizePolicy
 import os
 from PyQt6.QtGui import QPixmap, QPalette, QColor, QPainter, QLinearGradient, QShortcut, QKeySequence, QMouseEvent
-from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF, QObject, QRunnable
+from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF, QObject, QRunnable, QTimer
 
 from src.core.item_loader import ItemLoader
 from src.ui.clickable_label import ClickableLabel
@@ -183,6 +183,13 @@ class ChapterListView(QWidget):
         self.library_manager = library_manager
         self.chapter_widgets = []
         self.threadpool = QThreadPool()
+        self.threadpool.setMaxThreadCount(1) # Limit concurrency to avoid UI freeze
+
+        self.BATCH_SIZE = 20
+        self.current_batch_index = 0
+        self.batch_timer = QTimer(self)
+        self.batch_timer.setSingleShot(True)
+        self.batch_timer.timeout.connect(self._add_next_batch)
 
         self.background_pixmap = QPixmap(self.series['cover_image'])
 
@@ -346,8 +353,24 @@ class ChapterListView(QWidget):
 
         # --- Chapter List (Placeholders) ---
         last_read_chapter = self.series.get('last_read_chapter')
+        self._start_batch_loading()
+
+    def _start_batch_loading(self):
+        self.current_batch_index = 0
         self.chapter_widgets = []
-        for i, chapter in enumerate(self.display_chapters):
+        # Clear existing chapter widgets if any (though usually this init is fresh)
+        # But this method is called from init, so it's fresh.
+        # Start immediately
+        self._add_next_batch()
+
+    def _add_next_batch(self):
+        start = self.current_batch_index
+        end = min(start + self.BATCH_SIZE, len(self.display_chapters))
+        
+        last_read_chapter = self.series.get('last_read_chapter')
+
+        for i in range(start, end):
+            chapter = self.display_chapters[i]
             chapter_name = f"Ch {i+1}" if chapter.get('name') != self.series['name'] else self.series['name']
             item_widget = ChapterListItemWidget(chapter, self.series, chapter_name, self.library_manager, self)
             item_widget.chapter_selected.connect(self.on_chapter_selected)
@@ -363,8 +386,15 @@ class ChapterListView(QWidget):
                 line.setFrameShadow(QFrame.Shadow.Sunken)
                 self.content_layout.addWidget(line)
 
-        self.content_layout.addStretch()
+        self.current_batch_index = end
 
+        if self.current_batch_index < len(self.display_chapters):
+             self.batch_timer.start(10) # Schedule next batch
+        else:
+             # Finished adding widgets, NOW start the loaders to avoid fighting for Main Thread
+             self._start_background_loaders()
+
+    def _start_background_loaders(self):
         # --- Background Loaders ---
         page_count_loader = ChapterListLoader(self.display_chapters, str(self.series['path']))
         page_count_loader.signals.chapter_processed.connect(self.on_chapter_page_count_loaded)

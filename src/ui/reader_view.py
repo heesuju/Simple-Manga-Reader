@@ -543,6 +543,7 @@ class ReaderView(QWidget):
         
         worker = ChapterLoaderWorker(
             manga_dir=self.model.manga_dir,
+            series_path=str(self.model.series['path']),
             start_from_end=start_from_end,
             load_pixmap_func=self.image_viewer._load_pixmap
         )

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -34,18 +34,28 @@ class ReaderModel(QObject):
         if images:
             self.set_images(images)
 
-    def set_images(self, image_paths: List[str]):
+    def set_images(self, images: List[Union[str, Page]]):
         """
-        Group raw image paths into Page objects based on info.json configurations.
+        Set images. Accepts either raw paths (strings) or already grouped Page objects.
         """
+        if not images:
+            self.images = []
+            return
+
+        # Check if first item is Page object
+        if isinstance(images[0], Page):
+            self.images = images
+            return
+
+        # Legacy/Fallback: Group raw image paths into Page objects
         if not self.series or not self.manga_dir:
-            self.images = [Page([path]) for path in image_paths]
+            self.images = [Page([path]) for path in images]
             return
 
         chapter_name = Path(self.manga_dir).name
         alt_config = AltManager.load_alts(str(self.series['path']))
         chapter_alts = alt_config.get(chapter_name, {})
-        self.images = AltManager.group_images(image_paths, chapter_alts)
+        self.images = AltManager.group_images(images, chapter_alts)
 
     def refresh(self):
         """Should be called after model data is updated to refresh the view."""

@@ -16,6 +16,12 @@ class ChapterPanel(CollapsiblePanel):
         self.on_chapter_changed = on_chapter_changed
         self.chapter_thumbnail_widgets = []
         self.current_chapter_thumbnail = None
+        self.BATCH_SIZE = 10
+        self.chapters_to_load = []
+        self.current_batch_index = 0
+        self.batch_timer = QTimer(self)
+        self.batch_timer.setSingleShot(True)
+        self.batch_timer.timeout.connect(self._add_next_batch)
 
         self.navigate_first.connect(self._go_first)
         self.navigate_prev.connect(self._go_prev)
@@ -62,18 +68,40 @@ class ChapterPanel(CollapsiblePanel):
             self.thumbnails_layout.itemAt(i).widget().setParent(None)
         self.chapter_thumbnail_widgets.clear()
 
-        for i, chapter in enumerate(chapters):
-            chapter_name = Path(str(chapter)).name
-            widget = PageThumbnail(i, chapter_name)
-            widget.clicked.connect(self._change_chapter_by_thumbnail)
-            self.thumbnails_layout.insertWidget(i, widget)
-            self.chapter_thumbnail_widgets.append(widget)
+        self.chapters_to_load = chapters
+        self.current_batch_index = 0
+        self.batch_timer.start(50)
 
-            first_image_path = _get_first_image_path(chapter)
-            if first_image_path:
-                worker = ThumbnailWorker(i, first_image_path, self._load_thumbnail)
-                worker.signals.finished.connect(self._on_chapter_thumbnail_loaded)
-                self.thread_pool.start(worker)
+    def _add_next_batch(self):
+        start = self.current_batch_index
+        end = min(start + self.BATCH_SIZE, len(self.chapters_to_load))
+
+        self.content_area.setUpdatesEnabled(False)
+        try:
+            for i in range(start, end):
+                chapter = self.chapters_to_load[i]
+                # Use index 'i' correctly
+                chapter_name = Path(str(chapter)).name
+                widget = PageThumbnail(i, chapter_name)
+                widget.clicked.connect(self._change_chapter_by_thumbnail)
+                self.thumbnails_layout.insertWidget(i, widget)
+                self.chapter_thumbnail_widgets.append(widget)
+
+                first_image_path = _get_first_image_path(chapter)
+                if first_image_path:
+                    worker = ThumbnailWorker(i, first_image_path, self._load_thumbnail)
+                    worker.signals.finished.connect(self._on_chapter_thumbnail_loaded)
+                    self.thread_pool.start(worker)
+        finally:
+             self.content_area.setUpdatesEnabled(True)
+
+        self.current_batch_index = end
+        if self.current_batch_index < len(self.chapters_to_load):
+            self.batch_timer.start(50)
+        else:
+             # Re-apply selection if needed
+             if self.model and self.model.chapter_index < len(self.chapter_thumbnail_widgets):
+                 self._update_chapter_selection(self.model.chapter_index)
 
     def _on_chapter_thumbnail_loaded(self, index, pixmap):
         if index < len(self.chapter_thumbnail_widgets):

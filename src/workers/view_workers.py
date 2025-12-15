@@ -8,6 +8,7 @@ from PyQt6.QtCore import QRunnable, pyqtSlot, QObject, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
+from src.core.alt_manager import AltManager
 
 # New: list of video extensions we want to treat as media
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
@@ -72,9 +73,10 @@ class ChapterLoaderSignals(QObject):
     finished = pyqtSignal(dict)
 
 class ChapterLoaderWorker(QRunnable):
-    def __init__(self, manga_dir: str, start_from_end: bool, load_pixmap_func):
+    def __init__(self, manga_dir: str, series_path: str, start_from_end: bool, load_pixmap_func):
         super().__init__()
         self.manga_dir = manga_dir
+        self.series_path = series_path
         self.start_from_end = start_from_end
         self.load_pixmap = load_pixmap_func
         self.signals = ChapterLoaderSignals()
@@ -85,15 +87,26 @@ class ChapterLoaderWorker(QRunnable):
         image_list = self._get_image_list()
         image_list = sorted(image_list, key=get_chapter_number)
 
+        # Group images here in the worker thread
+        # 1. Load alt config
+        alt_config = AltManager.load_alts(self.series_path)
+        # 2. Extract chapter specific config
+        chapter_name = Path(self.manga_dir).name
+        chapter_alts = alt_config.get(chapter_name, {})
+        # 3. Group
+        grouped_pages = AltManager.group_images(image_list, chapter_alts)
+
         initial_index = 0
         if self.start_from_end:
-            initial_index = len(image_list) - 1
+            initial_index = len(grouped_pages) - 1
 
         initial_pixmap = None
-        if image_list:
-            if 0 <= initial_index < len(image_list):
+        if grouped_pages:
+            if 0 <= initial_index < len(grouped_pages):
                 # only try to load a pixmap if the initial item is an image (not a video)
-                candidate = image_list[initial_index]
+                # Use the first variant of the page
+                page = grouped_pages[initial_index]
+                candidate = page.images[0]
                 # candidate may be "zip|name" or a file path
                 suffix = Path(candidate.split('|')[-1]).suffix.lower()
                 if suffix in IMAGE_EXTS:
@@ -103,7 +116,8 @@ class ChapterLoaderWorker(QRunnable):
 
         result = {
             "manga_dir": self.manga_dir,
-            "images": image_list,
+            "images": grouped_pages, # Now passing Page objects
+            "initial_index": initial_index,
             "initial_index": initial_index,
             "initial_pixmap": initial_pixmap,
             "start_from_end": self.start_from_end
