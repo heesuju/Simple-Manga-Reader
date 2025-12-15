@@ -133,12 +133,14 @@ class ChapterLoaderWorker(QRunnable):
             files = []
             
             # 1. Scan root
-            files.extend([str(p) for p in manga_path.iterdir() if p.suffix.lower() in exts and p.is_file()])
+            files.extend([str(p) for p in manga_path.iterdir() 
+                          if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name])
             
             # 2. Scan alts/ subfolder
             alts_dir = manga_path / "alts"
             if alts_dir.exists() and alts_dir.is_dir():
-                files.extend([str(p) for p in alts_dir.iterdir() if p.suffix.lower() in exts and p.is_file()])
+                files.extend([str(p) for p in alts_dir.iterdir() 
+                              if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name])
                 
             return sorted(files)
         return []

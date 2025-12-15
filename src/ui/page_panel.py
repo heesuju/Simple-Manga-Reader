@@ -303,7 +303,7 @@ class PagePanel(CollapsiblePanel):
         if "alts" in str(current_file_path.parent.name):
              new_stem = f"{current_file_path.stem}_detached_{uuid.uuid4().hex[:8]}"
              new_name = f"{new_stem}{current_file_path.suffix}"
-             dst_path = chapter_dir / new_name
+             dst_path = current_file_path.parent / new_name
              
              try:
                  shutil.move(current_file_path, dst_path)
