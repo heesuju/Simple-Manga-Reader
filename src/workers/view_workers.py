@@ -105,7 +105,8 @@ class ChapterLoaderWorker(QRunnable):
             "manga_dir": self.manga_dir,
             "images": image_list,
             "initial_index": initial_index,
-            "initial_pixmap": initial_pixmap
+            "initial_pixmap": initial_pixmap,
+            "start_from_end": self.start_from_end
         }
         self.signals.finished.emit(result)
 

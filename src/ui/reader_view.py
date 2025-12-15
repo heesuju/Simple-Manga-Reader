@@ -555,7 +555,11 @@ class ReaderView(QWidget):
         self.loading_label.hide()
         # Use set_images to trigger Page creation and grouping
         self.model.set_images(result["images"])
-        self.model.current_index = result["initial_index"]
+        
+        if result.get("start_from_end", False):
+            self.model.current_index = max(0, len(self.model.images) - 1)
+        else:
+            self.model.current_index = 0
 
         self.model.refresh()
         self.model.layout_updated.emit(self.model.view_mode)

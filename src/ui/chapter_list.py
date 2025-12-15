@@ -15,20 +15,32 @@ class ChapterListLoaderSignals(QObject):
     chapter_processed = pyqtSignal(object, int, int)  # chapter, page_count, index
     finished = pyqtSignal()
 
+from src.core.alt_manager import AltManager
+
 class ChapterListLoader(QRunnable):
-    def __init__(self, chapters):
+    def __init__(self, chapters, series_path: str):
         super().__init__()
         self.signals = ChapterListLoaderSignals()
         self.chapters = chapters
+        self.series_path = series_path
 
     def run(self):
+        alt_config = AltManager.load_alts(self.series_path)
+
         for i, chapter in enumerate(self.chapters):
             page_count = 0
             full_chapter_path = Path(chapter['path'])
             if full_chapter_path.exists() and full_chapter_path.is_dir():
                 try:
-                    images = [p for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
-                    page_count = len(images)
+                    # Get raw images
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
+                    
+                    # Group them using AltManager
+                    chapter_name = full_chapter_path.name
+                    chapter_alts = alt_config.get(chapter_name, {})
+                    grouped_pages = AltManager.group_images(images, chapter_alts)
+                    
+                    page_count = len(grouped_pages)
                 except OSError:
                     page_count = 0
             self.signals.chapter_processed.emit(chapter, page_count, i)
@@ -354,7 +366,7 @@ class ChapterListView(QWidget):
         self.content_layout.addStretch()
 
         # --- Background Loaders ---
-        page_count_loader = ChapterListLoader(self.display_chapters)
+        page_count_loader = ChapterListLoader(self.display_chapters, str(self.series['path']))
         page_count_loader.signals.chapter_processed.connect(self.on_chapter_page_count_loaded)
         self.threadpool.start(page_count_loader)
 

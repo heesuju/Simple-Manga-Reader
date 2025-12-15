@@ -45,46 +45,7 @@ class ReaderModel(QObject):
         chapter_name = Path(self.manga_dir).name
         alt_config = AltManager.load_alts(str(self.series['path']))
         chapter_alts = alt_config.get(chapter_name, {})
-
-        grouped_pages = []
-        processed_files = set()
-        
-        # Map filenames to full paths for easy lookup
-        path_map = {Path(p).name: p for p in image_paths}
-
-        # Collect all subsidiary files (alts) to know what to skip
-        subsidiary_files = set()
-        for alts_list in chapter_alts.values():
-            for alt_name in alts_list:
-                subsidiary_files.add(alt_name)
-
-        for path in image_paths:
-            name = Path(path).name
-            
-            # If this file is a known alternate of another file, skip it.
-            # It will be picked up when we find its 'Main' file.
-            # Exception: If the Main file is missing from path_map, we might want to show this one?
-            # Current logic: If name is in subsidiary_files, it means it is listed as an alt.
-            
-            if name in subsidiary_files:
-                continue
-                
-            if name in processed_files:
-                continue
-
-            variants = [path]
-            processed_files.add(name)
-
-            # Check if this image has alts configured
-            if name in chapter_alts:
-                for alt_name in chapter_alts[name]:
-                    if alt_name in path_map:
-                        variants.append(path_map[alt_name])
-                        processed_files.add(alt_name)
-            
-            grouped_pages.append(Page(variants))
-        
-        self.images = grouped_pages
+        self.images = AltManager.group_images(image_paths, chapter_alts)
 
     def refresh(self):
         """Should be called after model data is updated to refresh the view."""

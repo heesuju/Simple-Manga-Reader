@@ -3,7 +3,50 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
+from src.data.page import Page
 class AltManager:
+    INFO_FILE_NAME = "info.json"
+
+    @staticmethod
+    def group_images(image_paths: List[str], alt_config: Dict[str, Dict[str, List[str]]]) -> List[Page]:
+        """
+        Group raw image paths into Page objects based on configuration.
+        """
+        grouped_pages = []
+        processed_files = set()
+        
+        # Map filenames to full paths for easy lookup
+        path_map = {Path(p).name: p for p in image_paths}
+
+        # Collect all subsidiary files (alts) to know what to skip
+        subsidiary_files = set()
+        for alts_list in alt_config.values():
+            for alt_name in alts_list:
+                subsidiary_files.add(alt_name)
+
+        for path in image_paths:
+            name = Path(path).name
+            
+            # If this file is a known alternate of another file, skip it.
+            if name in subsidiary_files:
+                continue
+                
+            if name in processed_files:
+                continue
+
+            variants = [path]
+            processed_files.add(name)
+
+            # Check if this image has alts configured
+            if name in alt_config:
+                for alt_name in alt_config[name]:
+                    if alt_name in path_map:
+                        variants.append(path_map[alt_name])
+                        processed_files.add(alt_name)
+            
+            grouped_pages.append(Page(variants))
+        
+        return grouped_pages
     INFO_FILE_NAME = "info.json"
 
     @staticmethod
