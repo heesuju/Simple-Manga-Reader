@@ -291,24 +291,45 @@ class PagePanel(CollapsiblePanel):
         if not page: return
         
         series_path = self.model.series['path']
-        chapter_dir = Path(self.model.manga_dir) # Ensure we have chapter dir object available or recreate it
+        chapter_dir = Path(self.model.manga_dir)
         if isinstance(chapter_dir, str): chapter_dir = Path(chapter_dir)
         chapter_name = chapter_dir.name
         
         current_file_path = Path(page.path)
         
+        # Check if we are unlinking the main page (images[0]) or an alt
+        main_file_path = Path(page.images[0])
+        is_main_file = (current_file_path.resolve() == main_file_path.resolve())
+        
+        # 1. Update JSON Configuration
+        # If main file: remove the entire key (dissolve group)
+        # If alt file: remove just that alt from the list
         AltManager.unlink_page(series_path, chapter_name, str(current_file_path))
         
-        # Move to root if it was in alts
-        if "alts" in str(current_file_path.parent.name):
-             new_stem = f"{current_file_path.stem}_detached_{uuid.uuid4().hex[:8]}"
-             new_name = f"{new_stem}{current_file_path.suffix}"
-             dst_path = current_file_path.parent / new_name
-             
-             try:
-                 shutil.move(current_file_path, dst_path)
-             except Exception as e:
-                 print(f"Error moving detached file: {e}")
+        # 2. Rename files to _detached
+        files_to_rename = []
+        
+        if is_main_file:
+            # If main was selected, we dissolved the group. 
+            # We should rename ALL alts (images[1:]) to _detached.
+            # Convert paths to Path objects
+            files_to_rename = [Path(p) for p in page.images if Path(p).resolve() != main_file_path.resolve()]
+        else:
+            # Only rename the current alt we just detached
+            files_to_rename = [current_file_path]
+            
+        for p in files_to_rename:
+            # Only rename if it's in the 'alts/' directory (standard behavior)
+            if "alts" in str(p.parent.name):
+                new_stem = f"{p.stem}_detached_{uuid.uuid4().hex[:8]}"
+                new_name = f"{new_stem}{p.suffix}"
+                # Rename in place
+                dst_path = p.parent / new_name
+                
+                try:
+                    shutil.move(p, dst_path)
+                except Exception as e:
+                    print(f"Error moving detached file: {e}")
         
         self.reload_requested.emit()
 
