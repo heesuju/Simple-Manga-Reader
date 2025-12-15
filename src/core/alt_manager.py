@@ -37,12 +37,26 @@ class AltManager:
             variants = [path]
             processed_files.add(name)
 
-            # Check if this image has alts configured
             if name in alt_config:
+                found_alts = []
                 for alt_name in alt_config[name]:
                     if alt_name in path_map:
-                        variants.append(path_map[alt_name])
+                        found_alts.append(path_map[alt_name])
                         processed_files.add(alt_name)
+                
+                # Sort alts: Image < GIF < Video, then filename
+                # Priority: 0=Image, 1=GIF, 2=Video
+                ANIM_EXTS = {'.gif'}
+                VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
+                
+                def get_priority(path_str):
+                    suffix = Path(path_str).suffix.lower()
+                    if suffix in VIDEO_EXTS: return 2
+                    if suffix in ANIM_EXTS: return 1
+                    return 0 # Image
+                
+                found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), Path(p).name.lower()))
+                variants.extend(found_alts)
             
             grouped_pages.append(Page(variants))
         

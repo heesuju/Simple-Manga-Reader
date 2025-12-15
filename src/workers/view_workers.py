@@ -130,8 +130,17 @@ class ChapterLoaderWorker(QRunnable):
                 return []
         elif manga_path.is_dir():
             exts = IMAGE_EXTS.union(VIDEO_EXTS)
-            return [str(p) for p in sorted(manga_path.iterdir())
-                    if p.suffix.lower() in exts and p.is_file()]
+            files = []
+            
+            # 1. Scan root
+            files.extend([str(p) for p in manga_path.iterdir() if p.suffix.lower() in exts and p.is_file()])
+            
+            # 2. Scan alts/ subfolder
+            alts_dir = manga_path / "alts"
+            if alts_dir.exists() and alts_dir.is_dir():
+                files.extend([str(p) for p in alts_dir.iterdir() if p.suffix.lower() in exts and p.is_file()])
+                
+            return sorted(files)
         return []
 
 class WorkerSignals(QObject):

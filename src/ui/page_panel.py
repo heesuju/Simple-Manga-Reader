@@ -6,6 +6,7 @@ from typing import Set
 from PyQt6.QtCore import QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog
 from PyQt6.QtGui import QAction, QCursor
+import uuid
 
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
@@ -246,12 +247,41 @@ class PagePanel(CollapsiblePanel):
                 seen.add(p)
         
         series_path = self.model.series['path']
-        chapter_name = Path(self.model.manga_dir).name
+        chapter_dir = Path(self.model.manga_dir) # Ensure we have chapter dir
+        chapter_name = chapter_dir.name
         
         main_file = unique_paths[0]
-        alt_files = unique_paths[1:]
+        original_alt_files = unique_paths[1:]
         
-        AltManager.link_pages(series_path, chapter_name, main_file, alt_files)
+        main_stem = Path(main_file).stem
+        
+        # Move alts to alts/ folder
+        alts_dir = chapter_dir / "alts"
+        if not alts_dir.exists():
+            alts_dir.mkdir(parents=True, exist_ok=True)
+            
+        final_alt_files = []
+        for i, alt_path in enumerate(original_alt_files):
+            p = Path(alt_path)
+            new_name = f"{main_stem}_{i+1}{p.suffix}"
+            dst = alts_dir / new_name
+
+            counter = i + 1
+            while dst.exists() and dst.resolve() != p.resolve():
+                new_name = f"{main_stem}_{counter}_{uuid.uuid4().hex[:4]}{p.suffix}"
+                dst = alts_dir / new_name
+            
+            if alts_dir in p.parents and p.name == new_name:
+                final_alt_files.append(str(p))
+            else:
+                try:
+                    shutil.move(p, dst)
+                    final_alt_files.append(str(dst))
+                except Exception as e:
+                    print(f"Error moving alt {p}: {e}")
+                    final_alt_files.append(str(p))
+        
+        AltManager.link_pages(series_path, chapter_name, main_file, final_alt_files)
         
         self.reload_requested.emit()
         self.on_page_changed(main_page_idx + 1)
@@ -261,10 +291,24 @@ class PagePanel(CollapsiblePanel):
         if not page: return
         
         series_path = self.model.series['path']
-        chapter_name = Path(self.model.manga_dir).name
+        chapter_dir = Path(self.model.manga_dir) # Ensure we have chapter dir object available or recreate it
+        if isinstance(chapter_dir, str): chapter_dir = Path(chapter_dir)
+        chapter_name = chapter_dir.name
         
-        current_file = page.path
-        AltManager.unlink_page(series_path, chapter_name, current_file)
+        current_file_path = Path(page.path)
+        
+        AltManager.unlink_page(series_path, chapter_name, str(current_file_path))
+        
+        # Move to root if it was in alts
+        if "alts" in str(current_file_path.parent.name):
+             new_stem = f"{current_file_path.stem}_detached_{uuid.uuid4().hex[:8]}"
+             new_name = f"{new_stem}{current_file_path.suffix}"
+             dst_path = chapter_dir / new_name
+             
+             try:
+                 shutil.move(current_file_path, dst_path)
+             except Exception as e:
+                 print(f"Error moving detached file: {e}")
         
         self.reload_requested.emit()
 
@@ -307,26 +351,43 @@ class PagePanel(CollapsiblePanel):
         target_main_file = target_page.images[0] # Always link to the main file of the group
         
         chapter_dir = Path(self.model.manga_dir)
+        alts_dir = chapter_dir / "alts"
+        if not alts_dir.exists():
+            try:
+                alts_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                print(f"Error creating alts directory: {e}")
+                return
+
         series_path = self.model.series['path']
         chapter_name = chapter_dir.name
         
         files_to_link = []
-        
-        for file_path in file_paths:
+        main_stem = Path(target_main_file).stem
+        start_index = len(target_page.images)
+        if start_index < 1: start_index = 1
+
+        for i, file_path in enumerate(file_paths):
             src_path = Path(file_path)
             if not src_path.exists(): continue
             
-            # Check if inside chapter folder
-            if chapter_dir in src_path.parents:
-                files_to_link.append(str(src_path))
-            else:
-                # Copy
-                dst_path = chapter_dir / src_path.name
-                try:
-                    shutil.copy2(src_path, dst_path)
-                    files_to_link.append(str(dst_path))
-                except Exception as e:
-                    print(f"Error copying file {src_path}: {e}")
+            new_name = f"{main_stem}_{start_index + i}{src_path.suffix}"
+            dst_path = alts_dir / new_name
+            
+            # Verify no collision
+            while dst_path.exists() and dst_path.resolve() != src_path.resolve():
+                 new_name = f"{main_stem}_{start_index + i}_{uuid.uuid4().hex[:4]}{src_path.suffix}"
+                 dst_path = alts_dir / new_name
+            
+            if src_path.resolve() == dst_path.resolve():
+                files_to_link.append(str(dst_path))
+                continue
+
+            try:
+                shutil.copy2(src_path, dst_path)
+                files_to_link.append(str(dst_path))
+            except Exception as e:
+                print(f"Error copying file {src_path}: {e}")
 
         if files_to_link:
             AltManager.link_pages(series_path, chapter_name, target_main_file, files_to_link)
