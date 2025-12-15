@@ -154,6 +154,7 @@ class InfoDialog(QDialog):
 
     def save_info(self):
         new_info = {
+            'name': self.title_input.text(),
             'description': self.description_text.toPlainText(),
             'authors': [author.strip() for author in self.authors_input.text().split(',') if author.strip()],
             'genres': [genre.strip() for genre in self.genres_input.text().split(',') if genre.strip()],

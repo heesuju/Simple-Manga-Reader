@@ -238,9 +238,14 @@ class LibraryManager:
         series_data = scanner.scan_series(normalized_path)
         if series_data:
             try:
+                # Use name from metadata if provided, else use scanning result
+                final_name = series_data['name']
+                if metadata and 'name' in metadata and metadata['name']:
+                    final_name = metadata['name']
+
                 cursor.execute(
                     "INSERT INTO series (name, path, cover_image) VALUES (?, ?, ?)",
-                    (series_data['name'], series_data['path'], series_data['cover_image'])
+                    (final_name, series_data['path'], series_data['cover_image'])
                 )
                 series_id = cursor.lastrowid
                 for chapter in series_data.get('chapters', []):
@@ -352,6 +357,10 @@ class LibraryManager:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
+            # Update name
+            if 'name' in new_info:
+                cursor.execute("UPDATE series SET name = ? WHERE id = ?", (new_info['name'], series_id))
+
             # Update description
             if 'description' in new_info:
                 cursor.execute("UPDATE series SET description = ? WHERE id = ?", (new_info['description'], series_id))
