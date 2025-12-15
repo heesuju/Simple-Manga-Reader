@@ -96,12 +96,14 @@ class ThumbnailWidget(QWidget):
         chapter_path = series_obj['last_read_chapter']
         chapter_number = get_chapter_number(chapter_path)
 
-        if chapter_number is not None:
+        if chapter_number is not None and chapter_number != float('inf'):
             self.chapter_label.setText(f"Ch{chapter_number:02}")
             self.chapter_label.adjustSize()
             self.chapter_label.move(self.image_container.width() - self.chapter_label.width() - 5, 5)
             self.chapter_label.show()
             self.chapter_label.raise_()
+        else:
+             self.chapter_label.hide()
 
     def setup_animation(self):
         # Grow animation
