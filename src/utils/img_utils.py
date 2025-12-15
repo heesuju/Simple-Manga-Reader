@@ -274,11 +274,16 @@ def get_chapter_number(path):
     else:
         name = Path(path).name
     
-    match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
+    # Try explicit "Ch." or "Chapter"
+    match = re.search(r'(?:ch|chapter|c)\.?\s*(\d+)', name, re.IGNORECASE)
     if match:
         return int(match.group(1))
-    else:
-        return find_number(name)
+    
+    # Fallback to finding the first number, but be careful of "Vol 1 Ch 2"
+    # If there are multiple numbers, simple find_number might get the volume.
+    # But usually manga naming is "Series - Ch X" or "Series 01".
+    
+    return find_number(name)
     
 
 def _get_first_image_path(chapter_dir):

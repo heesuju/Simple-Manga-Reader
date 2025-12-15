@@ -219,6 +219,10 @@ class LibraryManager:
         cursor.execute("SELECT * FROM chapters WHERE series_id = ?", (series['id'],))
         chapters = [dict(row) for row in cursor.fetchall()]
         conn.close()
+        
+        from src.utils.img_utils import get_chapter_number
+        chapters.sort(key=lambda x: get_chapter_number(x['path']))
+        
         return chapters
 
     def add_series(self, path, metadata=None):

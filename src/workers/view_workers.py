@@ -137,20 +137,20 @@ class WorkerSignals(QObject):
     finished = pyqtSignal(int, QPixmap)
 
 class PixmapLoader(QRunnable):
-    def __init__(self, path: str, index: int, reader_view):
+    def __init__(self, path: str, index: int, load_func):
         super().__init__()
         self.path = path
         self.index = index
-        self.reader_view = reader_view
+        self.load_func = load_func
         self.signals = WorkerSignals()
 
     @pyqtSlot()
     def run(self):
         """
-        For videos the reader_view._load_pixmap will likely return a null QPixmap.
+        For videos the load_func will likely return a null QPixmap.
         That's expected — callers should handle the absence of a pixmap (e.g. play video instead).
         """
-        pixmap = self.reader_view._load_pixmap(self.path)
+        pixmap = self.load_func(self.path)
         self.signals.finished.emit(self.index, pixmap)
 
 class VideoFrameExtractorSignals(QObject):
@@ -186,4 +186,3 @@ class VideoFrameExtractorWorker(QRunnable):
                 cap.release()
         except Exception as e:
             print(f"Error in async video extraction: {e}")
-

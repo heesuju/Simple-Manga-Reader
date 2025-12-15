@@ -61,7 +61,3 @@ class ImageView(QGraphicsView):
             self.manga_reader.reset_zoom()
         event.accept()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.manga_reader and not self._user_scaled:
-            QTimer.singleShot(0, self.manga_reader._fit_current_image)
