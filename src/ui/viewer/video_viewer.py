@@ -106,6 +106,7 @@ class VideoViewer(BaseViewer):
         self.reader_view.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
         self.media_player.play()
         self.reader_view._reposition_video_control_panel()
+        self.reader_view.apply_last_zoom()
 
     def _stop_video(self):
         if self.media_player.playbackState() != QMediaPlayer.PlaybackState.StoppedState:
