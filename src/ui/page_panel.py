@@ -16,6 +16,7 @@ from src.data.reader_model import ReaderModel
 from src.enums import ViewMode
 from src.utils.img_utils import empty_placeholder, load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.core.alt_manager import AltManager
+from src.ui.components.drag_drop_alt_dialog import DragDropAltDialog
 
 class PagePanel(CollapsiblePanel):
     reload_requested = pyqtSignal()
@@ -240,6 +241,11 @@ class PagePanel(CollapsiblePanel):
         add_file_action = QAction("Add Alternate from File...", self)
         add_file_action.triggered.connect(self._add_alt_from_file)
         menu.addAction(add_file_action)
+
+        add_dd_action = QAction("Add Alternates (Drag & Drop)...", self)
+        add_dd_action.triggered.connect(lambda: self._open_drag_drop_dialog(index))
+        menu.addAction(add_dd_action)
+
         
         menu.addSeparator()
         
@@ -409,17 +415,22 @@ class PagePanel(CollapsiblePanel):
             alt_count = len(page_obj.images) if page_obj else 0
             widget.set_alt_count(alt_count)
 
-    def _add_alts_logic(self, file_paths: list[str]):
-        if not self.edit_selected_indices:
-            target_idx = -1
-            if self.edit_selected_indices:
-                target_idx = list(self.edit_selected_indices)[0]
-            elif self.model:
-                target_idx = self.model.current_index
-            
-            if target_idx == -1: return
-        else:
-             target_idx = list(self.edit_selected_indices)[0]
+    def _open_drag_drop_dialog(self, index: int):
+        dialog = DragDropAltDialog(self)
+        if dialog.exec():
+            files = dialog.get_files()
+            if files:
+                self._add_alts_logic(files, target_index=index)
+
+    def _add_alts_logic(self, file_paths: list[str], target_index: int = -1):
+        target_idx = target_index
+        if target_idx == -1:
+            if not self.edit_selected_indices:
+                if self.model:
+                    target_idx = self.model.current_index
+                if target_idx == -1: return
+            else:
+                 target_idx = list(self.edit_selected_indices)[0]
 
         target_page = self.model.images[target_idx]
         if not target_page: return
