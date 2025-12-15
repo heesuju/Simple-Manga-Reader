@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSlider, QLabel, QPushButton, 
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.ui.components.input_label import InputLabel
+from src.ui.components.alt_selector import AltSelector
 
 
 class SliderPanel(QWidget):
@@ -13,24 +14,17 @@ class SliderPanel(QWidget):
     chapter_changed = pyqtSignal(int)
     page_input_clicked = pyqtSignal()
     chapter_input_clicked = pyqtSignal()
-    slideshow_button_clicked = pyqtSignal()
-    speed_changed = pyqtSignal()
-    repeat_changed = pyqtSignal(bool)
     zoom_mode_changed = pyqtSignal(str)
     zoom_reset = pyqtSignal()
     fullscreen_requested = pyqtSignal() # New signal
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, model=None):
         super().__init__(parent)
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 170);")
-
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 170); color: white;")
+        
         # --- Icons ---
-        self.play_icon = QIcon("assets/icons/play.png")
-        self.pause_icon = QIcon("assets/icons/pause.png")
-        self.repeat_on_icon = QIcon("assets/icons/repeat_on.png")
-        self.repeat_off_icon = QIcon("assets/icons/repeat_off.png")
         self.zoom_fit_icon = QIcon("assets/icons/fit.png")
         # Fullscreen icon - using text for now, could be an icon later
         self.fullscreen_icon = QIcon("assets/icons/fit.png") # Reusing fit icon for now, consider adding a new one
@@ -70,28 +64,10 @@ class SliderPanel(QWidget):
         bottom_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         button_size = QSize(32, 32)
-
-        self.slideshow_button = QPushButton()
-        self.slideshow_button.setIcon(self.play_icon)
-        self.slideshow_button.setIconSize(QSize(16, 16))
-        self.slideshow_button.setFixedSize(button_size)
-        self.slideshow_button.clicked.connect(self.slideshow_button_clicked.emit)
-
-        self.speed_button = QPushButton("1x")
-        self.speed_button.setStyleSheet("font-weight: bold;")
-        self.speed_button.setFixedSize(button_size)
-        self.speed_button.clicked.connect(self.speed_changed.emit)
-
-        self.repeat_button = QPushButton()
-        self.repeat_button.setIcon(self.repeat_off_icon)
-        self.repeat_button.setIconSize(QSize(16, 16))
-        self.repeat_button.setFixedSize(button_size)
-        self.repeat_button.setCheckable(True)
-        self.repeat_button.toggled.connect(self._on_repeat_toggled)
-
-        bottom_layout.addWidget(self.slideshow_button)
-        bottom_layout.addWidget(self.speed_button)
-        bottom_layout.addWidget(self.repeat_button)
+        
+        # AltSelector (Replaces slideshow controls)
+        self.alt_selector = AltSelector(self, model)
+        bottom_layout.addWidget(self.alt_selector)
 
         bottom_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
 
@@ -122,19 +98,6 @@ class SliderPanel(QWidget):
         self.zoom_combobox.blockSignals(True)
         self.zoom_combobox.setCurrentText(text)
         self.zoom_combobox.blockSignals(False)
-
-    def set_slideshow_state(self, is_playing: bool):
-        if is_playing:
-            self.slideshow_button.setIcon(self.pause_icon)
-        else:
-            self.slideshow_button.setIcon(self.play_icon)
-
-    def _on_repeat_toggled(self, checked: bool):
-        if checked:
-            self.repeat_button.setIcon(self.repeat_on_icon)
-        else:
-            self.repeat_button.setIcon(self.repeat_off_icon)
-        self.repeat_changed.emit(checked)
 
     def set_range(self, max_value):
         """Sets the range of the slider."""

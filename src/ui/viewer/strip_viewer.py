@@ -44,7 +44,7 @@ class StripViewer(BaseViewer):
         else:
             self.reader_view.scroll_area.hide()
             self.strip_scroll_timer.stop()
-            self.reader_view.slider_panel.set_slideshow_state(False)
+            self.reader_view.top_panel.set_slideshow_state(False)
             try:
                 self.reader_view.scroll_area.verticalScrollBar().valueChanged.disconnect(self._update_visible_images)
             except Exception:
@@ -77,7 +77,8 @@ class StripViewer(BaseViewer):
             self.page_labels.append(lbl)
 
             # Updated to pass load_func instead of reader_view
-            worker = PixmapLoader(images[i], i, self.reader_view.image_viewer._load_pixmap)
+            # images[i] is a Page object, we need the path string
+            worker = PixmapLoader(images[i].path, i, self.reader_view.image_viewer._load_pixmap)
             worker.signals.finished.connect(self._on_image_loaded)
             self.reader_view.thread_pool.start(worker)
 
@@ -187,11 +188,11 @@ class StripViewer(BaseViewer):
             self.stop_page_slideshow()
         else:
             self.strip_scroll_timer.start(self.scroll_interval)
-            self.reader_view.slider_panel.set_slideshow_state(True)
+            self.reader_view.top_panel.set_slideshow_state(True)
 
     def stop_page_slideshow(self):
         self.strip_scroll_timer.stop()
-        self.reader_view.slider_panel.set_slideshow_state(False)
+        self.reader_view.top_panel.set_slideshow_state(False)
 
     def handle_event(self, event):
         if event.type() == QEvent.Type.MouseButtonPress:

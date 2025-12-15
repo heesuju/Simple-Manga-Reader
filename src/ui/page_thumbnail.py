@@ -7,6 +7,7 @@ from src.utils.img_utils import crop_pixmap
 
 class PageThumbnail(QWidget):
     clicked = pyqtSignal(int)
+    right_clicked = pyqtSignal(int)
 
     def __init__(self, index, text, show_label=True, fixed_width=None, parent=None):
         super().__init__(parent)
@@ -33,7 +34,8 @@ class PageThumbnail(QWidget):
             self.text_label.setGeometry(0, 120, 100, 20)
 
         self._hover = False
-        self._selected = False
+        self._selected = False      # Active page (navigation)
+        self._edit_selected = False # Manual selection (for grouping)
         self._update_style()
 
         self.layout.addWidget(self.image_container)
@@ -43,13 +45,20 @@ class PageThumbnail(QWidget):
 
     def _update_style(self):
         border_style = "border: 2px solid transparent;"
-        if self._selected:
+        
+        # Priority: Edit Selected > Selected (Active) > Hover
+        if self._edit_selected:
+            border_style = "border: 2px solid #e74c3c;" # Red/Orange for edit selection
+        elif self._selected:
             border_style = "border: 2px solid rgba(74, 134, 232, 180);"
         elif self._hover:
             border_style = "border: 2px solid rgba(100, 100, 100, 180);"
+            
         self.image_container.setStyleSheet(f"QWidget#image_container {{ {border_style} }}")
 
-        if self._selected:
+        if self._edit_selected:
+            bg = "#c0392b"
+        elif self._selected:
             if self._hover:
                 bg = "rgba(74, 134, 232, 220)"  # brighter blue
             else:
@@ -80,6 +89,8 @@ class PageThumbnail(QWidget):
     def mousePressEvent(self, ev: QMouseEvent) -> None:
         if ev.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.index)
+        elif ev.button() == Qt.MouseButton.RightButton:
+            self.right_clicked.emit(self.index)
         return super().mousePressEvent(ev)
 
     def set_pixmap(self, pixmap: QPixmap):
@@ -97,4 +108,8 @@ class PageThumbnail(QWidget):
 
     def set_selected(self, selected: bool):
         self._selected = selected
+        self._update_style()
+
+    def set_edit_selected(self, selected: bool):
+        self._edit_selected = selected
         self._update_style()

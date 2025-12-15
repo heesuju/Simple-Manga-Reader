@@ -19,6 +19,8 @@ from src.ui.slider_panel import SliderPanel
 from src.ui.video_control_panel import VideoControlPanel
 from src.ui.image_view import ImageView
 
+
+
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
@@ -61,8 +63,6 @@ class ReaderView(QWidget):
         self.thread_pool = QThreadPool()
 
         self.original_view_mouse_press = None
-        self.is_zoomed = False
-
         self.is_zoomed = False
 
         self.page_slideshow_timer = QTimer(self)
@@ -145,9 +145,10 @@ class ReaderView(QWidget):
         # 1. Create all panel widgets first
         self.top_panel = TopPanel(self)
         self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
+        self.page_panel.reload_requested.connect(self.reload_chapter)
         self.video_control_panel = VideoControlPanel(self)
         self.video_control_panel.raise_()
-        self.slider_panel = SliderPanel(self)
+        self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
 
         # Add panels to the layout
@@ -155,15 +156,16 @@ class ReaderView(QWidget):
         
         # Create a container for the bottom panels
         bottom_container = QWidget(self)
+        bottom_container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         bottom_layout = QVBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
         bottom_container.setLayout(bottom_layout)
 
-        bottom_layout.addWidget(self.page_panel)
+        bottom_layout.addWidget(self.page_panel)        
         bottom_layout.addWidget(self.chapter_panel)
         bottom_layout.addWidget(self.slider_panel)
-
+                
         main_layout.addWidget(bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
 
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
@@ -177,9 +179,9 @@ class ReaderView(QWidget):
         self.video_control_panel.hide()
 
         self.slider_panel.valueChanged.connect(self.change_page_from_slider)
-        self.slider_panel.slideshow_button_clicked.connect(self.start_page_slideshow)
-        self.slider_panel.speed_changed.connect(self._on_slideshow_speed_changed)
-        self.slider_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
+        self.top_panel.slideshow_clicked.connect(self.start_page_slideshow)
+        self.top_panel.speed_changed.connect(self._on_slideshow_speed_changed)
+        self.top_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
         self.slider_panel.page_changed.connect(self.change_page)
         self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
@@ -218,7 +220,7 @@ class ReaderView(QWidget):
         if self.model.view_mode == ViewMode.STRIP:
             self.strip_viewer.current_scroll_speed_index = (self.strip_viewer.current_scroll_speed_index + 1) % len(self.strip_viewer.scroll_speeds)
             speed_text = f"{int(self.strip_viewer.scroll_speeds[self.strip_viewer.current_scroll_speed_index]/5)}x"
-            self.slider_panel.speed_button.setText(speed_text)
+            self.top_panel.speed_button.setText(speed_text)
             if self.strip_viewer.strip_scroll_timer.isActive():
                 self.strip_viewer.strip_scroll_timer.start(self.strip_viewer.scroll_interval)
             return
@@ -226,9 +228,9 @@ class ReaderView(QWidget):
         self.current_slideshow_speed_index = (self.current_slideshow_speed_index + 1) % len(self.slideshow_speeds)
         current_speed_s = 4000 / self.slideshow_speeds[self.current_slideshow_speed_index]
         if current_speed_s < 1.0 and current_speed_s % 1 != 0:
-            self.slider_panel.speed_button.setText(f"{round(current_speed_s, 1)}x".replace("0", ""))
+            self.top_panel.speed_button.setText(f"{round(current_speed_s, 1)}x".replace("0", ""))
         else:
-            self.slider_panel.speed_button.setText(f"{int(current_speed_s)}x")
+            self.top_panel.speed_button.setText(f"{int(current_speed_s)}x")
 
         if self.page_slideshow_timer.isActive():
             self.page_slideshow_timer.start(self.slideshow_speeds[self.current_slideshow_speed_index])
@@ -240,8 +242,6 @@ class ReaderView(QWidget):
         # VideoViewer updates its own repetition via signal from VideoControlPanel, which is separate from SliderPanel.
         pass
 
-
-
     def start_page_slideshow(self):
         if self.model.view_mode == ViewMode.STRIP:
             self.strip_viewer.start_page_slideshow()
@@ -251,12 +251,12 @@ class ReaderView(QWidget):
             self.stop_page_slideshow()
         else:
             self.page_slideshow_timer.start(self.slideshow_speeds[self.current_slideshow_speed_index])
-            self.slider_panel.set_slideshow_state(True)
+            self.top_panel.set_slideshow_state(True)
 
     def stop_page_slideshow(self):
         self.page_slideshow_timer.stop()
         self.strip_viewer.stop_page_slideshow()
-        self.slider_panel.set_slideshow_state(False)
+        self.top_panel.set_slideshow_state(False)
 
     def on_model_refreshed(self):
         if not self.model.images:
@@ -300,7 +300,7 @@ class ReaderView(QWidget):
              # If we are in Single mode, we might be watching a video.
              # But on layout update, we transition.
              if self.model.images and self.model.current_index < len(self.model.images):
-                 ext = os.path.splitext(self.model.images[self.model.current_index])[1].lower()
+                 ext = os.path.splitext(self.model.images[self.model.current_index].path)[1].lower()
                  if ext in VIDEO_EXTS:
                      new_viewer = self.video_viewer
                  else:
@@ -521,6 +521,9 @@ class ReaderView(QWidget):
             self._load_chapter_async(start_from_end=False)
             self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
+    def reload_chapter(self):
+        self._load_chapter_async(start_from_end=False)
+
     def _change_chapter(self, direction: int):
         start_from_end = direction == -1
         if self.model.change_chapter(direction):
@@ -550,14 +553,16 @@ class ReaderView(QWidget):
             return
 
         self.loading_label.hide()
-        self.model.images = result["images"]
+        # Use set_images to trigger Page creation and grouping
+        self.model.set_images(result["images"])
         self.model.current_index = result["initial_index"]
 
         self.model.refresh()
         self.model.layout_updated.emit(self.model.view_mode)
         
         if self.model.images:
-             self._load_image(self.model.images[self.model.current_index])
+             # Pass the path string of the current page
+             self.model.load_image()
 
 
     def back_to_grid(self):
