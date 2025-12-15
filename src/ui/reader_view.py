@@ -49,6 +49,7 @@ class ReaderView(QWidget):
         self.model.image_loaded.connect(self._load_image)
         self.model.double_image_loaded.connect(self._load_double_images)
         self.model.layout_updated.connect(self.on_layout_updated)
+        self.model.page_updated.connect(self.on_page_updated)
 
         self.back_to_grid_callback = None
 
@@ -324,8 +325,33 @@ class ReaderView(QWidget):
         if view_mode == ViewMode.STRIP:
             self.strip_viewer.load(None) 
         else:
-            if self.model.images and self.model.current_index < len(self.model.images):
-                 self.model.load_image()
+             if self.model.images and self.model.current_index < len(self.model.images):
+                  self.model.load_image()
+
+    def on_page_updated(self, page_index: int):
+        self.page_panel.refresh_thumbnail(page_index)
+        
+        # If the updated page is the current one (or visible in double view), reload the viewer
+        should_reload = False
+        if self.model.view_mode == ViewMode.SINGLE:
+            if self.model.current_index == page_index:
+                should_reload = True
+        elif self.model.view_mode == ViewMode.DOUBLE:
+             # Check if page_index is currently visible
+             # In double mode logic (ReaderModel.load_image), we load current_index and next if applicable.
+             # Actually, ReaderModel.load_image uses:
+             # page1 = images[self.current_index]
+             # page2 = images[self.current_index + 1]
+             # So we check if page_index matches either.
+             if abs(page_index - self.model.current_index) <= 1:
+                 should_reload = True
+        elif self.model.view_mode == ViewMode.STRIP:
+            should_reload = True
+
+        if should_reload:
+            self.model.load_image()
+            if self.model.view_mode == ViewMode.STRIP:
+                self.strip_viewer.load(None)
                  
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.BackButton:

@@ -135,3 +135,17 @@ class PageThumbnail(QWidget):
     def set_edit_selected(self, selected: bool):
         self._edit_selected = selected
         self._update_style()
+    
+    def set_alt_count(self, count: int):
+        self.alt_label.setText(str(count))
+        self.alt_label.adjustSize()
+        if count <= 1:
+            self.alt_label.hide()
+        else:
+            self.alt_label.show()
+            # Reposition
+            if self.fixed_width is not None:
+               self.alt_label.move(self.fixed_width - self.alt_label.width() - 5, 5)
+            else:
+               self.alt_label.move(100 - self.alt_label.width() - 5, 5)
+        self.alt_label.raise_()

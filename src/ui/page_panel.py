@@ -357,7 +357,10 @@ class PagePanel(CollapsiblePanel):
                 except Exception as e:
                     print(f"Error moving detached file: {e}")
         
-        self.reload_requested.emit()
+        # Unlinking (detaching) a page means it is removed from the group but stays in alts folder (hidden from pages).
+        # So no new page is added to the main list.
+        # Thus, we can just update the variants.
+        self.model.update_page_variants(index)
 
     def _paste_as_alternate(self):
         clipboard = QApplication.clipboard()
@@ -398,6 +401,13 @@ class PagePanel(CollapsiblePanel):
         # elif os.name == 'posix': # Mac/Linux support if needed
         #     subprocess.Popen(['open', '-R', str(path)]) # Mac
         #     # Linux usually varies (xdg-open doesn't support select usually)
+
+    def refresh_thumbnail(self, index: int):
+        if 0 <= index < len(self.page_thumbnail_widgets):
+            widget = self.page_thumbnail_widgets[index]
+            page_obj = self.model.images[index]
+            alt_count = len(page_obj.images) if page_obj else 0
+            widget.set_alt_count(alt_count)
 
     def _add_alts_logic(self, file_paths: list[str]):
         if not self.edit_selected_indices:
@@ -455,15 +465,63 @@ class PagePanel(CollapsiblePanel):
                 target_parent = Path(target_main_file).parent.resolve()
                 src_parent = src_path.parent.resolve()
                 
+                # If src is in the same folder as main file (chapter folder), we MOVE it to alts.
+                # If src is internal (same folder), we trigger granular update because we are effectively just organizing it?
+                # Wait, if src is existing page in chapter, it's already in the page list. 
+                # If we link it, it disappears from page list and becomes alt. That requires RELOAD.
+                
+                # BUT, this function (`_add_alts_logic`) handles "Add Alternate from File..." which implies external file or file selection dialog.
+                # If user selects a file that is ALREADY a page in the reader (internal file), 
+                # then `ReaderModel` needs to know to REMOVE it from pages list.
+                
+                # The prompt said: "when it is added from existing chapter... this case should be fully reloaded."
+                # "but if it is an external directory... no new page is added... just an update to the image... not requiring a full reload."
+                
+                # So we need to detect if src_path is "internal" (already part of pages list implicitly or explicitly).
+                # Simple check: Is src_path inside chapter_dir but NOT in alts dir? 
+                # And is it one of the pages? (Ideally yes).
+                
+                is_internal = False
+                if chapter_dir in src_path.parents:
+                     # It is inside chapter dir.
+                     if "alts" not in src_path.parts: # Not in alts folder
+                         is_internal = True
+                
                 if src_parent == target_parent:
                      shutil.move(src_path, dst_path)
                 else:
                      shutil.copy2(src_path, dst_path)
                      
                 files_to_link.append(str(dst_path))
+                
+                if is_internal:
+                    # If any file was internal, we must do full reload because a page (probably) disappeared from main list.
+                    # We can't easily patch the pages list without full logic.
+                    # So we set a flag.
+                    pass 
+
             except Exception as e:
                 print(f"Error processing file {src_path}: {e}")
 
         if files_to_link:
             AltManager.link_pages(series_path, chapter_name, target_main_file, files_to_link)
-            self.reload_requested.emit()
+            
+            # Check if we need full reload
+            needs_full_reload = False
+            for fp in file_paths:
+                p = Path(fp)
+                # If path was inside chapter dir and not in alts, it was likely a page.
+                if chapter_dir.resolve() in p.resolve().parents:
+                    # Check if it was in alts?
+                    # If it was in alts, it wasn't a main page (usually). 
+                    # But verifying 'internal' usually means it was a visible page.
+                    if p.parent.name != "alts":
+                        needs_full_reload = True
+                        break
+            
+            if needs_full_reload:
+                 self.reload_requested.emit()
+            else:
+                 self.model.update_page_variants(target_idx)
+                 # self.refresh_thumbnail(target_idx) # Handled by signal connection in ReaderView?
+                 # ReaderView connects model.page_updated to on_page_updated.

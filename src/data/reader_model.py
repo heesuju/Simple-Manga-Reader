@@ -14,6 +14,7 @@ class ReaderModel(QObject):
     image_loaded = pyqtSignal(str)
     double_image_loaded = pyqtSignal(str, str)
     layout_updated = pyqtSignal(ViewMode)
+    page_updated = pyqtSignal(int)
 
     def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None, language: str = 'ko'):
         super().__init__()
@@ -159,3 +160,84 @@ class ReaderModel(QObject):
     def update_layout(self):
         self.load_image()
         self.layout_updated.emit(self.view_mode)
+
+    def update_page_variants(self, page_index: int):
+        """
+        Refreshes the variants for the page at page_index from the disk/config.
+        This is used when alts are added/removed externally or unlinked.
+        """
+        if not (0 <= page_index < len(self.images)):
+            return
+
+        page = self.images[page_index]
+        if not page.images:
+            return
+
+        # The main file (key) for this page group
+        main_file = page.images[0]
+        chapter_name = Path(self.manga_dir).name
+        alt_config = AltManager.load_alts(str(self.series['path']))
+        
+        # 1. Re-build the variants list for just this page
+        # Logic similar to group_images but focused on one main file
+        new_variants = [main_file]
+        main_name = Path(main_file).name
+        
+        # Save current path to restore selection
+        current_variant_path = page.path
+
+        chapter_alts = alt_config.get(chapter_name, {})
+        
+        if main_name in chapter_alts:
+            # We need to resolve paths. We don't have the full list of all files to map from name -> path easily 
+            # unless we scan or just assume they are in the same dir or alts dir.
+            # However, usually alts are in 'alts/' folder or same folder.
+            # Existing Page object has paths. 
+            # But we might have ADDED a new file which is not in Page object yet.
+            
+            # We can construct paths.
+            # If the alt config has names, we check if they exist in alts dir or main dir.
+            
+            alt_names = chapter_alts[main_name]
+            found_alts = []
+            
+            # Strategy: Check 'alts' subdirectory of the chapter folder, and the chapter folder itself.
+            # We know 'self.manga_dir' is the chapter folder.
+            chapter_dir = Path(self.manga_dir)
+            possible_dirs = [chapter_dir / "alts", chapter_dir]
+            
+            for alt_name in alt_names:
+                for d in possible_dirs:
+                    candidate = d / alt_name
+                    if candidate.exists():
+                        found_alts.append(str(candidate))
+                        break
+            
+            # Sort alts (re-use sort logic if possible, or duplicate for now as it's small)
+            ANIM_EXTS = {'.gif'}
+            VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
+            def get_priority(path_str):
+                suffix = Path(path_str).suffix.lower()
+                if suffix in VIDEO_EXTS: return 2
+                if suffix in ANIM_EXTS: return 1
+                return 0 # Image
+            
+            found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), Path(p).name.lower()))
+            new_variants.extend(found_alts)
+
+        # 2. Update the Page object
+        page.images = new_variants
+        
+        # Restore selection
+        # Normalize paths for comparison just in case
+        try:
+            # Find index of current_variant_path in new_variants
+            # We use simple string match as they should be same absolute paths
+            new_index = new_variants.index(current_variant_path)
+            page.current_variant_index = new_index
+        except ValueError:
+            # If path lost (e.g. unlinked), default to 0
+            page.current_variant_index = 0
+        
+        # 3. Emit signal
+        self.page_updated.emit(page_index)
