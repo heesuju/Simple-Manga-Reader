@@ -85,7 +85,7 @@ class ChapterListItemWidget(QWidget):
             self.chapter_number_label.setText(f'{1:02}')
         
         self.chapter_number_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 0px; color: white; background: transparent;")
-        self.name_label.setText(Path(chapter['path']).name)
+        self.name_label.setText(chapter.get('name', Path(chapter['path']).name))
         self.name_label.setStyleSheet("color: white; background: transparent;")
         self.page_count_label.setStyleSheet("color: white; background: transparent;")
         self.page_count_label.setText("...")
