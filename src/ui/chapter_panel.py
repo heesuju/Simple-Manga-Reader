@@ -1,7 +1,7 @@
 from typing import List
 from pathlib import Path
 
-from PyQt6.QtCore import QThreadPool
+from PyQt6.QtCore import QThreadPool, QTimer
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.workers.thumbnail_worker import ThumbnailWorker
@@ -16,6 +16,40 @@ class ChapterPanel(CollapsiblePanel):
         self.on_chapter_changed = on_chapter_changed
         self.chapter_thumbnail_widgets = []
         self.current_chapter_thumbnail = None
+
+        self.navigate_first.connect(self._go_first)
+        self.navigate_prev.connect(self._go_prev)
+        self.navigate_next.connect(self._go_next)
+        self.navigate_last.connect(self._go_last)
+
+    def _go_first(self):
+        if self.model and self.model.chapters:
+            self.on_chapter_changed(1)
+
+    def _go_prev(self):
+        if self.model and self.model.chapters:
+            # current_index is 0-based. If index is 5 (chapter 6), we want chapter 5 (index 4).
+            # on_chapter_changed takes 1-based index (chapter number)
+            # Chapter 6 is #6. Previous is #5.
+            current = self.model.chapter_index + 1
+            if current > 1:
+                self.on_chapter_changed(current - 1)
+
+    def _go_next(self):
+        if self.model and self.model.chapters:
+            current = self.model.chapter_index + 1
+            if current < len(self.model.chapters):
+                self.on_chapter_changed(current + 1)
+
+    def _go_last(self):
+        if self.model and self.model.chapters:
+            self.on_chapter_changed(len(self.model.chapters))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.model and self.current_chapter_thumbnail:
+             # Defer the snap slightly to ensure layout is ready
+            QTimer.singleShot(50, lambda: self.content_area.snapToItemIfOutOfView(self.model.chapter_index, self.current_chapter_thumbnail.width()))
 
     def _load_thumbnail(self, path):
         if '|' in path:

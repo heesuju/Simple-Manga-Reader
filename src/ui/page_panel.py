@@ -22,6 +22,38 @@ class PagePanel(CollapsiblePanel):
         self.batch_timer = QTimer(self)
         self.batch_timer.setSingleShot(True)
         self.batch_timer.timeout.connect(self._add_next_thumbnail_batch)
+        
+        self.navigate_first.connect(self._go_first)
+        self.navigate_prev.connect(self._go_prev)
+        self.navigate_next.connect(self._go_next)
+        self.navigate_last.connect(self._go_last)
+
+    def _go_first(self):
+        if self.model:
+            self.on_page_changed(1)
+
+    def _go_prev(self):
+        if self.model:
+            current = self.model.current_index + 1
+            # Check model mode for step usage? For now single step.
+            if current > 1:
+                self.on_page_changed(current - 1)
+
+    def _go_next(self):
+        if self.model:
+            current = self.model.current_index + 1
+            if current < len(self.model.images):
+                self.on_page_changed(current + 1)
+
+    def _go_last(self):
+        if self.model:
+            self.on_page_changed(len(self.model.images))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.model:
+             # Defer the snap slightly to ensure layout is ready
+            QTimer.singleShot(50, lambda: self._update_page_selection(self.model.current_index))
 
     def _load_thumbnail(self, path: str):
         if '|' in path:

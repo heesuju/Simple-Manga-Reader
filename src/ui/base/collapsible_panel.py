@@ -65,6 +65,10 @@ class HorizontalScrollArea(QScrollArea):
 class CollapsiblePanel(QWidget):
     play_button_clicked = pyqtSignal()
     continuous_play_changed = pyqtSignal(bool)
+    navigate_first = pyqtSignal()
+    navigate_prev = pyqtSignal()
+    navigate_next = pyqtSignal()
+    navigate_last = pyqtSignal()
 
     def __init__(self, parent=None, name:str=""):
         super().__init__(parent)
@@ -80,6 +84,56 @@ class CollapsiblePanel(QWidget):
         self.input_layout = QHBoxLayout(self.input_container)
         self.input_layout.setContentsMargins(0,0,0,0)
         self.layout.addWidget(self.input_container)
+
+        # Navigation Buttons (First, Prev, Next, Last)
+        self.nav_buttons_layout = QHBoxLayout()
+        self.nav_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.nav_buttons_layout.setSpacing(5)
+        btn_style = """
+            QPushButton {
+                background-color: rgba(255, 255, 255, 30);
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 60);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 90);
+            }
+        """
+
+        # Center: Collapse Button
+        self.nav_buttons_layout.addStretch(1)
+        
+        self.btn_collapse = QPushButton("v")
+        self.btn_collapse.setFixedSize(40, 20)
+        self.btn_collapse.setStyleSheet(btn_style)
+        self.btn_collapse.clicked.connect(self.hide_content)
+        self.nav_buttons_layout.addWidget(self.btn_collapse)
+        
+        self.nav_buttons_layout.addStretch(1)
+
+        # Right: Navigation Buttons
+        self.btn_first = QPushButton("<<")
+        self.btn_prev = QPushButton("<")
+        self.btn_next = QPushButton(">")
+        self.btn_last = QPushButton(">>")
+
+
+        for btn in [self.btn_first, self.btn_prev, self.btn_next, self.btn_last]:
+            btn.setFixedSize(40, 20)
+            btn.setStyleSheet(btn_style)
+            self.nav_buttons_layout.addWidget(btn)
+
+        self.btn_first.clicked.connect(self.navigate_first.emit)
+        self.btn_prev.clicked.connect(self.navigate_prev.emit)
+        self.btn_next.clicked.connect(self.navigate_next.emit)
+        self.btn_last.clicked.connect(self.navigate_last.emit)
+        
+        self.layout.addLayout(self.nav_buttons_layout)
 
         self.content_area = HorizontalScrollArea()
         self.content_area.setStyleSheet("background: transparent;")
@@ -106,6 +160,7 @@ class CollapsiblePanel(QWidget):
     def show_content(self):
         self.content_area.setVisible(True)
         self.setVisible(True)
+        # Update button capability if needed, or just let them be
 
     def hide_content(self):
         self.content_area.setVisible(False)
