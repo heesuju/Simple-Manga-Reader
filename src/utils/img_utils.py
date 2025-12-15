@@ -76,13 +76,31 @@ def empty_placeholder(width:int=150, height:int=200):
     pixmap.fill(QColor("black"))
     return pixmap
 
-def load_thumbnail(reader:QImageReader, width:int, height:int, quality:int=50):
-    reader.setScaledSize(QSize(width, height))
+def load_thumbnail(reader:QImageReader, width:int, height:int, quality:int=50, source_size:QSize=None):
+    if source_size:
+        size = source_size
+    else:
+        size = reader.size()
+    
+    if size.isEmpty():
+        return empty_placeholder(width, height)
+    
+    src_w = size.width()
+    src_h = size.height()
+    
+    # Calculate scale to COVER the target area (Expand)
+    scale = max(width / src_w, height / src_h)
+    new_w = int(src_w * scale)
+    new_h = int(src_h * scale)
+
+    reader.setScaledSize(QSize(new_w, new_h))
     reader.setQuality(quality)  # Lower quality for faster loading
     image = reader.read()
     if image.isNull():
         return empty_placeholder(width, height)
-    return QPixmap.fromImage(image)
+    
+    pixmap = QPixmap.fromImage(image)
+    return crop_pixmap(pixmap, width, height)
 
 def load_thumbnail_from_path(path, width=150, height=200, crop=None):
     path_str = str(path)
@@ -130,18 +148,21 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
         reader = QImageReader(path_str)
         original_size = reader.size()
         
+        effective_size = original_size
         if crop:
             if original_size.width() > original_size.height():
                 if crop == 'left':
+                    effective_size = QSize(original_size.width() // 2, original_size.height())
                     reader.setClipRect(QRect(0, 0, original_size.width() // 2, original_size.height()))
                 elif crop == 'right':
+                    effective_size = QSize(original_size.width() // 2, original_size.height())
                     reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
 
-        pixmap = load_thumbnail(reader, width, height)
+        pixmap = load_thumbnail(reader, width, height, source_size=effective_size)
 
     if pixmap and not pixmap.isNull():
-        # Scale and save the thumbnail
-        scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        # Scale (Crop) and save the thumbnail
+        scaled_pixmap = crop_pixmap(pixmap, width, height)
         scaled_pixmap.save(str(cached_thumb_path), "PNG")
         return scaled_pixmap
 
@@ -209,15 +230,18 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
 
                 reader = QImageReader(buffer, QByteArray())
                 original_size = reader.size()
+                effective_size = original_size
 
                 if crop:
                     if original_size.width() > original_size.height():
                         if crop == 'left':
+                            effective_size = QSize(original_size.width() // 2, original_size.height())
                             reader.setClipRect(QRect(0, 0, original_size.width() // 2, original_size.height()))
                         elif crop == 'right':
+                            effective_size = QSize(original_size.width() // 2, original_size.height())
                             reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
 
-                pixmap = load_thumbnail(reader, width, height)
+                pixmap = load_thumbnail(reader, width, height, source_size=effective_size)
 
                 if pixmap and not pixmap.isNull():
                     pixmap.save(str(cached_thumb_path), "PNG")
