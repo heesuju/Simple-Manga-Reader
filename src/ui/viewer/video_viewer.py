@@ -1,12 +1,19 @@
 import os
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
-from PyQt6.QtWidgets import QGraphicsPixmapItem
-from PyQt6.QtCore import QUrl, QSizeF, QRectF, Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QAction
+from PyQt6.QtWidgets import QMenu, QFileDialog, QGraphicsPixmapItem
+from PyQt6.QtCore import QUrl, QSizeF, QRectF, Qt, pyqtSignal, QPointF
 
 from src.ui.viewer.base_viewer import BaseViewer
-from src.workers.view_workers import VideoFrameExtractorWorker, VIDEO_EXTS
+from src.workers.view_workers import VideoFrameExtractorWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
+
+class VideoItem(QGraphicsVideoItem):
+    context_menu_requested = pyqtSignal(object) # QPointF (scene pos)
+
+    def contextMenuEvent(self, event):
+        self.context_menu_requested.emit(event.scenePos())
+
 
 class VideoViewer(BaseViewer):
     def __init__(self, reader_view):
@@ -16,7 +23,7 @@ class VideoViewer(BaseViewer):
         self.audio_output = QAudioOutput(reader_view)
         self.media_player.setAudioOutput(self.audio_output)
         
-        self.video_item: QGraphicsVideoItem | None = None
+        self.video_item: VideoItem | None = None
         self.video_last_frame_item: QGraphicsPixmapItem | None = None
         self.last_frame_pixmap: QPixmap | None = None
         
@@ -64,7 +71,8 @@ class VideoViewer(BaseViewer):
 
     def _ensure_items_in_scene(self):
         if self.video_item is None:
-            self.video_item = QGraphicsVideoItem()
+            self.video_item = VideoItem()
+            self.video_item.context_menu_requested.connect(self._show_context_menu)
             # self.reader_view.scene.addItem(self.video_item) handled below logic 
             
         if self.video_last_frame_item is None:
@@ -227,6 +235,53 @@ class VideoViewer(BaseViewer):
 
     def _set_auto_play(self, enabled):
         self.auto_play = enabled
+
+    def _show_context_menu(self, scene_pos: QPointF):
+        menu = QMenu()
+        save_action = QAction("Save Current Frame", self.reader_view)
+        save_action.triggered.connect(self._save_current_frame)
+        menu.addAction(save_action)
+        
+        # Convert scene pos to screen pos for menu display
+        view_pos = self.reader_view.view.mapFromScene(scene_pos)
+        global_pos = self.reader_view.view.mapToGlobal(view_pos)
+        
+        menu.exec(global_pos)
+
+    def _save_current_frame(self):
+        # Pause video while saving
+        was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if was_playing:
+            self.media_player.pause()
+            
+        current_time = self.media_player.position()
+        
+        # Determine default filename
+        base_name = os.path.splitext(os.path.basename(self.media_player.source().toLocalFile()))[0]
+        default_name = f"{base_name}_frame_{current_time}ms.png"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.reader_view,
+            "Save Current Frame",
+            default_name,
+            "Images (*.png *.jpg *.webp)"
+        )
+        
+        if file_path:
+            source_path = self.media_player.source().toLocalFile()
+            worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
+            worker.signals.finished.connect(self._on_frame_saved)
+            self.reader_view.thread_pool.start(worker)
+        elif was_playing:
+            # Resume if user cancelled and it was playing
+            self.media_player.play()
+
+    def _on_frame_saved(self, source_path, q_image, save_path):
+        q_image.save(save_path)
+        # Optional: Show a small notification or status bar message
+        # For now we assume typical user flow, maybe just log or do nothing.
+        # Could verify by checking if file exists.
+        pass
 
     def cleanup(self):
         self._stop_video()

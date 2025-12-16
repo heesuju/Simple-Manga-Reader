@@ -212,3 +212,36 @@ class VideoFrameExtractorWorker(QRunnable):
                 cap.release()
         except Exception as e:
             print(f"Error in async video extraction: {e}")
+
+class VideoTimestampFrameExtractorSignals(QObject):
+    finished = pyqtSignal(str, QImage, str) # source_path, image, save_path
+
+class VideoTimestampFrameExtractorWorker(QRunnable):
+    def __init__(self, path: str, timestamp_ms: int, save_path: str):
+        super().__init__()
+        self.path = path
+        self.timestamp_ms = timestamp_ms
+        self.save_path = save_path
+        self.signals = VideoTimestampFrameExtractorSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            import cv2
+            cap = cv2.VideoCapture(self.path)
+            if cap.isOpened():
+                # Seek to specific timestamp
+                cap.set(cv2.CAP_PROP_POS_MSEC, self.timestamp_ms)
+                ret, frame = cap.read()
+                if ret:
+                    # Convert BGR to RGB
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w, ch = frame.shape
+                    bytes_per_line = frame.strides[0]
+                    q_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+                    q_image = q_image.copy()
+                    
+                    self.signals.finished.emit(self.path, q_image, self.save_path)
+                cap.release()
+        except Exception as e:
+            print(f"Error in async video timestamp extraction: {e}")
