@@ -171,7 +171,7 @@ class PagePanel(CollapsiblePanel):
             current_thumb.set_selected(True)
             self.current_page_thumbnails.append(current_thumb)
             if snap:
-                self.content_area.snapToItemIfOutOfView(index)
+                self.content_area.scrollToWidget(current_thumb)
 
             if index + 1 < len(self.page_thumbnail_widgets):
                 next_thumb = self.page_thumbnail_widgets[index + 1]
@@ -182,7 +182,7 @@ class PagePanel(CollapsiblePanel):
             current_thumb.set_selected(True)
             self.current_page_thumbnails.append(current_thumb)
             if snap:
-                self.content_area.snapToItemIfOutOfView(index, current_thumb.width())
+                self.content_area.scrollToWidget(current_thumb)
 
     def _on_thumbnail_clicked(self, index: int):
         modifiers = QApplication.keyboardModifiers()

@@ -55,7 +55,7 @@ class ChapterPanel(CollapsiblePanel):
         super().showEvent(event)
         if self.model and self.current_chapter_thumbnail:
              # Defer the snap slightly to ensure layout is ready
-            QTimer.singleShot(50, lambda: self.content_area.snapToItemIfOutOfView(self.model.chapter_index, self.current_chapter_thumbnail.width()))
+            QTimer.singleShot(50, lambda: self.content_area.scrollToWidget(self.current_chapter_thumbnail))
 
     def _load_thumbnail(self, path):
         if '|' in path:
@@ -64,8 +64,10 @@ class ChapterPanel(CollapsiblePanel):
             return load_thumbnail_from_path(path, 150, 200)
     
     def _update_chapter_thumbnails(self, chapters:List[object]):
-        for i in reversed(range(self.thumbnails_layout.count() - 1)):
-            self.thumbnails_layout.itemAt(i).widget().setParent(None)
+        while self.thumbnails_layout.count():
+            item = self.thumbnails_layout.takeAt(0)
+            if item and item.widget():
+                item.widget().deleteLater()
         self.chapter_thumbnail_widgets.clear()
 
         self.chapters_to_load = chapters
@@ -114,7 +116,7 @@ class ChapterPanel(CollapsiblePanel):
         if index < len(self.chapter_thumbnail_widgets):
             self.current_chapter_thumbnail = self.chapter_thumbnail_widgets[index]
             self.current_chapter_thumbnail.set_selected(True)
-            self.content_area.snapToItemIfOutOfView(index, self.current_chapter_thumbnail.width())
+            self.content_area.scrollToWidget(self.current_chapter_thumbnail)
 
     def _change_chapter_by_thumbnail(self, index: int):
         self.on_chapter_changed(index + 1)

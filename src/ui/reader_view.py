@@ -196,6 +196,9 @@ class ReaderView(QWidget):
         self.page_panel.hide_content()
         self.chapter_panel.hide_content()
 
+        self.page_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.page_panel, expanded))
+        self.chapter_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.chapter_panel, expanded))
+
         self.original_view_mouse_press = self.view.mousePressEvent
         self.original_view_mouse_release = self.view.mouseReleaseEvent
         self.view.mousePressEvent = self._overlay_mouse_press
@@ -215,7 +218,39 @@ class ReaderView(QWidget):
         if self.current_viewer:
             self.current_viewer.on_resize(ev)
         
+        # Update expanded panel height if necessary
+        if self.page_panel.is_expanded:
+            self._update_expanded_panel_height(self.page_panel)
+        elif self.chapter_panel.is_expanded:
+            self._update_expanded_panel_height(self.chapter_panel)
+
         QTimer.singleShot(0, self.apply_last_zoom)
+        
+    def _on_panel_expand_toggled(self, panel, expanded: bool):
+        if expanded:
+            if panel == self.page_panel and self.chapter_panel.content_area.isVisible():
+                 self.chapter_panel.hide_content()
+            elif panel == self.chapter_panel and self.page_panel.content_area.isVisible():
+                 self.page_panel.hide_content()
+            
+            panel.show_content()
+            self._update_expanded_panel_height(panel)
+        else:
+            panel.setMinimumHeight(0)
+            panel.setMaximumHeight(16777215)
+            panel.updateGeometry()
+
+    def _update_expanded_panel_height(self, panel):
+        total_h = self.height()
+        top_h = self.top_panel.height()
+        slider_h = self.slider_panel.height() if self.slider_panel.isVisible() else 0
+        
+        padding = 20
+        
+        available_h = total_h - top_h - slider_h - padding
+        if available_h < 100: available_h = 100
+        
+        panel.setFixedHeight(available_h)
 
     def _on_slideshow_speed_changed(self):
         if self.model.view_mode == ViewMode.STRIP:

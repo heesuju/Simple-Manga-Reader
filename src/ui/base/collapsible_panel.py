@@ -3,6 +3,8 @@ from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSigna
 from PyQt6.QtGui import QPixmap
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
 
+from src.ui.components.flow_layout import FlowLayout
+
 class HorizontalScrollArea(QScrollArea):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -12,32 +14,82 @@ class HorizontalScrollArea(QScrollArea):
         self.animation = QPropertyAnimation(self.horizontalScrollBar(), b"value")
         self.animation.setDuration(50)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.vertical_mode = False
 
-    def snapToItem(self, index:int, width:int=110):
-        current_value = self.horizontalScrollBar().value()
-        target_value = (width * index // width) * width
-        self.animation.setStartValue(current_value)
-        self.animation.setEndValue(target_value)
+
+    def scrollToWidget(self, widget: QWidget):
+        # Ensure widget layout geometry is up to date
+        if not widget.isVisible():
+            return
+
+        target_pos = widget.pos()
+        target_size = widget.size()
+        
+        if self.vertical_mode:
+            scrollbar = self.verticalScrollBar()
+            viewport_size = self.viewport().height()
+            item_start = target_pos.y()
+            item_size = target_size.height()
+        else:
+            scrollbar = self.horizontalScrollBar()
+            viewport_size = self.viewport().width()
+            item_start = target_pos.x()
+            item_size = target_size.width()
+
+        current_val = scrollbar.value()
+        
+        # Calculate target value to Ensure Visible (Snap to nearest edge)
+        # If item is above/left of view, snap to start: target = item_start
+        # If item is below/right of view, snap to end: target = item_end - viewport_size
+        
+        # item_end = item_start + item_size
+        # We want: 
+        # 1. item_start >= target_val
+        # 2. item_start + item_size <= target_val + viewport_size  => item_start + item_size - viewport_size <= target_val
+        
+        # So target_val must be roughly between [item_start + item_size - viewport_size, item_start]
+        # But we want minimal movement.
+        
+        min_needed = item_start  # If we are at this val, item is at top/left
+        max_needed = item_start + item_size - viewport_size # If we are at this val, item is at bottom/right
+        
+        # If item is larger than viewport, prioritize start?
+        if item_size > viewport_size:
+             target_val = item_start
+        else:
+            if current_val > min_needed:
+                # Viewport is too far down/right (current > item_start)
+                # We need to scroll up/left
+                target_val = min_needed
+            elif current_val < max_needed:
+                # Viewport is too far up/left (current + viewport < item_end)
+                # We need to scroll down/right
+                target_val = max_needed
+            else:
+                # Already visible (between min_needed and max_needed)
+                return
+
+        # Clamp
+        target_val = max(0, min(target_val, scrollbar.maximum()))
+        
+        if self.vertical_mode:
+            self.animation.setPropertyName(b"value")
+            self.animation.setTargetObject(self.verticalScrollBar())
+        else:
+            self.animation.setPropertyName(b"value")
+            self.animation.setTargetObject(self.horizontalScrollBar())
+
+        self.animation.stop()
+        self.animation.setStartValue(current_val)
+        self.animation.setEndValue(int(target_val))
         self.animation.start()
+        
 
-    def snapToItemIfOutOfView(self, index: int, width: int = 110):
-        target_item_start_x = index * width
-        target_item_end_x = (index + 1) * width
-
-        viewport_start_x = self.horizontalScrollBar().value()
-        viewport_end_x = viewport_start_x + self.viewport().width()
-
-        # Check if the item is entirely outside the current view
-        if target_item_end_x < viewport_start_x or target_item_start_x > viewport_end_x:
-            self.snapToItem(index, width)
-        # Check if the item is partially visible but its start is out of view (scrolling right)
-        elif target_item_start_x < viewport_start_x:
-            self.snapToItem(index, width)
-        # Check if the item is partially visible but its end is out of view (scrolling left)
-        elif target_item_end_x > viewport_end_x:
-            self.snapToItem(index, width)
-            
     def wheelEvent(self, event):
+        if self.vertical_mode:
+            super().wheelEvent(event)
+            return
+
         if self.animation.state() == QPropertyAnimation.State.Running:
 
             return
@@ -69,6 +121,7 @@ class CollapsiblePanel(QWidget):
     navigate_prev = pyqtSignal()
     navigate_next = pyqtSignal()
     navigate_last = pyqtSignal()
+    expand_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None, name:str=""):
         super().__init__(parent)
@@ -113,6 +166,12 @@ class CollapsiblePanel(QWidget):
         self.btn_collapse.setStyleSheet(btn_style)
         self.btn_collapse.clicked.connect(self.hide_content)
         self.nav_buttons_layout.addWidget(self.btn_collapse)
+
+        self.btn_expand = QPushButton("[]")
+        self.btn_expand.setFixedSize(40, 20)
+        self.btn_expand.setStyleSheet(btn_style)
+        self.btn_expand.clicked.connect(self.toggle_expand)
+        self.nav_buttons_layout.addWidget(self.btn_expand)
         
         self.nav_buttons_layout.addStretch(1)
 
@@ -149,14 +208,45 @@ class CollapsiblePanel(QWidget):
         
         self.thumbnails_widget = QWidget()
         self.thumbnails_widget.setStyleSheet("background: transparent;")
-        self.thumbnails_layout = QHBoxLayout(self.thumbnails_widget)
-        self.thumbnails_layout.setSpacing(10)
-        self.thumbnails_layout.setContentsMargins(0,0,0,0)
-        self.thumbnails_layout.addStretch()
+        
+        # Use FlowLayout for both modes
+        self.thumbnails_layout = FlowLayout(self.thumbnails_widget, margin=0, spacing=10)
+        self.thumbnails_layout.setSingleRow(True) # Start in single row (horizontal) mode
+        
         self.content_area.setWidget(self.thumbnails_widget)
 
+        self.is_expanded = False
         self.raise_()
 
+    def toggle_expand(self):
+        self.is_expanded = not self.is_expanded
+        self.btn_expand.setText("=" if self.is_expanded else "[]")
+        self.expand_toggled.emit(self.is_expanded)
+        self._update_layout_mode()
+
+    def _update_layout_mode(self):
+        # Refactored: No more widget moving or layout replacement!
+        # Just toggle the mode on the FlowLayout.
+        
+        if self.is_expanded:
+            self.thumbnails_layout.setSingleRow(False) # Wrap allowed (Grid)
+            self.thumbnails_layout.setSpacing(5)       # tighter spacing
+            
+            self.content_area.vertical_mode = True
+            self.content_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.content_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        else:
+            self.thumbnails_layout.setSingleRow(True)  # No wrap (Horizontal Strip)
+            self.thumbnails_layout.setSpacing(10)
+            
+            self.content_area.vertical_mode = False
+            self.content_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.content_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            
+        # Trigger update?
+        self.thumbnails_layout.invalidate()
+        self.thumbnails_widget.adjustSize() # Ensure widget resizes to fit new layout hint
+        
     def show_content(self):
         self.content_area.setVisible(True)
         self.setVisible(True)
