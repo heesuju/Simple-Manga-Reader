@@ -245,3 +245,59 @@ class VideoTimestampFrameExtractorWorker(QRunnable):
                 cap.release()
         except Exception as e:
             print(f"Error in async video timestamp extraction: {e}")
+
+class AsyncLoaderSignals(QObject):
+    finished = pyqtSignal(int, dict) # request_id, results {path: QImage}
+
+class AsyncLoaderWorker(QRunnable):
+    def __init__(self, request_id: int, paths: list[str]):
+        super().__init__()
+        self.request_id = request_id
+        self.paths = paths
+        self.signals = AsyncLoaderSignals()
+
+    @pyqtSlot()
+    def run(self):
+        results = {}
+        for path in self.paths:
+            if not path: continue
+            
+            try:
+                image_data = None
+                path_str = path
+                crop = None
+                
+                if isinstance(path, str):
+                    if path.endswith("_left"):
+                        path_str = path[:-5]
+                        crop = "left"
+                    elif path.endswith("_right"):
+                        path_str = path[:-6]
+                        crop = "right"
+
+                if '|' in path_str:
+                    image_data = get_image_data_from_zip(path_str)
+                elif os.path.exists(path_str):
+                    pass # load directly
+                
+                q_image = QImage()
+                if image_data:
+                    q_image.loadFromData(image_data)
+                elif os.path.exists(path_str):
+                    q_image.load(path_str)
+                
+                if not q_image.isNull() and crop:
+                    w = q_image.width()
+                    h = q_image.height()
+                    if crop == 'left':
+                        q_image = q_image.copy(0, 0, w // 2, h)
+                    elif crop == 'right':
+                        q_image = q_image.copy(w // 2, 0, w // 2, h)
+
+                if not q_image.isNull():
+                    results[path] = q_image
+                    
+            except Exception as e:
+                print(f"Error loading image async {path}: {e}")
+
+        self.signals.finished.emit(self.request_id, results)

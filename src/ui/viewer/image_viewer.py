@@ -4,12 +4,13 @@ from typing import Union, List
 from PIL import Image, ImageQt
 
 from PyQt6.QtWidgets import QGraphicsPixmapItem
-from PyQt6.QtGui import QPixmap, QMovie
-from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice
+from PyQt6.QtGui import QPixmap, QMovie, QImage
+from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.enums import ViewMode
+from src.workers.view_workers import AsyncLoaderWorker
 
 class ImageViewer(BaseViewer):
     def __init__(self, reader_view):
@@ -18,6 +19,7 @@ class ImageViewer(BaseViewer):
         self.movie = None
         self.movie_buffer = None # Keep reference to buffer
         self.original_pixmap = None
+        self.current_request_id = 0
 
     def set_active(self, active: bool):
         if active:
@@ -40,14 +42,74 @@ class ImageViewer(BaseViewer):
 
     def load(self, item):
         self._stop_movie()
+        self.current_request_id += 1
+        req_id = self.current_request_id
         
-        # item can be a single path (str) or a tuple of paths (for double view) or None
+        paths = []
         if isinstance(item, tuple) or (isinstance(item, list) and len(item) == 2):
-             self._load_double_images(item[0], item[1])
+             paths = [item[0], item[1]]
         elif isinstance(item, str):
-             self._load_single_image(item)
+             paths = [item]
         else:
-            pass
+            return
+
+        # Keep animated images on main thread for QMovie
+        if len(paths) == 1:
+            if paths[0].lower().endswith((".gif", ".webp")):
+                # Check for actual animation done in _load_single_image
+                # We can just delegate.
+                self._load_single_image_sync(paths[0])
+                return
+
+        worker = AsyncLoaderWorker(req_id, paths)
+        worker.signals.finished.connect(self._on_async_load_finished)
+        self.reader_view.thread_pool.start(worker)
+
+    def _on_async_load_finished(self, request_id: int, results: dict):
+        if request_id != self.current_request_id:
+            return
+        
+        if len(results) == 0:
+            return
+
+        self._clear_scene_pixmaps()
+        
+        loaded_keys = list(results.keys())
+        
+        if len(loaded_keys) == 1:
+            # Single
+            path = loaded_keys[0]
+            q_img = results[path]
+            pixmap = QPixmap.fromImage(q_img)
+            self.original_pixmap = pixmap
+            self._set_pixmap(pixmap)
+            
+        elif len(loaded_keys) >= 2:
+            imgs = list(results.values())
+            pix1 = QPixmap.fromImage(imgs[0])
+            pix2 = QPixmap.fromImage(imgs[1])
+            
+            self._setup_double_view(pix1, pix2)
+
+        self.reader_view.view.reset_zoom_state()
+        QTimer.singleShot(0, self.reader_view.apply_last_zoom)
+
+    def _setup_double_view(self, pix1, pix2):
+        item1 = QGraphicsPixmapItem(pix1)
+        item1.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        item1.setPos(0, 0)
+        self.reader_view.scene.addItem(item1)
+
+        item2 = QGraphicsPixmapItem(pix2)
+        item2.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        item2.setPos(pix1.width(), 0)
+        self.reader_view.scene.addItem(item2)
+
+        total_width = pix1.width() + pix2.width()
+        total_height = max(pix1.height(), pix2.height())
+        
+        self.reader_view.scene.setSceneRect(0, 0, total_width, total_height)
+        self.pixmap_item = item1
 
     def _stop_movie(self):
         if self.movie:
@@ -57,7 +119,7 @@ class ImageViewer(BaseViewer):
              self.movie_buffer.close()
              self.movie_buffer = None
 
-    def _load_single_image(self, path: str):
+    def _load_single_image_sync(self, path: str):
         self._clear_scene_pixmaps()
         
         # Handle animated images via QMovie
@@ -89,11 +151,6 @@ class ImageViewer(BaseViewer):
                 self.original_pixmap = self._load_pixmap(path)
                 self._set_pixmap(self.original_pixmap)
 
-        else:
-            # Normal image
-            self.original_pixmap = self._load_pixmap(path)
-            self._set_pixmap(self.original_pixmap)
-
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
 
@@ -102,35 +159,6 @@ class ImageViewer(BaseViewer):
             pixmap = self.movie.currentPixmap()
             if not pixmap.isNull():
                  self.pixmap_item.setPixmap(pixmap)
-
-    def _load_double_images(self, image1_path, image2_path):
-        self._clear_scene_pixmaps()
-
-        pix1 = self._load_pixmap(image1_path)
-        pix2 = self._load_pixmap(image2_path) if image2_path else None
-
-        item1 = QGraphicsPixmapItem(pix1)
-        item1.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-        item1.setPos(0, 0)
-        self.reader_view.scene.addItem(item1)
-
-        total_width = pix1.width()
-        total_height = pix1.height()
-
-        if pix2:
-            item2 = QGraphicsPixmapItem(pix2)
-            item2.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-            item2.setPos(pix1.width(), 0)
-            self.reader_view.scene.addItem(item2)
-
-            total_width = pix1.width() + pix2.width()
-            total_height = max(pix1.height(), pix2.height())
-
-        self.reader_view.scene.setSceneRect(0, 0, total_width, total_height)
-        self.pixmap_item = item1 
-
-        self.reader_view.view.reset_zoom_state()
-        QTimer.singleShot(0, self.reader_view.apply_last_zoom)
 
     def _load_pixmap(self, image_source: Union[str, bytes]) -> QPixmap:
         if image_source == "placeholder":
