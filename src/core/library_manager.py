@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from .library_scanner import LibraryScanner
 from src.utils.database_utils import get_db_connection, create_tables
+from src.utils.img_utils import get_chapter_number
 
 class LibraryManager:
     def __init__(self):
@@ -19,12 +20,7 @@ class LibraryManager:
         cursor.execute("SELECT * FROM series")
         series_list = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        for series in series_list:
-            series['chapters'] = self.get_chapters(series)
-            series['authors'] = self.get_authors(series['id'])
-            series['genres'] = self.get_genres(series['id'])
-            series['themes'] = self.get_themes(series['id'])
-            series['formats'] = self.get_formats(series['id'])
+        self._populate_metadata(series_list)
         return series_list
 
     def search_series(self, search_term):
@@ -33,12 +29,7 @@ class LibraryManager:
         cursor.execute("SELECT * FROM series WHERE name LIKE ?", (f'%{search_term}%',))
         series_list = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        for series in series_list:
-            series['chapters'] = self.get_chapters(series)
-            series['authors'] = self.get_authors(series['id'])
-            series['genres'] = self.get_genres(series['id'])
-            series['themes'] = self.get_themes(series['id'])
-            series['formats'] = self.get_formats(series['id'])
+        self._populate_metadata(series_list)
         return series_list
 
     def get_recently_opened_series(self, limit=20):
@@ -47,12 +38,7 @@ class LibraryManager:
         cursor.execute("SELECT * FROM series WHERE last_opened_date IS NOT NULL ORDER BY last_opened_date DESC LIMIT ?", (limit,))
         series_list = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        for series in series_list:
-            series['chapters'] = self.get_chapters(series)
-            series['authors'] = self.get_authors(series['id'])
-            series['genres'] = self.get_genres(series['id'])
-            series['themes'] = self.get_themes(series['id'])
-            series['formats'] = self.get_formats(series['id'])
+        self._populate_metadata(series_list)
         return series_list
 
     def get_authors(self, series_id):
@@ -187,12 +173,7 @@ class LibraryManager:
         series_list = [dict(row) for row in cursor.fetchall()]
         conn.close()
 
-        for series in series_list:
-            series['chapters'] = self.get_chapters(series)
-            series['authors'] = self.get_authors(series['id'])
-            series['genres'] = self.get_genres(series['id'])
-            series['themes'] = self.get_themes(series['id'])
-            series['formats'] = self.get_formats(series['id'])
+        self._populate_metadata(series_list)
         
         return series_list
 
@@ -205,11 +186,7 @@ class LibraryManager:
         conn.close()
         if series_row:
             series = dict(series_row)
-            series['chapters'] = self.get_chapters(series)
-            series['authors'] = self.get_authors(series['id'])
-            series['genres'] = self.get_genres(series['id'])
-            series['themes'] = self.get_themes(series['id'])
-            series['formats'] = self.get_formats(series['id'])
+            self._populate_metadata([series])
             return series
         return None
 
@@ -472,5 +449,68 @@ class LibraryManager:
         except Exception as e:
             print(f"Error rescanning series path: {e}")
             conn.rollback()
+        finally:
+            conn.close()
+
+    def _populate_metadata(self, series_list):
+        if not series_list:
+            return
+
+        series_map = {series['id']: series for series in series_list}
+        series_ids = list(series_map.keys())
+        
+        # Initialize default empty lists
+        for series in series_list:
+            series['chapters'] = []
+            series['authors'] = []
+            series['genres'] = []
+            series['themes'] = []
+            series['formats'] = []
+
+        if not series_ids:
+            return
+
+        placeholders = ', '.join('?' * len(series_ids))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Batch fetch chapters
+            cursor.execute(f"SELECT * FROM chapters WHERE series_id IN ({placeholders})", series_ids)
+            all_chapters = [dict(row) for row in cursor.fetchall()]
+            
+            # Group chapters by series_id
+            for chapter in all_chapters:
+                sid = chapter['series_id']
+                if sid in series_map:
+                    series_map[sid]['chapters'].append(chapter)
+            
+            # Sort chapters for each series
+            for series in series_list:
+                series['chapters'].sort(key=lambda x: get_chapter_number(x['path']))
+
+            # Helper to fetch and map simple junctions
+            def fetch_junction(table, join_table, value_col, join_id_col, target_field):
+                query = f"""
+                    SELECT j.series_id, t.name 
+                    FROM {table} t
+                    JOIN {join_table} j ON t.id = j.{join_id_col}
+                    WHERE j.series_id IN ({placeholders})
+                """
+                cursor.execute(query, series_ids)
+                rows = cursor.fetchall()
+                for row in rows:
+                    sid = row['series_id']
+                    val = row['name']
+                    if sid in series_map:
+                        series_map[sid][target_field].append(val)
+
+            fetch_junction('authors', 'series_authors', 'name', 'author_id', 'authors')
+            fetch_junction('genres', 'series_genres', 'name', 'genre_id', 'genres')
+            fetch_junction('themes', 'series_themes', 'name', 'theme_id', 'themes')
+            fetch_junction('formats', 'series_formats', 'name', 'format_id', 'formats')
+
+        except Exception as e:
+            print(f"Error populating metadata: {e}")
         finally:
             conn.close()
