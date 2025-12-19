@@ -1,7 +1,8 @@
-import math
-from PyQt6.QtWidgets import QGraphicsView, QFrame
-from PyQt6.QtGui import QPixmap, QKeySequence, QPainter, QShortcut, QTransform
-from PyQt6.QtCore import Qt, QTimer, pyqtProperty
+import os
+import shutil
+from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem
+from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform
+from PyQt6.QtCore import Qt, pyqtProperty
 
 class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
@@ -26,6 +27,48 @@ class ImageView(QGraphicsView):
             QPainter.RenderHint.Antialiasing |
             QPainter.RenderHint.SmoothPixmapTransform
         )
+
+    def contextMenuEvent(self, event):
+        item = self.itemAt(event.pos())
+        if not item:
+            return
+
+        # Handle Pixmap items or items with path data
+        path = item.data(0)
+        if hasattr(item, 'pixmap') and path: # Ensure it is likely our image item
+             self._show_context_menu(event.globalPos(), path)
+        else:
+             super().contextMenuEvent(event)
+
+    def _show_context_menu(self, global_pos, path):
+         if not os.path.exists(path):
+             return
+
+         menu = QMenu(self)
+         save_action = QAction("Save As...", self)
+         save_action.triggered.connect(lambda: self._save_image(path))
+         menu.addAction(save_action)
+         menu.exec(global_pos)
+
+    def _save_image(self, path):
+        base_name = os.path.basename(path)
+        ext = os.path.splitext(base_name)[1]
+        
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        initial_path = os.path.join(downloads_dir, base_name)
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image As",
+            initial_path,
+            f"Image (*{ext});;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                shutil.copy2(path, file_path)
+            except Exception as e:
+                print(f"Error copying image: {e}")
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:

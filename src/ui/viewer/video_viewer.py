@@ -105,6 +105,7 @@ class VideoViewer(BaseViewer):
 
         self.media_player.setVideoOutput(self.video_item)
         self.media_player.setSource(QUrl.fromLocalFile(path))
+        self.video_item.setData(0, path)
         self.video_item.setVisible(True)
         
         vp = self.reader_view.view.viewport().size()
@@ -121,6 +122,8 @@ class VideoViewer(BaseViewer):
             self.media_player.stop()
         self.media_player.setSource(QUrl())
         self.media_player.setVideoOutput(None)
+        if self.video_item:
+            self.video_item.setData(0, None)
 
     def _on_last_frame_extracted(self, path, q_image):
         if not self.media_player.source().toLocalFile():
@@ -238,15 +241,52 @@ class VideoViewer(BaseViewer):
 
     def _show_context_menu(self, scene_pos: QPointF):
         menu = QMenu()
-        save_action = QAction("Save Current Frame", self.reader_view)
-        save_action.triggered.connect(self._save_current_frame)
-        menu.addAction(save_action)
+        
+        save_frame_action = QAction("Save Current Frame", self.reader_view)
+        save_frame_action.triggered.connect(self._save_current_frame)
+        menu.addAction(save_frame_action)
+        
+        save_video_action = QAction("Save Video As...", self.reader_view)
+        save_video_action.triggered.connect(self._save_current_video)
+        menu.addAction(save_video_action)
         
         # Convert scene pos to screen pos for menu display
         view_pos = self.reader_view.view.mapFromScene(scene_pos)
         global_pos = self.reader_view.view.mapToGlobal(view_pos)
         
         menu.exec(global_pos)
+
+    def _save_current_video(self):
+        path = self.video_item.data(0)
+        if not path or not os.path.exists(path):
+            return
+
+        was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if was_playing:
+            self.media_player.pause()
+
+        import shutil
+        base_name = os.path.basename(path)
+        ext = os.path.splitext(base_name)[1]
+        
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        initial_path = os.path.join(downloads_dir, base_name)
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.reader_view,
+            "Save Video As",
+            initial_path,
+            f"Video (*{ext});;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                shutil.copy2(path, file_path)
+            except Exception as e:
+                print(f"Error copying video: {e}")
+        
+        if was_playing:
+            self.media_player.play()
 
     def _save_current_frame(self):
         # Pause video while saving
@@ -257,23 +297,29 @@ class VideoViewer(BaseViewer):
         current_time = self.media_player.position()
         
         # Determine default filename
-        base_name = os.path.splitext(os.path.basename(self.media_player.source().toLocalFile()))[0]
-        default_name = f"{base_name}_frame_{current_time}ms.png"
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self.reader_view,
-            "Save Current Frame",
-            default_name,
-            "Images (*.png *.jpg *.webp)"
-        )
-        
-        if file_path:
-            source_path = self.media_player.source().toLocalFile()
-            worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
-            worker.signals.finished.connect(self._on_frame_saved)
-            self.reader_view.thread_pool.start(worker)
+        if self.media_player.source().toLocalFile():
+            base_name = os.path.splitext(os.path.basename(self.media_player.source().toLocalFile()))[0]
+            default_name = f"{base_name}_frame_{current_time}ms.png"
+            
+            downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+            initial_path = os.path.join(downloads_dir, default_name)
+            
+            file_path, _ = QFileDialog.getSaveFileName(
+                self.reader_view,
+                "Save Current Frame",
+                initial_path,
+                "Images (*.png *.jpg *.webp)"
+            )
+            
+            if file_path:
+                source_path = self.media_player.source().toLocalFile()
+                worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
+                worker.signals.finished.connect(self._on_frame_saved)
+                self.reader_view.thread_pool.start(worker)
+            elif was_playing:
+                # Resume if user cancelled and it was playing
+                self.media_player.play()
         elif was_playing:
-            # Resume if user cancelled and it was playing
             self.media_player.play()
 
     def _on_frame_saved(self, source_path, q_image, save_path):

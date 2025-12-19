@@ -82,27 +82,30 @@ class ImageViewer(BaseViewer):
             q_img = results[path]
             pixmap = QPixmap.fromImage(q_img)
             self.original_pixmap = pixmap
-            self._set_pixmap(pixmap)
+            self._set_pixmap(pixmap, path)
             
         elif len(loaded_keys) >= 2:
             imgs = list(results.values())
+            paths = list(results.keys())
             pix1 = QPixmap.fromImage(imgs[0])
             pix2 = QPixmap.fromImage(imgs[1])
             
-            self._setup_double_view(pix1, pix2)
+            self._setup_double_view(pix1, pix2, paths[0], paths[1])
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
 
-    def _setup_double_view(self, pix1, pix2):
+    def _setup_double_view(self, pix1, pix2, path1, path2):
         item1 = QGraphicsPixmapItem(pix1)
         item1.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         item1.setPos(0, 0)
+        item1.setData(0, path1)
         self.reader_view.scene.addItem(item1)
 
         item2 = QGraphicsPixmapItem(pix2)
         item2.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         item2.setPos(pix1.width(), 0)
+        item2.setData(0, path2)
         self.reader_view.scene.addItem(item2)
 
         total_width = pix1.width() + pix2.width()
@@ -145,11 +148,15 @@ class ImageViewer(BaseViewer):
                 self.movie.start()
                 # Initial frame
                 self.original_pixmap = self.movie.currentPixmap()
-                self._set_pixmap(self.original_pixmap)
+                self._set_pixmap(self.original_pixmap, path)
             else:
                 # Fallback if QMovie fails
                 self.original_pixmap = self._load_pixmap(path)
-                self._set_pixmap(self.original_pixmap)
+                self._set_pixmap(self.original_pixmap, path)
+        else:
+             # Standard sync load (fallback or specific use)
+             self.original_pixmap = self._load_pixmap(path)
+             self._set_pixmap(self.original_pixmap, path)
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
@@ -194,12 +201,14 @@ class ImageViewer(BaseViewer):
 
         return pixmap
 
-    def _set_pixmap(self, pixmap: QPixmap):
+    def _set_pixmap(self, pixmap: QPixmap, path: str = None):
         self._clear_scene_pixmaps()
         
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
         self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         self.pixmap_item.setPos(0, 0)
+        if path:
+            self.pixmap_item.setData(0, path)
         self.reader_view.scene.addItem(self.pixmap_item)
         self.reader_view.scene.setSceneRect(self.pixmap_item.boundingRect())
         
