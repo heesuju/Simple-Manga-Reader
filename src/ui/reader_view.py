@@ -611,9 +611,10 @@ class ReaderView(QWidget):
         if self.current_viewer:
              self.current_viewer.cleanup()
              
-        self.scene.clear()
         self.image_viewer.reset()
         self.video_viewer.reset()
+        
+        self.scene.clear()
         
         worker = ChapterLoaderWorker(
             manga_dir=self.model.manga_dir,
