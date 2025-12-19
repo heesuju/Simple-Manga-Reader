@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 from src.utils.manga_utils import get_info_from_manga_dex, get_manga_dex_author, get_cover_from_manga_dex
 from src.ui.selection_dialog import SelectionDialog
+from src.ui.components.csv_completer import CsvCompleter
 
 class InfoDialog(QDialog):
     def __init__(self, series, library_manager, parent=None):
@@ -67,6 +68,8 @@ class InfoDialog(QDialog):
         self.layout.addWidget(self.authors_label)
         self.layout.addWidget(self.authors_input)
 
+        self.setup_completers()
+
         # Buttons layout
         button_layout = QHBoxLayout()
         self.save_button = QPushButton("Save")
@@ -78,6 +81,23 @@ class InfoDialog(QDialog):
         button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.cancel_button)
         self.layout.addLayout(button_layout)
+
+    def setup_completers(self):
+        all_authors = self.library_manager.get_all_authors()
+        author_completer = CsvCompleter(all_authors, self)
+        self.authors_input.setCompleter(author_completer)
+
+        all_genres = self.library_manager.get_all_genres()
+        genre_completer = CsvCompleter(all_genres, self)
+        self.genres_input.setCompleter(genre_completer)
+
+        all_themes = self.library_manager.get_all_themes()
+        theme_completer = CsvCompleter(all_themes, self)
+        self.themes_input.setCompleter(theme_completer)
+
+        all_formats = self.library_manager.get_all_formats()
+        format_completer = CsvCompleter(all_formats, self)
+        self.formats_input.setCompleter(format_completer)
 
     def load_current_cover(self):
         cover_path = self.series.get('cover_image')
