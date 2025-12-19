@@ -233,78 +233,91 @@ class LibraryManager:
         if cursor.fetchone():
             conn.close()
             return  # Series already exists
+        conn.close()
 
         scanner = LibraryScanner()
         series_data = scanner.scan_series(normalized_path)
         if series_data:
-            try:
-                # Use name from metadata if provided, else use scanning result
-                final_name = series_data['name']
-                if metadata and 'name' in metadata and metadata['name']:
-                    final_name = metadata['name']
+            self.add_series_from_data(series_data, metadata)
 
+    def add_series_from_data(self, series_data, metadata=None):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Double check existence to be safe
+        cursor.execute("SELECT id FROM series WHERE path = ?", (series_data['path'],))
+        if cursor.fetchone():
+             conn.close()
+             return
+
+        try:
+            # Use name from metadata if provided, else use scanning result
+            final_name = series_data['name']
+            if metadata and 'name' in metadata and metadata['name']:
+                final_name = metadata['name']
+
+            cursor.execute(
+                "INSERT INTO series (name, path, cover_image) VALUES (?, ?, ?)",
+                (final_name, series_data['path'], series_data['cover_image'])
+            )
+            series_id = cursor.lastrowid
+            for chapter in series_data.get('chapters', []):
                 cursor.execute(
-                    "INSERT INTO series (name, path, cover_image) VALUES (?, ?, ?)",
-                    (final_name, series_data['path'], series_data['cover_image'])
+                    "INSERT INTO chapters (series_id, name, path) VALUES (?, ?, ?)",
+                    (series_id, chapter['name'], chapter['path'])
                 )
-                series_id = cursor.lastrowid
-                for chapter in series_data.get('chapters', []):
-                    cursor.execute(
-                        "INSERT INTO chapters (series_id, name, path) VALUES (?, ?, ?)",
-                        (series_id, chapter['name'], chapter['path'])
-                    )
-                
-                if metadata:
-                    if 'authors' in metadata and metadata['authors']:
-                        for author_name in metadata['authors']:
-                            cursor.execute("SELECT id FROM authors WHERE name = ?", (author_name,))
-                            author_row = cursor.fetchone()
-                            if not author_row:
-                                cursor.execute("INSERT INTO authors (name) VALUES (?)", (author_name,))
-                                author_id = cursor.lastrowid
-                            else:
-                                author_id = author_row['id']
-                            cursor.execute("INSERT INTO series_authors (series_id, author_id) VALUES (?, ?)", (series_id, author_id))
+            
+            if metadata:
+                if 'authors' in metadata and metadata['authors']:
+                    for author_name in metadata['authors']:
+                        cursor.execute("SELECT id FROM authors WHERE name = ?", (author_name,))
+                        author_row = cursor.fetchone()
+                        if not author_row:
+                            cursor.execute("INSERT INTO authors (name) VALUES (?)", (author_name,))
+                            author_id = cursor.lastrowid
+                        else:
+                            author_id = author_row['id']
+                        cursor.execute("INSERT INTO series_authors (series_id, author_id) VALUES (?, ?)", (series_id, author_id))
 
-                    if 'genres' in metadata and metadata['genres']:
-                        for genre_name in metadata['genres']:
-                            cursor.execute("SELECT id FROM genres WHERE name = ?", (genre_name,))
-                            genre_row = cursor.fetchone()
-                            if not genre_row:
-                                cursor.execute("INSERT INTO genres (name) VALUES (?)", (genre_name,))
-                                genre_id = cursor.lastrowid
-                            else:
-                                genre_id = genre_row['id']
-                            cursor.execute("INSERT INTO series_genres (series_id, genre_id) VALUES (?, ?)", (series_id, genre_id))
+                if 'genres' in metadata and metadata['genres']:
+                    for genre_name in metadata['genres']:
+                        cursor.execute("SELECT id FROM genres WHERE name = ?", (genre_name,))
+                        genre_row = cursor.fetchone()
+                        if not genre_row:
+                            cursor.execute("INSERT INTO genres (name) VALUES (?)", (genre_name,))
+                            genre_id = cursor.lastrowid
+                        else:
+                            genre_id = genre_row['id']
+                        cursor.execute("INSERT INTO series_genres (series_id, genre_id) VALUES (?, ?)", (series_id, genre_id))
 
-                    if 'themes' in metadata and metadata['themes']:
-                        for theme_name in metadata['themes']:
-                            cursor.execute("SELECT id FROM themes WHERE name = ?", (theme_name,))
-                            theme_row = cursor.fetchone()
-                            if not theme_row:
-                                cursor.execute("INSERT INTO themes (name) VALUES (?) ", (theme_name,))
-                                theme_id = cursor.lastrowid
-                            else:
-                                theme_id = theme_row['id']
-                            cursor.execute("INSERT INTO series_themes (series_id, theme_id) VALUES (?, ?)", (series_id, theme_id))
+                if 'themes' in metadata and metadata['themes']:
+                    for theme_name in metadata['themes']:
+                        cursor.execute("SELECT id FROM themes WHERE name = ?", (theme_name,))
+                        theme_row = cursor.fetchone()
+                        if not theme_row:
+                            cursor.execute("INSERT INTO themes (name) VALUES (?) ", (theme_name,))
+                            theme_id = cursor.lastrowid
+                        else:
+                            theme_id = theme_row['id']
+                        cursor.execute("INSERT INTO series_themes (series_id, theme_id) VALUES (?, ?)", (series_id, theme_id['id']))
 
-                    if 'formats' in metadata and metadata['formats']:
-                        for format_name in metadata['formats']:
-                            cursor.execute("SELECT id FROM formats WHERE name = ?", (format_name,))
-                            format_row = cursor.fetchone()
-                            if not format_row:
-                                cursor.execute("INSERT INTO formats (name) VALUES (?) ", (format_name,))
-                                format_id = cursor.lastrowid
-                            else:
-                                format_id = format_row['id']
-                            cursor.execute("INSERT INTO series_formats (series_id, format_id) VALUES (?, ?)", (series_id, format_id))
+                if 'formats' in metadata and metadata['formats']:
+                    for format_name in metadata['formats']:
+                        cursor.execute("SELECT id FROM formats WHERE name = ?", (format_name,))
+                        format_row = cursor.fetchone()
+                        if not format_row:
+                            cursor.execute("INSERT INTO formats (name) VALUES (?) ", (format_name,))
+                            format_id = cursor.lastrowid
+                        else:
+                            format_id = format_row['id']
+                        cursor.execute("INSERT INTO series_formats (series_id, format_id) VALUES (?, ?)", (series_id, format_id['id']))
 
-                conn.commit()
-            except Exception as e:
-                print(f"Error adding series: {e}")
-                conn.rollback()
-            finally:
-                conn.close()
+            conn.commit()
+        except Exception as e:
+            print(f"Error adding series: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
 
     def add_series_batch(self, paths, metadata=None):
         for path in paths:

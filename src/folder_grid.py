@@ -27,6 +27,7 @@ from src.core.library_manager import LibraryManager
 from src.ui.filter_token import FilterToken
 from src.ui.batch_metadata_dialog import BatchMetadataDialog
 from src.ui.info_dialog import InfoDialog
+from src.ui.components.chapter_selection_dialog import ChapterSelectionDialog
 
 def run_server(script_path, root_dir):
     import subprocess
@@ -665,11 +666,35 @@ class FolderGrid(QWidget):
     def add_single_series(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Manga Series Folder")
         if folder:
-            self.library_manager.add_series(folder)
+            normalized_path = str(Path(folder))
+            # 1. Scan manually first
+            scanner = LibraryScanner()
+            series_data = scanner.scan_series(normalized_path)
+            
+            if not series_data:
+                QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
+                return
+
+            # 2. If chapters exist, prompt user
+            if series_data.get('chapters'):
+                dialog = ChapterSelectionDialog(series_data['chapters'], self)
+                if dialog.exec():
+                    selected_chapters = dialog.get_selected_chapters()
+                    # Update series_data with selected chapters
+                    series_data['chapters'] = selected_chapters
+                else:
+                    return # User cancelled
+
+            # 3. Add to library using the (potentially modified) series data
+            self.library_manager.add_series_from_data(series_data)
+            
+            # 4. Show info dialog
+            # Need to refetch from DB to get the ID and full object
             new_series = self.library_manager.get_series_by_path(folder)
             if new_series:
                 info_dialog = InfoDialog(new_series, self.library_manager, self)
                 info_dialog.exec()
+            
             self.load_recent_items()
             self.load_items()
 
@@ -710,7 +735,30 @@ class FolderGrid(QWidget):
             self.add_multiple(valid_paths)
 
     def add_single(self, path):
-        self.library_manager.add_series(path)
+        normalized_path = str(Path(path))
+        # 1. Scan manually first
+        scanner = LibraryScanner()
+        series_data = scanner.scan_series(normalized_path)
+        
+        if not series_data:
+             # For drag and drop, maybe just log or ignore if invalid, or show small warning?
+             # Showing warning is consistent
+            QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
+            return
+
+        # 2. If chapters exist, prompt user
+        if series_data.get('chapters'):
+            dialog = ChapterSelectionDialog(series_data['chapters'], self)
+            if dialog.exec():
+                selected_chapters = dialog.get_selected_chapters()
+                series_data['chapters'] = selected_chapters
+            else:
+                return # User cancelled
+
+        # 3. Add to library
+        self.library_manager.add_series_from_data(series_data)
+        
+        # 4. Show info dialog
         new_series = self.library_manager.get_series_by_path(path)
         if new_series:
             info_dialog = InfoDialog(new_series, self.library_manager, self)
