@@ -138,7 +138,7 @@ class ChapterLoaderWorker(QRunnable):
                     # include image and video extensions
                     valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS))
                     image_files = sorted([f for f in zf.namelist()
-                                          if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX')])
+                                          if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX') and Path(f).stem.lower() != 'cover'])
                     return [f"{self.manga_dir}|{name}" for name in image_files]
             except zipfile.BadZipFile:
                 return []
@@ -148,13 +148,13 @@ class ChapterLoaderWorker(QRunnable):
             
             # 1. Scan root
             files.extend([str(p) for p in manga_path.iterdir() 
-                          if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name])
+                          if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
             
             # 2. Scan alts/ subfolder
             alts_dir = manga_path / "alts"
             if alts_dir.exists() and alts_dir.is_dir():
                 files.extend([str(p) for p in alts_dir.iterdir() 
-                              if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name])
+                              if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
                 
             return sorted(files)
         return []
