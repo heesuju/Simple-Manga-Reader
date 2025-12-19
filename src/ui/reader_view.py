@@ -119,6 +119,7 @@ class ReaderView(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, activated=self.show_prev)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
         QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
+        QShortcut(QKeySequence(Qt.Key.Key_Tab), self, activated=self.cycle_current_variant)
 
         main_layout = QGridLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -524,6 +525,10 @@ class ReaderView(QWidget):
 
     def apply_last_zoom(self):
         self.set_zoom_mode(self.last_zoom_mode)
+
+    def cycle_current_variant(self):
+        # Cycles the "main" page variant
+        self.model.cycle_variant(self.model.current_index)
         
 
 

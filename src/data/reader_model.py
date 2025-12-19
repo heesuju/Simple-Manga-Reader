@@ -109,6 +109,13 @@ class ReaderModel(QObject):
                (self.view_mode == ViewMode.DOUBLE and abs(page_index - self.current_index) <= 1):
                 self.load_image()
 
+    def cycle_variant(self, page_index: int):
+        if 0 <= page_index < len(self.images):
+            page = self.images[page_index]
+            if len(page.images) > 1:
+                next_variant = (page.current_variant_index + 1) % len(page.images)
+                self.change_variant(page_index, next_variant)
+
     def change_page(self, page:int):
         if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
             page -=1
