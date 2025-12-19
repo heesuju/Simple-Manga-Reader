@@ -248,12 +248,62 @@ class PagePanel(CollapsiblePanel):
 
         
         menu.addSeparator()
+
+        save_as_action = QAction("Save As...", self)
+        save_as_action.triggered.connect(lambda: self._save_page_as(index))
+        menu.addAction(save_as_action)
         
         open_explorer_action = QAction("Reveal in File Explorer", self)
         open_explorer_action.triggered.connect(lambda: self._open_in_explorer(index))
         menu.addAction(open_explorer_action)
 
         menu.exec(QCursor.pos())
+
+    def _save_page_as(self, index: int):
+        page = self.model.images[index]
+        if not page:
+            return
+            
+        # Get the path of the main image (first variant)
+        # Avoid saving virtual paths (zips) directly unless we extract? 
+        # For now, assume path is extractable or handle standard files.
+        src_path = page.images[0]
+        if '|' in src_path:
+             # Virtual path (e.g. zip). We might not support saving directly from zip without extraction.
+             # But ReaderView extracts it. Here we have just path.
+             # For simplicity, if it's zip, we skip or show error (or maybe just block it).
+             # Wait, copying a file out of zip requires extraction.
+             # Let's assume standard file for now as 'Save As' implies file copy.
+             # If it's inside zip, src_path is like /path/to/archive.zip|internal/path.jpg
+             pass
+        
+        path_to_save = src_path
+        if '|' in path_to_save:
+             # Logic to extract from zip if needed?
+             # For now, let's just support local filesystem files to match behavior.
+             return
+
+        if not os.path.exists(path_to_save):
+            return
+
+        base_name = os.path.basename(path_to_save)
+        ext = os.path.splitext(base_name)[1]
+        
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        initial_path = os.path.join(downloads_dir, base_name)
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image As",
+            initial_path,
+            f"Image (*{ext});;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                shutil.copy2(path_to_save, file_path)
+            except Exception as e:
+                print(f"Error copying image: {e}")
 
     def _link_selected_pages(self):
         if len(self.edit_selected_indices) < 2:
