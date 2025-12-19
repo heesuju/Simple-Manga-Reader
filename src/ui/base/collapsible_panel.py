@@ -271,3 +271,34 @@ class CollapsiblePanel(QWidget):
             return load_thumbnail_from_zip(path=path)
         else:
             return load_thumbnail_from_path(path=path, crop=crop)
+
+    def calculate_grid_columns(self, widgets: list[QWidget]) -> int:
+        if not widgets:
+            return 1
+        
+        if not self.is_expanded: 
+            return 0 
+
+        # In FlowLayout, we can detect wrapping by checking Y positions.
+        y0 = widgets[0].y()
+        for i, widget in enumerate(widgets):
+            if widget.y() > y0 + 10: # +10 threshold for tolerance
+                return i
+        
+        # If all in one row
+        return len(widgets)
+
+    def navigate_flow_grid(self, direction_y: int, widgets: list[QWidget], current_index: int, callback):
+        if not widgets:
+            return
+
+        cols = self.calculate_grid_columns(widgets)
+        if cols == 0: return
+
+        target_idx = current_index + (direction_y * cols)
+        
+        # Clamp
+        target_idx = max(0, min(target_idx, len(widgets) - 1))
+        
+        if target_idx != current_index:
+            callback(target_idx)

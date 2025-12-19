@@ -28,6 +28,8 @@ class ChapterPanel(CollapsiblePanel):
         self.navigate_next.connect(self._go_next)
         self.navigate_last.connect(self._go_last)
 
+        self.content_area.installEventFilter(self)
+
     def _go_first(self):
         if self.model and self.model.chapters:
             self.on_chapter_changed(1)
@@ -120,3 +122,13 @@ class ChapterPanel(CollapsiblePanel):
 
     def _change_chapter_by_thumbnail(self, index: int):
         self.on_chapter_changed(index + 1)
+
+    def eventFilter(self, source, event):
+        if source == self.content_area and event.type() == event.Type.KeyPress and self.is_expanded:
+            if event.key() == Qt.Key.Key_Up:
+                self.navigate_flow_grid(-1, self.chapter_thumbnail_widgets, self.model.chapter_index, lambda idx: self.on_chapter_changed(idx + 1))
+                return True
+            elif event.key() == Qt.Key.Key_Down:
+                self.navigate_flow_grid(1, self.chapter_thumbnail_widgets, self.model.chapter_index, lambda idx: self.on_chapter_changed(idx + 1))
+                return True
+        return super().eventFilter(source, event)

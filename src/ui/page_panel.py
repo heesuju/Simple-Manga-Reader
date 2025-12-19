@@ -47,6 +47,7 @@ class PagePanel(CollapsiblePanel):
         self.navigate_last.connect(self._go_last)
         
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.content_area.installEventFilter(self)
 
     def keyPressEvent(self, event):
         if event.matches(QKeySequence.StandardKey.Paste) or (event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V):
@@ -586,3 +587,12 @@ class PagePanel(CollapsiblePanel):
                  self.model.update_page_variants(target_idx)
                  # self.refresh_thumbnail(target_idx) # Handled by signal connection in ReaderView?
                  # ReaderView connects model.page_updated to on_page_updated.
+    def eventFilter(self, source, event):
+        if source == self.content_area and event.type() == event.Type.KeyPress and self.is_expanded:
+            if event.key() == Qt.Key.Key_Up:
+                self.navigate_flow_grid(-1, self.page_thumbnail_widgets, self.model.current_index, lambda idx: self.on_page_changed(idx + 1))
+                return True
+            elif event.key() == Qt.Key.Key_Down:
+                self.navigate_flow_grid(1, self.page_thumbnail_widgets, self.model.current_index, lambda idx: self.on_page_changed(idx + 1))
+                return True
+        return super().eventFilter(source, event)
