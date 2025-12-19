@@ -44,17 +44,7 @@ class ThumbnailWidget(QWidget):
         max_height = line_height * 2
         self.name_label.setMaximumHeight(max_height)
 
-        text = self.series['name']
-        rect = font_metrics.boundingRect(0, 0, 130, max_height * 2, Qt.TextFlag.TextWordWrap, text)
-        if rect.height() > max_height:
-            end = len(text)
-            while end > 0:
-                end -= 1
-                rect = font_metrics.boundingRect(0, 0, 130, max_height, Qt.TextFlag.TextWordWrap, text[:end] + '...')
-                if rect.height() <= max_height:
-                    text = text[:end] + '...'
-                    break
-        self.name_label.setText(text)
+        self._update_text()
 
         self.info_layout.addWidget(self.name_label)
 
@@ -156,7 +146,40 @@ class ThumbnailWidget(QWidget):
 
     def get_info(self):
         dialog = InfoDialog(self.series, self.library_manager, self)
-        dialog.exec()
+        if dialog.exec():
+            # If dialog was accepted (Save clicked), reload the series data
+            self.reload_series()
+
+    def reload_series(self):
+        """Reloads the series data from the database and updates the UI."""
+        updated_series = self.library_manager.get_series_by_path(self.series['path'])
+        if updated_series:
+            self.series = updated_series
+            self._update_text()
+            
+            # Reload cover image
+            if self.series.get('cover_image') and os.path.exists(self.series['cover_image']):
+                pixmap = QPixmap(self.series['cover_image'])
+                if not pixmap.isNull():
+                    self.set_pixmap(pixmap)
+
+    def _update_text(self):
+        """Updates the name label with truncation logic."""
+        font_metrics = QFontMetrics(self.name_label.font())
+        line_height = font_metrics.height()
+        max_height = line_height * 2
+        
+        text = self.series['name']
+        rect = font_metrics.boundingRect(0, 0, 130, max_height * 2, Qt.TextFlag.TextWordWrap, text)
+        if rect.height() > max_height:
+            end = len(text)
+            while end > 0:
+                end -= 1
+                rect = font_metrics.boundingRect(0, 0, 130, max_height, Qt.TextFlag.TextWordWrap, text[:end] + '...')
+                if rect.height() <= max_height:
+                    text = text[:end] + '...'
+                    break
+        self.name_label.setText(text)
 
     def open_folder(self):
         if sys.platform == "win32":
@@ -237,3 +260,4 @@ class ThumbnailWidget(QWidget):
         painter.end()
 
         self.image_label.setPixmap(pixmap)
+
