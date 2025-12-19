@@ -29,7 +29,7 @@ class VideoViewer(BaseViewer):
         
         self.playback_speeds = [1.0, 1.25, 1.5, 1.75, 2.0, 0.5, 0.75]
         self.current_speed_index = 0
-        self.video_repeat = False
+        self.video_repeat = True
         self.auto_play = False
         
         self._connect_signals()

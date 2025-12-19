@@ -120,6 +120,7 @@ class ReaderView(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
         QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
         QShortcut(QKeySequence(Qt.Key.Key_Tab), self, activated=self.cycle_current_variant)
+        QShortcut(QKeySequence(Qt.Key.Key_Space), self, activated=self.toggle_playback)
 
         main_layout = QGridLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -672,3 +673,7 @@ class ReaderView(QWidget):
     
     def toggle_layout(self, mode:ViewMode=None):
         self.model.toggle_layout(mode)
+
+    def toggle_playback(self):
+        if self.current_viewer == self.video_viewer:
+            self.video_viewer._toggle_play_pause()

@@ -19,7 +19,7 @@ class VideoControlPanel(QWidget):
         self._is_scrubbing = False
         self.init_ui()
         self.is_playing = False
-        self.is_repeat = False
+        self.is_repeat = True
         self.is_auto_play = False # NEW state
 
     def init_ui(self):
@@ -60,8 +60,9 @@ class VideoControlPanel(QWidget):
         self.speed_btn.clicked.connect(self.speed_clicked.emit)
         layout.addWidget(self.speed_btn)
         
-        self.repeat_btn = QPushButton(self.repeat_off_icon, "")
+        self.repeat_btn = QPushButton(self.repeat_on_icon, "")
         self.repeat_btn.setCheckable(True)
+        self.repeat_btn.setChecked(True)
         self.repeat_btn.clicked.connect(self.toggle_repeat)
         self.repeat_btn.setFlat(True)
         self.repeat_btn.setToolTip("Repeat Video")
