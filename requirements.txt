@@ -3,7 +3,6 @@ opencv-python
 Pillow
 requests
 python-dotenv
-scikit-learn
-langdetect
 qrcode
-qdarktheme
+pyqtdarktheme
+pyinstaller

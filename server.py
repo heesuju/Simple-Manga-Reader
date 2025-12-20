@@ -9,8 +9,9 @@ import re
 from PIL import Image
 import io
 import hashlib
-
+from src.utils.resource_utils import resource_path
 from src.core.library_manager import LibraryManager
+
 
 library_manager = LibraryManager()
 
@@ -45,15 +46,15 @@ def make_thumb_name(image_path: str, width: int, quality: int) -> Path:
 class MangaHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
-            self.path = 'web/index.html'
+            self.path = resource_path('web/index.html')
             return self.serve_static(self.path, 'text/html')
 
         elif self.path == '/style.css':
-            self.path = 'web/style.css'
+            self.path = resource_path('web/style.css')
             return self.serve_static(self.path, 'text/css')
 
         elif self.path == '/script.js':
-            self.path = 'web/script.js'
+            self.path = resource_path('web/script.js')
             return self.serve_static(self.path, 'application/javascript')
 
         elif self.path.startswith('/api/folders'):

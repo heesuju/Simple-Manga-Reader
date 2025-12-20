@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, pyqtSignal, QSize, QUrl, QRectF, QSizeF
+from src.utils.resource_utils import resource_path
+
 
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
@@ -95,7 +97,7 @@ class ReaderView(QWidget):
         self.loading_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; font-size: 24px;")
         self.loading_label.hide()
 
-        self.back_icon = QIcon("assets/icons/back.png")
+        self.back_icon = QIcon(resource_path("assets/icons/back.png"))
 
         # Scene/view
         self.scene = QGraphicsScene()

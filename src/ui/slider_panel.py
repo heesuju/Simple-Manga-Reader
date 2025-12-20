@@ -4,6 +4,8 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.ui.components.input_label import InputLabel
 from src.ui.components.alt_selector import AltSelector
 from src.ui.components.alt_slider import AltSlider
+from src.utils.resource_utils import resource_path
+
 
 class SliderPanel(QWidget):
     """
@@ -25,9 +27,9 @@ class SliderPanel(QWidget):
         self.setStyleSheet("background-color: rgba(0, 0, 0, 170); color: white;")
         
         # --- Icons ---
-        self.zoom_fit_icon = QIcon("assets/icons/fit.png")
+        self.zoom_fit_icon = QIcon(resource_path("assets/icons/fit.png"))
         # Fullscreen icon - using text for now, could be an icon later
-        self.fullscreen_icon = QIcon("assets/icons/fit.png") # Reusing fit icon for now, consider adding a new one
+        self.fullscreen_icon = QIcon(resource_path("assets/icons/fit.png")) # Reusing fit icon for now, consider adding a new one
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 5, 10, 5)

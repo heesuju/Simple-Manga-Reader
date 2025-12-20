@@ -5,3 +5,5 @@ test.py
 .env
 .cache/
 *.db
+build/
+dist/

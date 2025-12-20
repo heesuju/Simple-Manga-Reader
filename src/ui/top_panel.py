@@ -1,6 +1,8 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon
+from src.utils.resource_utils import resource_path
+
 
 class TopPanel(QWidget):
     """A simple panel at the top of the reader view."""
@@ -25,10 +27,10 @@ class TopPanel(QWidget):
         self.series_label.setStyleSheet("background-color: transparent;")
 
         # Icons
-        self.play_icon = QIcon("assets/icons/play.png")
-        self.pause_icon = QIcon("assets/icons/pause.png")
-        self.repeat_on_icon = QIcon("assets/icons/repeat_on.png")
-        self.repeat_off_icon = QIcon("assets/icons/repeat_off.png")
+        self.play_icon = QIcon(resource_path("assets/icons/play.png"))
+        self.pause_icon = QIcon(resource_path("assets/icons/pause.png"))
+        self.repeat_on_icon = QIcon(resource_path("assets/icons/repeat_on.png"))
+        self.repeat_off_icon = QIcon(resource_path("assets/icons/repeat_off.png"))
 
         button_size = QSize(32, 32)
         

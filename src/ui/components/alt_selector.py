@@ -2,6 +2,8 @@ from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QIcon
 from src.enums import ViewMode
+from src.utils.resource_utils import resource_path
+
 
 class AltSelector(QWidget):
     def __init__(self, parent=None, model=None):
@@ -35,8 +37,10 @@ class AltSelector(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(5)
 
-        self.play_icon = QIcon("assets/icons/play.png")
-        self.pause_icon = QIcon("assets/icons/pause.png") # Keep pause icon for potential future use or if it's used elsewhere
+        self.layout.setSpacing(5)
+
+        self.play_icon = QIcon(resource_path("assets/icons/play.png"))
+        self.pause_icon = QIcon(resource_path("assets/icons/pause.png")) # Keep pause icon for potential future use or if it's used elsewhere
         # Store state as {page_index: {'speed_idx': 0, 'timer': QTimer}}
         self.slideshow_states = {} 
         self.speeds = [2000, 1000, 500, 250] # ms intervals

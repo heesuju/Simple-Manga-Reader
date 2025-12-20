@@ -3,6 +3,8 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from src.ui.components.volume_control import VolumeControl
+from src.utils.resource_utils import resource_path
+
 
 
 class VideoControlPanel(QWidget):
@@ -23,12 +25,12 @@ class VideoControlPanel(QWidget):
         self.is_auto_play = False # NEW state
 
     def init_ui(self):
-        self.play_icon = QIcon("assets/icons/play.png")
-        self.pause_icon = QIcon("assets/icons/pause.png")
-        self.repeat_on_icon = QIcon("assets/icons/repeat_on.png")
-        self.repeat_off_icon = QIcon("assets/icons/repeat_off.png")
+        self.play_icon = QIcon(resource_path("assets/icons/play.png"))
+        self.pause_icon = QIcon(resource_path("assets/icons/pause.png"))
+        self.repeat_on_icon = QIcon(resource_path("assets/icons/repeat_on.png"))
+        self.repeat_off_icon = QIcon(resource_path("assets/icons/repeat_off.png"))
         # Reuse repeat icon or use text for now since we might not have a dedicated icon
-        self.auto_play_icon = QIcon("assets/icons/auto_play.png") # Assuming exists or use fallback
+        self.auto_play_icon = QIcon(resource_path("assets/icons/auto_play.png")) # Assuming exists or use fallback
         
         layout = QHBoxLayout()
         layout.setContentsMargins(10, 5, 10, 5)

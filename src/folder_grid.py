@@ -28,6 +28,8 @@ from src.ui.filter_token import FilterToken
 from src.ui.batch_metadata_dialog import BatchMetadataDialog
 from src.ui.info_dialog import InfoDialog
 from src.ui.components.chapter_selection_dialog import ChapterSelectionDialog
+from src.utils.resource_utils import resource_path
+
 
 def run_server(script_path, root_dir):
     import subprocess
@@ -68,8 +70,8 @@ class FolderGrid(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Manga Browser")
-        self.add_icon = QIcon("assets/icons/add.png")
-        self.qr_icon = QIcon("assets/icons/qr.png")
+        self.add_icon = QIcon(resource_path("assets/icons/add.png"))
+        self.qr_icon = QIcon(resource_path("assets/icons/qr.png"))
 
         main_layout = QVBoxLayout(self)
 
