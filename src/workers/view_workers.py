@@ -4,7 +4,7 @@ import io
 import os
 from PIL import Image, ImageQt
 
-from PyQt6.QtCore import QRunnable, pyqtSlot, QObject, pyqtSignal
+from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
@@ -301,3 +301,70 @@ class AsyncLoaderWorker(QRunnable):
                 print(f"Error loading image async {path}: {e}")
 
         self.signals.finished.emit(self.request_id, results)
+
+class ScaleSignals(QObject):
+    finished = pyqtSignal(int, QPixmap)
+
+class ScaleWorker(QRunnable):
+    def __init__(self, original_pixmap: QPixmap, target_width: int, index: int):
+        super().__init__()
+        self.original_pixmap = original_pixmap
+        self.target_width = target_width
+        self.index = index
+        self.signals = ScaleSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            # Conversion to QImage might be needed for thread safety if QPixmap is not safe across threads in this context
+            # deeper qt docs say QPixmap shouldn't be used in worker threads.
+            # So we should convert to QImage in __init__ (main thread) or pass QImage.
+            pass 
+        except Exception:
+            pass
+            
+        # Re-implementing __init__ to take QImage to be safe
+        pass
+
+# Redefining to be safe
+class SafeScaleWorker(QRunnable):
+    def __init__(self, image: QImage, target_width: int, index: int):
+        super().__init__()
+        self.image = image
+        self.target_width = target_width
+        self.index = index
+        self.signals = ScaleSignals()
+
+    @pyqtSlot()
+    def run(self):
+        if self.image.isNull():
+            return
+            
+        scaled_image = self.image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
+        # We need to convert back to pixmap on the main thread, so we send QImage back? 
+        # Actually QPixmap constructor must be called on main thread. 
+        # So we should return QImage or QPixmap? 
+        # Standard: Worker does image processing (QImage), Signal emits QImage, Slot updates UI (QPixmap).
+        
+        # But QPixmap cannot be passed through signal if it was created in thread without complications? Easiest is emit QImage.
+        pass
+
+# Final implementation attempt
+class AsyncScaleSignals(QObject):
+    finished = pyqtSignal(int, QImage, int)
+
+class AsyncScaleWorker(QRunnable):
+    def __init__(self, image: QImage, target_width: int, index: int, generation_id: int):
+        super().__init__()
+        self.image = image
+        self.target_width = target_width
+        self.index = index
+        self.generation_id = generation_id
+        self.signals = AsyncScaleSignals()
+
+    @pyqtSlot()
+    def run(self):
+        if self.image.isNull():
+            return
+        scaled = self.image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
+        self.signals.finished.emit(self.index, scaled, self.generation_id)

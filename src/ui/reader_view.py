@@ -317,7 +317,7 @@ class ReaderView(QWidget):
         self.model.update_layout()
 
         if self.model.view_mode == ViewMode.STRIP:
-            self.strip_viewer.setup_items(self.model.images)
+            self.strip_viewer.load(None)
 
     def on_layout_updated(self):
         self.page_panel.model = self.model
