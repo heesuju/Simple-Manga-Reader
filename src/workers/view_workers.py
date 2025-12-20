@@ -160,14 +160,15 @@ class ChapterLoaderWorker(QRunnable):
         return []
 
 class WorkerSignals(QObject):
-    finished = pyqtSignal(int, QPixmap)
+    finished = pyqtSignal(int, QPixmap, int)
 
 class PixmapLoader(QRunnable):
-    def __init__(self, path: str, index: int, load_func):
+    def __init__(self, path: str, index: int, load_func, generation_id: int):
         super().__init__()
         self.path = path
         self.index = index
         self.load_func = load_func
+        self.generation_id = generation_id
         self.signals = WorkerSignals()
 
     @pyqtSlot()
@@ -177,7 +178,7 @@ class PixmapLoader(QRunnable):
         That's expected — callers should handle the absence of a pixmap (e.g. play video instead).
         """
         pixmap = self.load_func(self.path)
-        self.signals.finished.emit(self.index, pixmap)
+        self.signals.finished.emit(self.index, pixmap, self.generation_id)
 
 class VideoFrameExtractorSignals(QObject):
     finished = pyqtSignal(str, QImage)

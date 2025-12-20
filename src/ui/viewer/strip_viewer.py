@@ -35,6 +35,8 @@ class StripViewer(BaseViewer):
         self.eager_scale_timer.timeout.connect(self._process_eager_queue)
         self.MAX_CONCURRENT_LOADS = 4
         self.layout_generation = 0
+        self.current_model_images = None
+        self.pending_anchor = None
 
         
     def set_active(self, active: bool):
@@ -68,6 +70,8 @@ class StripViewer(BaseViewer):
 
     def _show_vertical_layout(self):
         self.layout_generation += 1
+        self.current_model_images = self.reader_view.model.images
+
         # Initialize zoom from ReaderView state
         mode = getattr(self.reader_view, 'last_zoom_mode', "Fit Width")
         if mode == "Fit Page" or mode == "Fit Width":
@@ -154,12 +158,22 @@ class StripViewer(BaseViewer):
                 
             self.loading_indices.add(index)
             images = self.reader_view.model.images
+            
+            # Guard against outdated queue (model changed but viewer not reloaded yet)
+            if index >= len(images) or images is not self.current_model_images:
+                if index in self.loading_indices:
+                    self.loading_indices.remove(index)
+                continue
+                
             # images[i] is a Page object
-            worker = PixmapLoader(images[index].path, index, self.reader_view.image_viewer._load_pixmap)
+            worker = PixmapLoader(images[index].path, index, self.reader_view.image_viewer._load_pixmap, self.layout_generation)
             worker.signals.finished.connect(self._on_image_loaded)
             self.reader_view.thread_pool.start(worker)
 
-    def _on_image_loaded(self, index: int, pixmap: QPixmap):
+    def _on_image_loaded(self, index: int, pixmap: QPixmap, generation_id: int):
+        if generation_id != self.layout_generation:
+            return
+
         if index in self.loading_indices:
             self.loading_indices.remove(index)
             
