@@ -116,8 +116,13 @@ class MainWindow(QMainWindow):
         self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images)
         self.reader_view.back_pressed.connect(self.handle_reader_back)
         self.reader_view.request_fullscreen_toggle.connect(self.toggle_fullscreen)
+        self.reader_view.current_chapter_changed.connect(self.on_reader_chapter_changed)
         self.stacked_widget.addWidget(self.reader_view)
         self.stacked_widget.setCurrentWidget(self.reader_view)
+
+    def on_reader_chapter_changed(self, series, chapter_path):
+        if series and chapter_path:
+             self.library_manager.update_last_read_chapter(series['id'], chapter_path)
 
     def handle_reader_back(self):
         if self.current_series_has_chapters:

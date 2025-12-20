@@ -38,6 +38,7 @@ class ReaderView(QWidget):
     back_pressed = pyqtSignal()
     zoom_changed = pyqtSignal(str)
     request_fullscreen_toggle = pyqtSignal()
+    current_chapter_changed = pyqtSignal(object, str)
 
     def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
         super().__init__()
@@ -594,6 +595,7 @@ class ReaderView(QWidget):
         if self.model.set_chapter(chapter):
             self._load_chapter_async(start_from_end=False)
             self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+            self.current_chapter_changed.emit(self.model.series, self.model.chapters[self.model.chapter_index])
 
     def reload_chapter(self):
         self._load_chapter_async(start_from_end=False)
@@ -603,6 +605,7 @@ class ReaderView(QWidget):
         if self.model.change_chapter(direction):
             self._load_chapter_async(start_from_end=start_from_end)
             self.chapter_panel._update_chapter_selection(self.model.chapter_index)
+            self.current_chapter_changed.emit(self.model.series, self.model.chapters[self.model.chapter_index])
 
     def _load_chapter_async(self, start_from_end: bool):
         self.page_panel.stop_loading_thumbnails()
