@@ -554,9 +554,13 @@ class FolderGrid(QWidget):
             self.load_recent_items()
 
     def remove_series(self, series: object):
-        self.library_manager.remove_series(series)
-        self.load_recent_items()
-        self.load_items()
+        confirm_msg = f"Are you sure you want to remove '{series['name']}' from the library? This will not delete the files."
+        reply = QMessageBox.question(self, 'Confirm Removal', confirm_msg, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.library_manager.remove_series(series)
+            self.load_recent_items()
+            self.load_items()
 
     def display_chapters(self, chapters):
         self.loading_generation += 1
