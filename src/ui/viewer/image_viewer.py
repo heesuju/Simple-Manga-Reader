@@ -3,8 +3,8 @@ import io
 from typing import Union, List
 from PIL import Image, ImageQt
 
-from PyQt6.QtWidgets import QGraphicsPixmapItem
-from PyQt6.QtGui import QPixmap, QMovie, QImage
+from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem
+from PyQt6.QtGui import QPixmap, QMovie, QImage, QBrush, QColor, QFont, QPen, QTextOption
 from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool
 
 from src.ui.viewer.base_viewer import BaseViewer
@@ -16,6 +16,7 @@ class ImageViewer(BaseViewer):
     def __init__(self, reader_view):
         super().__init__(reader_view)
         self.pixmap_item = None
+        self.overlay_items = []
         self.movie = None
         self.movie_buffer = None # Keep reference to buffer
         self.original_pixmap = None
@@ -228,6 +229,7 @@ class ImageViewer(BaseViewer):
             self.reader_view.scene.removeItem(item)
 
         self.pixmap_item = None
+        self.clear_overlays()
 
     def zoom(self, mode: str):
         if not self.pixmap_item and not (isinstance(mode, str) and mode.startswith("Fit")): 
@@ -260,6 +262,81 @@ class ImageViewer(BaseViewer):
     def cleanup(self):
         self._stop_movie()
 
+    def show_overlays(self, overlays: list):
+        self.clear_overlays()
+        
+        if not self.pixmap_item:
+            return
+
+        for overlay in overlays:
+            bbox = overlay['bbox'] # [x, y, w, h]
+            text = overlay['text']
+            
+            x, y, w, h = bbox
+            
+            # Create background (white with some opacity)
+            bg_item = QGraphicsRectItem(x, y, w, h)
+            bg_item.setBrush(QBrush(QColor(255, 255, 255, 230)))
+            bg_item.setPen(QPen(Qt.PenStyle.NoPen))
+            bg_item.setZValue(10) # Above image
+            
+            self.reader_view.scene.addItem(bg_item)
+            self.overlay_items.append(bg_item)
+            
+            # Create text
+            text_item = QGraphicsTextItem(text)
+            text_item.setDefaultTextColor(Qt.GlobalColor.black)
+            
+            # Dynamic font scaling
+            min_font_size = 6
+            max_font_size = 30 # Cap max size for aesthetics
+            
+            font = QFont("Arial")
+            
+            # Text config
+            option = text_item.document().defaultTextOption()
+            option.setAlignment(Qt.AlignmentFlag.AlignCenter) # Center align
+            option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere) # Try word boundary, split if necessary
+            text_item.document().setDefaultTextOption(option)
+
+            # Start from max size and go down
+            final_font_size = min_font_size
+            for size in range(max_font_size, min_font_size - 1, -2):
+                font.setPointSize(size)
+                text_item.setFont(font)
+                text_item.setTextWidth(w)
+                
+                # Check height
+                if text_item.boundingRect().height() <= h:
+                    final_font_size = size
+                    break
+            
+            # If still too big, force min size (will overflow but readable-ish)
+            if text_item.boundingRect().height() > h:
+                final_font_size = min_font_size
+            
+            font.setPointSize(final_font_size)
+            text_item.setFont(font)
+            text_item.setTextWidth(w)
+            
+            # Center vertically if space allows
+            actual_h = text_item.boundingRect().height()
+            y_offset = max(0, (h - actual_h) / 2)
+            
+            # Position text
+            text_item.setPos(x, y + y_offset)
+            text_item.setZValue(11) # Above background
+            
+            self.reader_view.scene.addItem(text_item)
+            self.overlay_items.append(text_item)
+
+    def clear_overlays(self):
+        for item in self.overlay_items:
+            if item.scene() == self.reader_view.scene:
+                self.reader_view.scene.removeItem(item)
+        self.overlay_items.clear()
+
     def reset(self):
         self._stop_movie()
         self.pixmap_item = None
+        self.clear_overlays()

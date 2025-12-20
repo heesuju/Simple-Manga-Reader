@@ -2,10 +2,12 @@ import os
 import shutil
 from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem
 from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform
-from PyQt6.QtCore import Qt, pyqtProperty
+from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal
 
 class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
+    translate_requested = pyqtSignal(str)
+
     def __init__(self, manga_reader=None):
         super().__init__()
         self.setFrameStyle(QFrame.Shape.NoFrame)
@@ -45,9 +47,15 @@ class ImageView(QGraphicsView):
              return
 
          menu = QMenu(self)
+         
+         translate_action = QAction("Translate Page", self)
+         translate_action.triggered.connect(lambda: self.translate_requested.emit(path))
+         menu.addAction(translate_action)
+         
          save_action = QAction("Save As...", self)
          save_action.triggered.connect(lambda: self._save_image(path))
          menu.addAction(save_action)
+         
          menu.exec(global_pos)
 
     def _save_image(self, path):

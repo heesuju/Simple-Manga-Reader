@@ -6,3 +6,6 @@ python-dotenv
 qrcode
 pyqtdarktheme
 pyinstaller
+ultralytics
+huggingface_hub
+manga-ocr

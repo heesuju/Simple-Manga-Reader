@@ -369,3 +369,131 @@ class AsyncScaleWorker(QRunnable):
             return
         scaled = self.image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
         self.signals.finished.emit(self.index, scaled, self.generation_id)
+
+from src.core.text_detector import TextDetector
+from src.core.translator import Translator
+from src.core.ocr import OCR
+from PIL import Image
+import io
+
+class TranslateSignals(QObject):
+    finished = pyqtSignal(list) # List of overlays
+
+class TranslateWorker(QRunnable):
+    def __init__(self, image_path: str):
+        super().__init__()
+        self.image_path = image_path
+        self.signals = TranslateSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            print("Starting translation worker...")
+            detector = TextDetector()
+            # Initialize  lazily or here. It might take time to load model.
+            try:
+                ocr_engine = OCR()
+            except Exception as e:
+                print(f"OCR Init failed: {e}")
+                self.signals.finished.emit([])
+                return
+
+            translator = Translator()
+            
+            target_path = self.image_path
+            
+            # Handle modifiers and pre-processing
+            crop_mode = None
+            if isinstance(target_path, str):
+                if target_path.endswith("_left"):
+                    target_path = target_path[:-5]
+                    crop_mode = "left"
+                elif target_path.endswith("_right"):
+                    target_path = target_path[:-6]
+                    crop_mode = "right"
+            
+            # Load full image for cropping later
+            full_pil_img = None
+            
+            if isinstance(target_path, str) and ('|' in target_path or crop_mode):
+                 from src.utils.img_utils import get_image_data_from_zip
+                 
+                 img_data = None
+                 if '|' in target_path:
+                     img_data = get_image_data_from_zip(target_path)
+                 else:
+                     with open(target_path, 'rb') as f:
+                         img_data = f.read()
+                 
+                 if img_data:
+                     try:
+                         full_pil_img = Image.open(io.BytesIO(img_data)).convert('RGB')
+                         
+                         if crop_mode == 'left':
+                             w, h = full_pil_img.size
+                             full_pil_img = full_pil_img.crop((0, 0, w//2, h))
+                         elif crop_mode == 'right':
+                             w, h = full_pil_img.size
+                             full_pil_img = full_pil_img.crop((w//2, 0, w, h))
+                     except Exception as e:
+                         print(f"Failed to load image from data: {e}")
+            elif isinstance(target_path, str) and os.path.exists(target_path):
+                 full_pil_img = Image.open(target_path).convert('RGB')
+            else:
+                 # Should fail gracefully or handle object
+                 pass
+
+            # Run Detection on the Full Image
+            # YOLO expects file path or PIL Image
+            if full_pil_img:
+                detections = detector.detect(full_pil_img)
+            else:
+                detections = detector.detect(target_path)
+
+            overlays = []
+            
+            for det in detections:
+                bbox = det['bbox'] # [x, y, w, h] (top-left x, top-left y, width, height)
+                
+                # Perform OCR
+                if full_pil_img:
+                    x, y, w, h = bbox
+                    # Crop the text bubble
+                    # Ensure coordinates are within bounds
+                    img_w, img_h = full_pil_img.size
+                    x1 = max(0, int(x))
+                    y1 = max(0, int(y))
+                    x2 = min(img_w, int(x + w))
+                    y2 = min(img_h, int(y + h))
+                    
+                    if x2 > x1 and y2 > y1:
+                        crop = full_pil_img.crop((x1, y1, x2, y2))
+                        try:
+                            detected_text = ocr_engine.process(crop)
+                            print(f"OCR: {detected_text}")
+                        except Exception as e:
+                            print(f"OCR failed for bubble: {e}")
+                            detected_text = ""
+                    else:
+                        detected_text = ""
+                else:
+                    # If we don't have PIL image (e.g. video frame or something), skip OCR
+                    detected_text = "" 
+
+                if detected_text:
+                    translated_text = translator.translate(detected_text)
+                else:
+                    translated_text = "[No Text Detected]"
+                
+                overlays.append({
+                    'bbox': bbox,
+                    'text': translated_text
+                })
+            
+            self.signals.finished.emit(overlays)
+            
+        except Exception as e:
+            print(f"Error in translation worker: {e}")
+            import traceback
+            traceback.print_exc()
+            self.signals.finished.emit([])

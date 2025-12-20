@@ -26,7 +26,7 @@ from src.ui.image_view import ImageView
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, TranslateWorker
 
 from src.ui.viewer.image_viewer import ImageViewer
 from src.ui.viewer.video_viewer import VideoViewer
@@ -105,6 +105,7 @@ class ReaderView(QWidget):
         self.view.viewport().setMouseTracking(True)
         self.view.setScene(self.scene)
         self.view.viewport().installEventFilter(self)
+        self.view.translate_requested.connect(self.translate_page)
 
         self.media_stack = QStackedWidget()
         self.media_stack.addWidget(self.view)
@@ -683,3 +684,19 @@ class ReaderView(QWidget):
     def toggle_playback(self):
         if self.current_viewer == self.video_viewer:
             self.video_viewer._toggle_play_pause()
+
+    def translate_page(self, path: str):
+        self.loading_label.setText("Translating...")
+        self.loading_label.show()
+        
+        worker = TranslateWorker(path)
+        worker.signals.finished.connect(self._on_translation_finished)
+        self.thread_pool.start(worker)
+
+    def _on_translation_finished(self, overlays: list):
+        self.loading_label.hide()
+        self.loading_label.setText("Loading...") # Reset
+        
+        if self.current_viewer == self.image_viewer:
+            self.image_viewer.show_overlays(overlays)
+
