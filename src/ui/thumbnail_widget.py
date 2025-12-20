@@ -1,13 +1,81 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox
 )
-from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor
-from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup
+from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor, QLinearGradient, QBrush
+from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup, QPointF, pyqtProperty
 from src.utils.img_utils import crop_pixmap, get_chapter_number
 from src.ui.info_dialog import InfoDialog
 import os
 import sys
 import subprocess
+
+class ShineLabel(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._hovered = False
+        self._shine_opacity = 0.0
+        
+        # Animation for the shine effect
+        self.shine_animation = QPropertyAnimation(self, b"shine_opacity")
+        self.shine_animation.setDuration(200)
+        self.shine_animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+    @pyqtProperty(float)
+    def shine_opacity(self):
+        return self._shine_opacity
+
+    @shine_opacity.setter
+    def shine_opacity(self, value):
+        self._shine_opacity = value
+        self.update()
+
+    def set_hovered(self, hovered):
+        if self._hovered == hovered:
+            return
+        
+        self._hovered = hovered
+        self.shine_animation.stop()
+        if hovered:
+            self.shine_animation.setEndValue(1.0)
+        else:
+            self.shine_animation.setEndValue(0.0)
+        self.shine_animation.start()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        if self._shine_opacity > 0:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # Use the same rounding as the image for clipping
+            path = QPainterPath()
+            path.addRoundedRect(0, 0, self.width(), self.height(), 8, 8)
+            painter.setClipPath(path)
+
+            # 1. Surface Gloss (Top-down)
+            surface_gradient = QLinearGradient(0, 0, 0, self.height())
+            surface_gradient.setColorAt(0.0, QColor(255, 255, 255, int(30 * self._shine_opacity)))
+            surface_gradient.setColorAt(0.5, QColor(255, 255, 255, 0))
+            painter.fillRect(self.rect(), surface_gradient)
+
+            # 2. Corner Reflection (Top-Right)
+            reflection_gradient = QLinearGradient(self.width(), 0, 0, self.height())
+            reflection_gradient.setColorAt(0.0, QColor(255, 255, 255, int(130 * self._shine_opacity)))
+            reflection_gradient.setColorAt(0.4, QColor(255, 255, 255, int(50 * self._shine_opacity)))
+            reflection_gradient.setColorAt(0.6, QColor(255, 255, 255, 0))
+            painter.fillRect(self.rect(), reflection_gradient)
+            
+            # 3. Glass Border
+            pen_color = QColor(255, 255, 255, int(80 * self._shine_opacity))
+            painter.setPen(pen_color)
+            border_path = QPainterPath()
+            border_path.addRoundedRect(1, 1, self.width()-2, self.height()-2, 7, 7)
+            painter.setClipPath(path)
+            painter.drawPath(border_path)
+
+            painter.end()
+
 
 class ThumbnailWidget(QWidget):
     clicked = pyqtSignal(object)
@@ -25,7 +93,9 @@ class ThumbnailWidget(QWidget):
 
         self.image_container = QWidget()
         self.image_container.setObjectName("image_container")
-        self.image_label = QLabel(self)
+        
+        # Parent to self so it can expand beyond the container bounds
+        self.image_label = ShineLabel(self)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setScaledContents(True)
 
@@ -33,7 +103,9 @@ class ThumbnailWidget(QWidget):
         self.image_container_size = QSize(150, 210)
         self.setFixedSize(self.original_size)
         self.image_container.setFixedSize(self.image_container_size)
-        self.image_label.setGeometry(QRect(5, 10, self.image_container_size.width(), self.image_container_size.height()))
+        
+        # Original geometry relative to ThumbnailWidget
+        self.image_label.setGeometry(5, 10, self.image_container_size.width(), self.image_container_size.height())
 
         self.info_layout = QHBoxLayout()
         self.name_label = QLabel()
@@ -48,7 +120,7 @@ class ThumbnailWidget(QWidget):
 
         self.info_layout.addWidget(self.name_label)
 
-        self.layout.addWidget(self.image_container)
+        self.layout.addWidget(self.image_container, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.layout.addLayout(self.info_layout)
 
         self.checkbox = QCheckBox(self)
@@ -96,7 +168,6 @@ class ThumbnailWidget(QWidget):
              self.chapter_label.hide()
 
     def setup_animation(self):
-        # Grow animation
         self.anim_group_grow = QParallelAnimationGroup(self)
         self.anim_group_shrink = QParallelAnimationGroup(self)
 
@@ -192,6 +263,7 @@ class ThumbnailWidget(QWidget):
     def enterEvent(self, event):
         self._hover = True
         self.image_label.raise_()
+        self.image_label.set_hovered(True)
         if self.show_chapter_number and hasattr(self, 'chapter_label'):
             self.chapter_label.raise_()
         if self.is_in_selection_mode:
@@ -202,6 +274,7 @@ class ThumbnailWidget(QWidget):
 
     def leaveEvent(self, event):
         self._hover = False
+        self.image_label.set_hovered(False)
         self.anim_group_grow.stop()
         self.anim_group_shrink.start()
         super().leaveEvent(event)
