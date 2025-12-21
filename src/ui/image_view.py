@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal
 class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
     translate_requested = pyqtSignal(str)
+    zoom_started = pyqtSignal()
 
     def __init__(self, manga_reader=None):
         super().__init__()
@@ -27,8 +28,10 @@ class ImageView(QGraphicsView):
         # Smooth rendering
         self.setRenderHints(
             QPainter.RenderHint.Antialiasing |
-            QPainter.RenderHint.SmoothPixmapTransform
+            QPainter.RenderHint.SmoothPixmapTransform |
+            QPainter.RenderHint.TextAntialiasing
         )
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
     def contextMenuEvent(self, event):
         item = self.itemAt(event.pos())
@@ -80,6 +83,7 @@ class ImageView(QGraphicsView):
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.zoom_started.emit()
             angle = event.angleDelta().y()
             factor = 1.25 if angle > 0 else 0.8
             self._zoom_steps += 1 if angle > 0 else -1

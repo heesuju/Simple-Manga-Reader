@@ -113,6 +113,8 @@ class ReaderView(QWidget):
         self.view.setScene(self.scene)
         self.view.viewport().installEventFilter(self)
         self.view.translate_requested.connect(self.translate_page)
+        # Connect zoom signal to handle HQ restoration
+        self.view.zoom_started.connect(self._on_view_zoom_started)
 
         self.media_stack = QStackedWidget()
         self.media_stack.addWidget(self.view)
@@ -227,6 +229,9 @@ class ReaderView(QWidget):
         if update_last_mode:
             self.last_zoom_mode = zoom_str
         self.zoom_changed.emit(zoom_str)
+        
+        if hasattr(self.current_viewer, 'on_zoom_changed'):
+            self.current_viewer.on_zoom_changed(zoom_str)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
@@ -545,9 +550,11 @@ class ReaderView(QWidget):
 
     def cycle_current_variant(self):
         # Cycles the "main" page variant
-        self.model.cycle_variant(self.model.current_index)
-        
+        self.image_viewer.cycle_variant()
 
+    def _on_view_zoom_started(self):
+        if self.current_viewer == self.image_viewer:
+            self.image_viewer._restore_original_pixmap()
 
     def show_next(self):
         if not self.model.images:

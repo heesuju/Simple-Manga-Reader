@@ -2,9 +2,9 @@ import zipfile
 from pathlib import Path
 import io
 import os
-from PIL import Image, ImageQt
+from PIL import Image, ImageQt, ImageFilter
 
-from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF
+from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF, QBuffer, QIODevice
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
@@ -373,7 +373,7 @@ class AsyncScaleSignals(QObject):
 class AsyncScaleWorker(QRunnable):
     def __init__(self, image: QImage, target_width: int, index: int, generation_id: int):
         super().__init__()
-        self.image = image
+        self.q_image = image.copy() 
         self.target_width = target_width
         self.index = index
         self.generation_id = generation_id
@@ -381,8 +381,30 @@ class AsyncScaleWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
-        if self.image.isNull():
+        if self.q_image.isNull():
             return
-        scaled = self.image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
-        self.signals.finished.emit(self.index, scaled, self.generation_id)
+
+        try:
+            # 1. Convert QImage -> PIL
+            buffer = QBuffer()
+            buffer.open(QBuffer.OpenModeFlag.ReadWrite)
+            self.q_image.save(buffer, "PNG")
+            pil_img = Image.open(io.BytesIO(buffer.data().data()))
+            
+            w_percent = (self.target_width / float(pil_img.size[0]))
+            h_size = int((float(pil_img.size[1]) * float(w_percent)))
+            
+            pil_resized = pil_img.resize((self.target_width, h_size), Image.Resampling.LANCZOS)
+
+            pil_resized = pil_resized.filter(ImageFilter.UnsharpMask(radius=0.8, percent=80, threshold=3))
+            
+            q_out = ImageQt.ImageQt(pil_resized).copy()
+            
+            self.signals.finished.emit(self.index, q_out, self.generation_id)
+            
+        except Exception as e:
+            print(f"Error in HQ scale: {e}")
+            # Fallback to Qt scaling if PIL fails
+            scaled = self.q_image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
+            self.signals.finished.emit(self.index, scaled, self.generation_id)
 

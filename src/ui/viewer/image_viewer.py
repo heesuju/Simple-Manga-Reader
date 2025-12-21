@@ -1,5 +1,6 @@
 import os
 import io
+import time
 from typing import Union, List
 from PIL import Image, ImageQt
 
@@ -10,7 +11,7 @@ from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
 from src.enums import ViewMode
-from src.workers.view_workers import AsyncLoaderWorker
+from src.workers.view_workers import AsyncLoaderWorker, AsyncScaleWorker
 
 class ImageViewer(BaseViewer):
     def __init__(self, reader_view):
@@ -19,8 +20,19 @@ class ImageViewer(BaseViewer):
         self.overlay_items = []
         self.movie = None
         self.movie_buffer = None # Keep reference to buffer
-        self.original_pixmap = None
+        self.original_pixmap = None # Stores the full resolution source
         self.current_request_id = 0
+        
+        # High Quality Scaling State
+        self.scaled_pixmap_item = None # Separate item for high-quality scaled version
+        self.hq_generation_id = 0
+        self.last_viewport_size = None
+        self.target_hq_size = None
+        
+        self.resize_timer = QTimer(reader_view)
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.setInterval(200) # 200ms debounce
+        self.resize_timer.timeout.connect(self._trigger_hq_rescale)
 
     def set_active(self, active: bool):
         if active:
@@ -46,6 +58,10 @@ class ImageViewer(BaseViewer):
         self.current_request_id += 1
         req_id = self.current_request_id
         
+        # Reset HQ state
+        self.hq_generation_id += 1
+        self.scaled_pixmap_item = False 
+        self.original_pixmap = None
         paths = []
         if isinstance(item, tuple) or (isinstance(item, list) and len(item) == 2):
              paths = [item[0], item[1]]
@@ -84,6 +100,7 @@ class ImageViewer(BaseViewer):
             pixmap = QPixmap.fromImage(q_img)
             self.original_pixmap = pixmap
             self._set_pixmap(pixmap, path)
+            self._trigger_hq_rescale() # Attempt to load HQ version immediately
             
         elif len(loaded_keys) >= 2:
             imgs = list(results.values())
@@ -92,6 +109,8 @@ class ImageViewer(BaseViewer):
             pix2 = QPixmap.fromImage(imgs[1])
             
             self._setup_double_view(pix1, pix2, paths[0], paths[1])
+            # Scaling double view is complex, skipping for simplicty in this iteration unless requested.
+            # Usually double page spreads don't need as aggressive downscaling as they fill the screen more.
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
@@ -114,6 +133,8 @@ class ImageViewer(BaseViewer):
         
         self.reader_view.scene.setSceneRect(0, 0, total_width, total_height)
         self.pixmap_item = item1
+        
+        self.original_pixmap = None # Disable HQ scaling for double view for now
 
     def _stop_movie(self):
         if self.movie:
@@ -158,6 +179,7 @@ class ImageViewer(BaseViewer):
              # Standard sync load (fallback or specific use)
              self.original_pixmap = self._load_pixmap(path)
              self._set_pixmap(self.original_pixmap, path)
+             self._trigger_hq_rescale()
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
@@ -229,17 +251,25 @@ class ImageViewer(BaseViewer):
             self.reader_view.scene.removeItem(item)
 
         self.pixmap_item = None
+        self.scaled_pixmap_item = None
         self.clear_overlays()
 
     def zoom(self, mode: str):
         if not self.pixmap_item and not (isinstance(mode, str) and mode.startswith("Fit")): 
             pass
-            
+        
+        # Always restore original before any zoom operation to prevent
+        # stretching a low-res scaled image
+        if self.scaled_pixmap_item and self.original_pixmap:
+            self._restore_original_pixmap()
+
         if mode == "Fit Page":
             self.reader_view.view.resetTransform()
             self.reader_view.view.fitInView(self.reader_view.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
             self.reader_view.view.reset_zoom_state()
             self.reader_view.zoom_changed.emit("Fit Page")
+            self._trigger_hq_rescale()
+
         elif mode == "Fit Width":
             scene_rect = self.reader_view.scene.sceneRect()
             if scene_rect.width() > 0:
@@ -248,6 +278,7 @@ class ImageViewer(BaseViewer):
                 self.reader_view.view._zoom_factor = factor
                 self.reader_view._update_zoom(factor, update_last_mode=False)
                 self.reader_view.zoom_changed.emit("Fit Width")
+                self._trigger_hq_rescale()
         else:
             try:
                 zoom_value = float(mode.replace('%', '')) / 100.0
@@ -256,11 +287,81 @@ class ImageViewer(BaseViewer):
             except ValueError:
                 pass
 
+    def on_resize(self, event):
+        # Immediate restore on resize start/event
+        if self.scaled_pixmap_item and self.original_pixmap:
+             self._restore_original_pixmap()
+             
+        # Trigger rescale debounce
+        self.resize_timer.start()
+
+    def on_zoom_changed(self, zoom_mode: str):
+        # Called when zoom level changes from ReaderView (manual or fit)
+        self.resize_timer.start()
+
+    def _trigger_hq_rescale(self):
+        # Logic to decide if we need to scale
+        if not self.original_pixmap or self.original_pixmap.isNull():
+            return
+            
+        if self.movie:
+            return
+            
+        view = self.reader_view.view
+        
+        scene_rect = self.reader_view.scene.sceneRect()
+        mapped_poly = view.mapFromScene(scene_rect)
+        mapped_rect = mapped_poly.boundingRect()
+        
+        dpr = view.viewport().devicePixelRatio()
+        target_w = int(mapped_rect.width() * dpr)
+        original_w = self.original_pixmap.width()
+        
+        if target_w < (original_w * 0.9):
+             self.hq_generation_id += 1
+             q_image = self.original_pixmap.toImage()
+             worker = AsyncScaleWorker(q_image, target_w, 0, self.hq_generation_id) # reusing index 0
+             worker.signals.finished.connect(self._on_hq_scale_finished)
+             self.reader_view.thread_pool.start(worker)
+        else:
+             if self.scaled_pixmap_item:
+                 self._restore_original_pixmap()
+
+    def _on_hq_scale_finished(self, index, q_image, generation_id):
+        if generation_id != self.hq_generation_id:
+            return
+            
+        if not self.pixmap_item:
+            return
+            
+        scaled_pixmap = QPixmap.fromImage(q_image)
+        
+        original_w = self.original_pixmap.width()
+        scaled_w = scaled_pixmap.width()
+        
+        if scaled_w == 0: return
+
+        scale_factor = original_w / scaled_w
+        
+        self.pixmap_item.setPixmap(scaled_pixmap)
+        self.pixmap_item.setScale(scale_factor)
+        
+        self.scaled_pixmap_item = True # flag
+
+    def _restore_original_pixmap(self):
+        if not self.original_pixmap or not self.pixmap_item:
+            return
+            
+        self.pixmap_item.setPixmap(self.original_pixmap)
+        self.pixmap_item.setScale(1.0)
+        self.scaled_pixmap_item = False
+
     def show_next(self):
         pass
 
     def cleanup(self):
         self._stop_movie()
+        self.resize_timer.stop()
 
     def show_overlays(self, overlays: list):
         self.clear_overlays()
@@ -268,6 +369,12 @@ class ImageViewer(BaseViewer):
         if not self.pixmap_item:
             return
 
+        # ... (overlay logic same as before, ensuring it respects item transform) ...
+        # If item is scaled, overlays are children or siblings? 
+        # Overlays are added to scene directly in previous code.
+        # Position is absolute scene coordinates. 
+        # Since scene logic coords = original image size, this works perfectly even if we scale the item back up.
+        
         for overlay in overlays:
             bbox = overlay['bbox'] # [x, y, w, h]
             text = overlay['text']
@@ -289,14 +396,14 @@ class ImageViewer(BaseViewer):
             
             # Dynamic font scaling
             min_font_size = 6
-            max_font_size = 30 # Cap max size for aesthetics
+            max_font_size = 30 
             
             font = QFont("Arial")
             
             # Text config
             option = text_item.document().defaultTextOption()
-            option.setAlignment(Qt.AlignmentFlag.AlignCenter) # Center align
-            option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere) # Try word boundary, split if necessary
+            option.setAlignment(Qt.AlignmentFlag.AlignCenter) 
+            option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere) 
             text_item.document().setDefaultTextOption(option)
 
             # Start from max size and go down
@@ -311,7 +418,6 @@ class ImageViewer(BaseViewer):
                     final_font_size = size
                     break
             
-            # If still too big, force min size (will overflow but readable-ish)
             if text_item.boundingRect().height() > h:
                 final_font_size = min_font_size
             
@@ -319,13 +425,11 @@ class ImageViewer(BaseViewer):
             text_item.setFont(font)
             text_item.setTextWidth(w)
             
-            # Center vertically if space allows
             actual_h = text_item.boundingRect().height()
             y_offset = max(0, (h - actual_h) / 2)
             
-            # Position text
             text_item.setPos(x, y + y_offset)
-            text_item.setZValue(11) # Above background
+            text_item.setZValue(11) 
             
             self.reader_view.scene.addItem(text_item)
             self.overlay_items.append(text_item)
@@ -338,5 +442,7 @@ class ImageViewer(BaseViewer):
 
     def reset(self):
         self._stop_movie()
+        self.resize_timer.stop()
         self.pixmap_item = None
+        self.original_pixmap = None
         self.clear_overlays()
