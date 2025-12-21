@@ -26,7 +26,8 @@ from src.enums import Language
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, TranslateWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS
+from src.workers.translate_worker import TranslateWorker
 
 from src.ui.viewer.image_viewer import ImageViewer
 from src.ui.viewer.video_viewer import VideoViewer
@@ -693,7 +694,7 @@ class ReaderView(QWidget):
         # Check if arg is a path or a language code
         if arg:
             if arg in list(Language):
-                target_lang = arg
+                target_lang = Language(arg)
                 # Get current page path
                 if self.model.images and self.model.current_index < len(self.model.images):
                     path = self.model.images[self.model.current_index].path
@@ -718,12 +719,22 @@ class ReaderView(QWidget):
         worker.signals.finished.connect(self._on_translation_finished)
         self.thread_pool.start(worker)
 
-    def _on_translation_finished(self, overlays: list):
+    def _on_translation_finished(self, path: str, overlays: list):
         if hasattr(self, 'top_panel'):
              self.top_panel.set_translating(False)
              
         self.loading_label.hide()
         self.loading_label.setText("Loading...") # Reset
+
+        # Verify that we are still on the same page
+        current_path = None
+        if self.model.images and self.model.current_index < len(self.model.images):
+            current_path = self.model.images[self.model.current_index].path
+            
+        if path != current_path:
+            # User has navigated away, don't show overlays
+            print(f"Translation finished for {path}, but current page is {current_path}. Ignoring.")
+            return
         
         if self.current_viewer == self.image_viewer:
             self.image_viewer.show_overlays(overlays)
