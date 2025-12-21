@@ -479,21 +479,23 @@ class ChapterListView(QWidget):
         QThreadPool.globalInstance().start(worker)
 
     def on_add_translation_requested(self, chapter, widget):
-        dialog = AddTranslationDialog(self)
+        series_path = str(self.series['path'])
+        chapter_path = str(chapter['path'])
+
+        # Pass series_path/chapter_path to dialog to load main images
+        dialog = AddTranslationDialog(series_path, chapter_path, self)
+        
         if dialog.exec():
-            source_images = dialog.get_image_paths()
+            mapping = dialog.get_mapping()
             lang = dialog.get_selected_language()
             
-            if not source_images:
+            if not mapping:
                 return
 
             widget.set_processing(True)
             print(f"Adding translations for {chapter['name']} ({lang.value})")
             
-            series_path = str(self.series['path'])
-            chapter_path = str(chapter['path'])
-            
-            worker = TranslationMatcherWorker(series_path, chapter_path, source_images, lang)
+            worker = TranslationMatcherWorker(series_path, chapter_path, mapping, lang)
             
             def on_finished(msg):
                 print(f"Translation Add Finished: {msg}")

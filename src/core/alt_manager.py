@@ -211,22 +211,30 @@ class AltManager:
         """
         Link a translation file to the main file.
         """
+        print(f"DEBUG: Linking translation. Chapter: {chapter_name}, Main: {main_file}, Lang: {lang}, Trans: {translation_file}")
         data = AltManager.load_alts(series_path)
         
         if chapter_name not in data:
             data[chapter_name] = {}
             
         main_name = Path(main_file).name
-        trans_name = Path(translation_file).name
         
-        # Init or Migrate
+        # Init or Migrate - fetch entry FIRST
         if main_name in data[chapter_name]:
             entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
         else:
             entry = {"alts": [], "translations": {}}
-            
-        # Update translation
-        entry["translations"][lang.value] = trans_name
+
+        if translation_file is None:
+            # Delete translation
+            if lang.value in entry["translations"]:
+                del entry["translations"][lang.value]
+                print(f"DEBUG: Removed translation for {lang.value}")
+        else:
+            trans_name = Path(translation_file).name
+            entry["translations"][lang.value] = trans_name
+            print(f"DEBUG: Set translation for {lang.value} to {trans_name}")
+        
         data[chapter_name][main_name] = entry
         
         AltManager.save_alts(series_path, data)
