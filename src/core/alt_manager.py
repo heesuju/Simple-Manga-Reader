@@ -13,23 +13,32 @@ class AltManager:
         Group raw image paths into Page objects based on configuration.
         """
         grouped_pages = []
-        processed_files = set()
-        
+        processed_files = set() # Stores filenames that have been processed or are subsidiary
+
         # Map filenames to full paths for easy lookup
         path_map = {Path(p).name: p for p in image_paths}
 
-        # Collect all subsidiary files (alts) to know what to skip
-        subsidiary_files = set()
-        for alts_list in alt_config.values():
-            for alt_name in alts_list:
-                subsidiary_files.add(alt_name)
+        # Pre-populate processed_files with all known alts/translations
+        # This prevents them from being added as standalone pages if they are processed before their main image
+        for main_file_name, entry in alt_config.items():
+            if isinstance(entry, list):
+                # Legacy list of alts
+                for alt_name in entry:
+                     if alt_name in path_map:
+                         processed_files.add(alt_name)
+            elif isinstance(entry, dict):
+                 # New dict format
+                 if "alts" in entry and isinstance(entry["alts"], list):
+                     for alt_name in entry["alts"]:
+                         if alt_name in path_map:
+                             processed_files.add(alt_name)
+                 if "translations" in entry and isinstance(entry["translations"], dict):
+                     for trans_name in entry["translations"].values():
+                         if trans_name in path_map:
+                             processed_files.add(trans_name)
 
         for path in image_paths:
             name = Path(path).name
-            
-            # If this file is a known alternate of another file, skip it.
-            if name in subsidiary_files:
-                continue
                 
             if name in processed_files:
                 continue
@@ -39,11 +48,32 @@ class AltManager:
 
             if name in alt_config:
                 found_alts = []
-                for alt_name in alt_config[name]:
-                    if alt_name in path_map:
-                        found_alts.append(path_map[alt_name])
-                        processed_files.add(alt_name)
+                translations = {}
+                entry = alt_config[name]
                 
+                # Check structure type: List (Legacy) vs Dict (New)
+                if isinstance(entry, list):
+                     # Legacy: List of strings
+                     for alt_name in entry:
+                        if alt_name in path_map:
+                            found_alts.append(path_map[alt_name])
+                            processed_files.add(alt_name)
+                elif isinstance(entry, dict):
+                     # New: {"alts": [], "translations": {}}
+                     # 1. Alts
+                     if "alts" in entry and isinstance(entry["alts"], list):
+                         for alt_name in entry["alts"]:
+                             if alt_name in path_map:
+                                 found_alts.append(path_map[alt_name])
+                                 processed_files.add(alt_name)
+                     # 2. Translations
+                     if "translations" in entry and isinstance(entry["translations"], dict):
+                         for lang_key, trans_file in entry["translations"].items():
+                             if trans_file in path_map:
+                                 translations[lang_key] = path_map[trans_file]
+                                 processed_files.add(trans_file)
+
+
                 # Sort alts: Image < GIF < Video, then filename
                 # Priority: 0=Image, 1=GIF, 2=Video
                 ANIM_EXTS = {'.gif'}
@@ -58,7 +88,7 @@ class AltManager:
                 found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), Path(p).name.lower()))
                 variants.extend(found_alts)
             
-            grouped_pages.append(Page(variants))
+            grouped_pages.append(Page(variants, translations if 'translations' in locals() else None))
         
         return grouped_pages
     INFO_FILE_NAME = "info.json"
@@ -73,10 +103,17 @@ class AltManager:
         Load the alt configuration from info.json.
         Returns a structure:
         {
+        Returns a structure:
+        {
             "Chapter Name": {
-                "main_image.jpg": ["alt1.jpg", "alt2.jpg"]
+                "main_image.jpg": {
+                    "alts": ["alt1.jpg"],
+                    "translations": {"ENG": "eng.jpg"}
+                }
             }
         }
+        Legacy format (config value is list) is also supported during read, 
+        but writes should migrate to new format.
         """
         info_path = AltManager._get_info_path(series_path)
         if not info_path.exists():
@@ -100,10 +137,19 @@ class AltManager:
             print(f"Error saving info.json: {e}")
 
     @staticmethod
+    def _ensure_entry_structure(entry):
+        """Convert list entry to dict entry if necessary."""
+        if isinstance(entry, list):
+            return {"alts": entry, "translations": {}}
+        if "alts" not in entry: entry["alts"] = []
+        if "translations" not in entry: entry["translations"] = {}
+        return entry
+
+    @staticmethod
     def link_pages(series_path: str, chapter_name: str, main_file: str, alt_files: List[str]):
         """
         Link alt_files to main_file for a specific chapter.
-        This updates the existing configuration or creates a new one.
+        Stores in the 'alts' list.
         """
         data = AltManager.load_alts(series_path)
         
@@ -114,28 +160,70 @@ class AltManager:
         main_name = Path(main_file).name
         alt_names = [Path(p).name for p in alt_files]
 
-        # If main_name already has alts, append unique ones
+        # Init or Migrate entry
         if main_name in data[chapter_name]:
-            existing_alts = set(data[chapter_name][main_name])
-            existing_alts.update(alt_names)
-            # Remove main_name if it accidentally got into alts
-            if main_name in existing_alts:
-                existing_alts.remove(main_name)
-            data[chapter_name][main_name] = sorted(list(existing_alts))
+            entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
         else:
-            data[chapter_name][main_name] = sorted(alt_names)
+            entry = {"alts": [], "translations": {}}
 
-        # Clean up: Ensure alt files are not keys themselves (naive approach, but safe for now)
+        # Update alts
+        existing_alts = set(entry["alts"])
+        existing_alts.update(alt_names)
+        if main_name in existing_alts:
+            existing_alts.remove(main_name)
+            
+        entry["alts"] = sorted(list(existing_alts))
+        data[chapter_name][main_name] = entry
+
+        # Clean up: Ensure alt files are not keys themselves
+        # Note: This logic for cleanup is simplified and assumes alts don't have their own alts in a complex tree.
         for alt in alt_names:
             if alt in data[chapter_name]:
-                # Merge its alts into the new main? Or just delete?
-                # For simplicity, move its alts to main and delete entry
-                sub_alts = data[chapter_name].pop(alt)
+                # Merge its alts?
+                sub_entry = data[chapter_name].pop(alt)
+                # If sub_entry was list
+                if isinstance(sub_entry, list):
+                    sub_alts = sub_entry
+                else:
+                    sub_alts = sub_entry.get("alts", [])
+                    # What about translations in the merged child? 
+                    # For now just merging alts. Translations on alts might be edge case.
+                
                 for sub in sub_alts:
-                    if sub != main_name and sub not in data[chapter_name][main_name]:
-                         data[chapter_name][main_name].append(sub)
+                    if sub != main_name and sub not in entry["alts"]:
+                         entry["alts"].append(sub)
+                
+                # Re-sort
+                entry["alts"].sort()
 
         AltManager.save_alts(series_path, data)
+
+    from src.enums import Language
+    @staticmethod
+    def link_translation(series_path: str, chapter_name: str, main_file: str, lang: Language, translation_file: str):
+        """
+        Link a translation file to the main file.
+        """
+        data = AltManager.load_alts(series_path)
+        
+        if chapter_name not in data:
+            data[chapter_name] = {}
+            
+        main_name = Path(main_file).name
+        trans_name = Path(translation_file).name
+        
+        # Init or Migrate
+        if main_name in data[chapter_name]:
+            entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
+        else:
+            entry = {"alts": [], "translations": {}}
+            
+        # Update translation
+        entry["translations"][lang.value] = trans_name
+        data[chapter_name][main_name] = entry
+        
+        AltManager.save_alts(series_path, data)
+
 
     @staticmethod
     def unlink_page(series_path: str, chapter_name: str, file_name: str):
@@ -155,13 +243,24 @@ class AltManager:
             AltManager.save_alts(series_path, data)
             return
 
-        # Case 2: It is an Alt file inside some Main file
-        for main_img, alts in data[chapter_name].items():
-            if target_name in alts:
-                alts.remove(target_name)
-                # If alts is empty, we can keep the main img key or remove it?
-                # Keeping it is harmless, but removing cleans up.
-                if not alts:
-                     del data[chapter_name][main_img]
-                AltManager.save_alts(series_path, data)
-                return
+        # Case 2: It is an Alt/Translation inside some Main file
+        for main_img, entry in data[chapter_name].items():
+            entry = AltManager._ensure_entry_structure(entry)
+            
+            # Check alts
+            if target_name in entry["alts"]:
+                entry["alts"].remove(target_name)
+                # If empty, keep empty list
+            
+            # Check translations
+            keys_to_remove = []
+            for lang, trans_file in entry["translations"].items():
+                if trans_file == target_name:
+                    keys_to_remove.append(lang)
+            for k in keys_to_remove:
+                del entry["translations"][k]
+
+            # Save (even if struct didn't change effectively, migration might have happened)
+            data[chapter_name][main_img] = entry
+            AltManager.save_alts(series_path, data)
+            return

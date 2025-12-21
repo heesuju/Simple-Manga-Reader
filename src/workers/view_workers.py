@@ -155,6 +155,12 @@ class ChapterLoaderWorker(QRunnable):
             if alts_dir.exists() and alts_dir.is_dir():
                 files.extend([str(p) for p in alts_dir.iterdir() 
                               if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
+
+            # 3. Scan translations/ subfolder
+            trans_dir = manga_path / "translations"
+            if trans_dir.exists() and trans_dir.is_dir():
+                files.extend([str(p) for p in trans_dir.iterdir() 
+                              if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name])
                 
             return sorted(files)
         return []

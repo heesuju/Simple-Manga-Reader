@@ -10,6 +10,7 @@ class TopPanel(QWidget):
     speed_changed = pyqtSignal()
     repeat_changed = pyqtSignal(bool)
     translate_clicked = pyqtSignal(str) # Emits selected language code
+    lang_changed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,6 +66,7 @@ class TopPanel(QWidget):
         self.lang_combo.addItems([lang.value for lang in Language])
         self.lang_combo.setFixedSize(60, 32)
         self.lang_combo.setStyleSheet("color: white; background-color: rgba(255, 255, 255, 30); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px;")
+        self.lang_combo.currentTextChanged.connect(self.lang_changed.emit)
         
         self.translate_btn = QPushButton("Translate")
         self.translate_btn.setFixedSize(80, 32)
@@ -124,3 +126,19 @@ class TopPanel(QWidget):
             self.translate_btn.setText("Translate")
             self.translate_btn.setEnabled(True)
             self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+
+    def update_translate_button(self, state: str, lang: str = ""):
+        """
+        Update translate button appearance and text.
+        state: 'TRANSLATE', 'SHOW_TL', 'SHOW_ORG'
+        """
+        self.translate_btn.setEnabled(True)
+        if state == 'TRANSLATE':
+            self.translate_btn.setText("Translate")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        elif state == 'SHOW_TL':
+            self.translate_btn.setText(f"Show {lang}")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 200, 83, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        elif state == 'SHOW_ORG':
+            self.translate_btn.setText("Show Original")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(255, 152, 0, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")

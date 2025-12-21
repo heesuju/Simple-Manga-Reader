@@ -191,6 +191,7 @@ class ReaderView(QWidget):
         self.top_panel.speed_changed.connect(self._on_slideshow_speed_changed)
         self.top_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
         self.top_panel.translate_clicked.connect(self.translate_page)
+        self.top_panel.lang_changed.connect(self.update_top_panel)
         self.slider_panel.page_changed.connect(self.change_page)
         self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
@@ -402,6 +403,8 @@ class ReaderView(QWidget):
             self.model.load_image()
             if self.model.view_mode == ViewMode.STRIP:
                 self.strip_viewer.load(None)
+        
+        self.update_top_panel()
                  
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.BackButton:
@@ -512,6 +515,7 @@ class ReaderView(QWidget):
 
         self.page_panel._update_page_selection(self.model.current_index)
         self.slider_panel.set_value(self.model.current_index)
+        self.update_top_panel()
 
     def _load_double_images(self, image1_path, image2_path):
         if self.current_viewer != self.image_viewer:
@@ -687,29 +691,66 @@ class ReaderView(QWidget):
         if self.current_viewer == self.video_viewer:
             self.video_viewer._toggle_play_pause()
 
-    def translate_page(self, arg: Language = None):
-        target_lang = Language.ENG
-        path = None
-        
-        # Check if arg is a path or a language code
-        if arg:
-            if arg in list(Language):
-                target_lang = Language(arg)
-                # Get current page path
-                if self.model.images and self.model.current_index < len(self.model.images):
-                    path = self.model.images[self.model.current_index].path
-            else:
-                path = arg
-                if hasattr(self, 'top_panel'):
-                    target_lang = Language(self.top_panel.lang_combo.currentText())
-        
-        if not path:
-             # Fallback if no arg and no current image
-             if self.model.images and self.model.current_index < len(self.model.images):
-                  path = self.model.images[self.model.current_index].path
-             else:
-                  return
+    def update_top_panel(self, _=None):
+        """Update top panel translate button state based on current page."""
+        if not hasattr(self, 'top_panel') or not self.model.images:
+            return
+            
+        if not (0 <= self.model.current_index < len(self.model.images)):
+            self.top_panel.update_translate_button('TRANSLATE')
+            return
 
+        page = self.model.images[self.model.current_index]
+        target_lang = Language(self.top_panel.lang_combo.currentText()).value
+        
+        print(f"[DEBUG] update_top_panel: index={self.model.current_index}, lang={target_lang}")
+        print(f"[DEBUG] page.translations keys: {list(page.translations.keys())}")
+        print(f"[DEBUG] is_showing_translation: {page.is_showing_translation()}")
+
+        if page.is_showing_translation():
+            # If showing ANY translation, button allows going back to original
+            # We assume toggle logic: if showing TL, button reverts to Original
+            self.top_panel.update_translate_button('SHOW_ORG')
+        elif target_lang in page.translations:
+             self.top_panel.update_translate_button('SHOW_TL', target_lang)
+        else:
+             self.top_panel.update_translate_button('TRANSLATE')
+
+    def translate_page(self, arg: Language = None):
+        if not self.model.images or self.model.current_index >= len(self.model.images):
+            return
+
+        # Explicitly fetch target language from combo if not provided or if arg is Language enum
+        if hasattr(self, 'top_panel'):
+            target_lang_enum = Language(self.top_panel.lang_combo.currentText())
+        else:
+            target_lang_enum = Language.ENG 
+            
+        target_lang = target_lang_enum.value
+        page = self.model.images[self.model.current_index]
+        
+        # Check current state for Toggle
+        if page.is_showing_translation():
+            # If currently showing translation, toggle back to original
+            page.clear_translation()
+            self.model.load_image()
+            self.update_top_panel()
+            return
+            
+        # Check if translation exists for target language
+        if target_lang in page.translations:
+             # Switch to it
+             page.set_translation(target_lang)
+             self.model.load_image()
+             self.update_top_panel()
+             return
+
+        # Otherwise start translation
+        path = page.path # This should be the variant path since is_showing_translation is False (or active one)
+        # Using page.path works because:
+        # 1. If we are showing translation, we captured 'toggle back' above.
+        # 2. If we are not showing translation, page.path is the variant path.
+        
         if hasattr(self, 'top_panel'):
              self.top_panel.set_translating(True)
         self.loading_label.setText(f"Translating to {target_lang}...")
@@ -718,27 +759,59 @@ class ReaderView(QWidget):
         series_path = str(self.model.series['path'])
         chapter_name = Path(self.model.manga_dir).name
         
-        worker = TranslateWorker(path, series_path, chapter_name, target_lang=target_lang)
+        worker = TranslateWorker(path, series_path, chapter_name, target_lang=target_lang_enum)
         worker.signals.finished.connect(self._on_translation_finished)
         self.thread_pool.start(worker)
 
-    def _on_translation_finished(self, path: str, overlays: list):
+    def _on_translation_finished(self, original_path: str, saved_path: str, overlays: list, lang_code: str):
         if hasattr(self, 'top_panel'):
              self.top_panel.set_translating(False)
              
         self.loading_label.hide()
         self.loading_label.setText("Loading...") # Reset
 
-        # Verify that we are still on the same page
-        current_path = None
-        if self.model.images and self.model.current_index < len(self.model.images):
-            current_path = self.model.images[self.model.current_index].path
-            
-        if path != current_path:
-            # User has navigated away, don't show overlays
-            print(f"Translation finished for {path}, but current page is {current_path}. Ignoring.")
-            return
+        if not self.model.images:
+             return
+
+        # 1. Find the page object that this translation belongs to
+        target_page = None
+        for p in self.model.images:
+            # Check if original_path is one of the variants
+            if original_path in p.images:
+                target_page = p
+                break
+            # Check if original_path was itself a translation (edge case)
+            if original_path in p.translations.values():
+                target_page = p
+                break
         
-        if self.current_viewer == self.image_viewer:
-            self.image_viewer.show_overlays(overlays)
+        if not target_page:
+            print(f"Translation finished for {original_path}, but could not find corresponding page in model.")
+            return
+
+        # 2. Update the Page data
+        if saved_path:
+            target_page.translations[lang_code] = saved_path
+            
+        # 3. If this is the currently viewed page, update the UI
+        current_page = self.model.images[self.model.current_index]
+        
+        if target_page == current_page:
+            current_ui_lang = Language(self.top_panel.lang_combo.currentText()).value
+            
+            # Only switch view if the finished translation matches the currently selected UI language
+            if lang_code == current_ui_lang:
+                if saved_path:
+                    # Switch to it
+                    current_page.set_translation(lang_code)
+                    self.model.load_image()
+                    self.update_top_panel()
+                elif overlays:
+                    # Fallback
+                    if self.current_viewer == self.image_viewer:
+                        self.image_viewer.show_overlays(overlays)
+            else:
+                # User changed language while translating? 
+                # Just update button state to show translation is available
+                self.update_top_panel()
 

@@ -205,14 +205,35 @@ class ReaderModel(QObject):
             # We can construct paths.
             # If the alt config has names, we check if they exist in alts dir or main dir.
             
-            alt_names = chapter_alts[main_name]
+            entry = chapter_alts[main_name]
+            alt_names = []
+            translations = {}
+            
+            # Handle List (Legacy) vs Dict (New)
+            if isinstance(entry, list):
+                alt_names = entry
+            elif isinstance(entry, dict):
+                # Add alts
+                if "alts" in entry and isinstance(entry["alts"], list):
+                    alt_names.extend(entry["alts"])
+                    
+                # Add translations
+                if "translations" in entry and isinstance(entry["translations"], dict):
+                    # We need to resolve paths for translations too
+                    trans_dict = entry["translations"]
+                    # We will resolve them in the loop below or separately
+                    # Let's verify existence separately to keep logic clean or reuse loop
+                    # Actually, reuse loop logic is tricky because we need key->path mapping for translations
+                    pass
+
             found_alts = []
             
-            # Strategy: Check 'alts' subdirectory of the chapter folder, and the chapter folder itself.
-            # We know 'self.manga_dir' is the chapter folder.
+            # Strategy: Check 'alts' and 'translations' subdirectories (if we want to be robust), 
+            # as well as the chapter folder itself.
             chapter_dir = Path(self.manga_dir)
-            possible_dirs = [chapter_dir / "alts", chapter_dir]
+            possible_dirs = [chapter_dir / "alts", chapter_dir / "translations", chapter_dir]
             
+            # Resolve Alts
             for alt_name in alt_names:
                 for d in possible_dirs:
                     candidate = d / alt_name
@@ -220,6 +241,15 @@ class ReaderModel(QObject):
                         found_alts.append(str(candidate))
                         break
             
+            # Resolve Translations (if any)
+            if isinstance(entry, dict) and "translations" in entry and isinstance(entry["translations"], dict):
+                 for lang_key, trans_file in entry["translations"].items():
+                     for d in possible_dirs:
+                         candidate = d / trans_file
+                         if candidate.exists():
+                             translations[lang_key] = str(candidate)
+                             break
+
             # Sort alts (re-use sort logic if possible, or duplicate for now as it's small)
             ANIM_EXTS = {'.gif'}
             VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
@@ -234,6 +264,7 @@ class ReaderModel(QObject):
 
         # 2. Update the Page object
         page.images = new_variants
+        page.translations = translations
         
         # Restore selection
         # Normalize paths for comparison just in case
