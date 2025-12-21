@@ -49,12 +49,13 @@ class ChapterListLoader(QRunnable):
 
 class ChapterListItemWidget(QWidget):
     chapter_selected = pyqtSignal(object)
-    group_pages_requested = pyqtSignal(object)
+    group_pages_requested = pyqtSignal(object, object) # chapter, widget
 
     def __init__(self, chapter, series, chapter_name, library_manager, parent=None):
         super().__init__(parent)
         self.chapter = chapter
         self.series = series
+        self.is_processing = False
         self.library_manager = library_manager
         self.is_highlighted = False
         self.hovered = False
@@ -136,15 +137,30 @@ class ChapterListItemWidget(QWidget):
     def mouseReleaseEvent(self, event):
         self.pressed = False
         self.update()
+        if self.is_processing:
+            return
+
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             self.chapter_selected.emit(self.chapter)
 
     def contextMenuEvent(self, event):
+        if self.is_processing:
+            return
+
         menu = QMenu(self)
         group_action = QAction("Group Pages (Auto-Alt)", self)
-        group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter))
+        group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter, self))
         menu.addAction(group_action)
         menu.exec(event.globalPos())
+
+    def set_processing(self, processing: bool):
+        self.is_processing = processing
+        self.setEnabled(not processing)
+        if processing:
+            self.page_count_label.setText("Grouping...")
+        else:
+            # Page count will be updated by the caller
+            pass
 
     def set_highlight(self, is_highlighted):
         self.is_highlighted = is_highlighted
@@ -416,15 +432,40 @@ class ChapterListView(QWidget):
     def on_chapter_selected(self, chapter):
         self.open_reader.emit(self.series, chapter)
 
-    def on_group_pages_requested(self, chapter):
+    def on_group_pages_requested(self, chapter, widget):
         series_path = str(self.series['path'])
         chapter_path = str(chapter['path'])
         
         print(f"Starting Group Pages for: {chapter['name']}")
+        widget.set_processing(True)
         
         worker = GroupPagesWorker(series_path, chapter_path)
-        worker.signals.finished.connect(lambda msg: print(f"Group Pages Finished: {msg}"))
-        worker.signals.error.connect(lambda err: print(f"Group Pages Error: {err}"))
+        
+        def on_finished(msg):
+            print(f"Group Pages Finished: {msg}")
+            # Refresh page count
+            try:
+                full_chapter_path = Path(chapter['path'])
+                alt_config = AltManager.load_alts(series_path)
+                
+                if full_chapter_path.exists() and full_chapter_path.is_dir():
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
+                    
+                    chapter_name = full_chapter_path.name
+                    chapter_alts = alt_config.get(chapter_name, {})
+                    grouped_pages = AltManager.group_images(images, chapter_alts)
+                    widget.set_page_count(len(grouped_pages))
+            except Exception as e:
+                print(f"Error refreshing page count: {e}")
+                
+            widget.set_processing(False)
+
+        def on_error(err):
+            print(f"Group Pages Error: {err}")
+            widget.set_processing(False)
+
+        worker.signals.finished.connect(on_finished)
+        worker.signals.error.connect(on_error)
         
         QThreadPool.globalInstance().start(worker)
 
