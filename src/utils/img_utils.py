@@ -308,6 +308,14 @@ def get_chapter_number(path):
     # But usually manga naming is "Series - Ch X" or "Series 01".
     
     return find_number(name)
+
+def extract_page_number(filename: str) -> int:
+    """Extract the page number from a filename."""
+    stem = Path(filename).stem
+    numbers = re.findall(r'\d+', stem)
+    if numbers:
+        return int(numbers[-1])
+    return -1
     
 
 def _get_first_image_path(chapter_dir):

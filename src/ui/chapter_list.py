@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect, QSizePolicy
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect, QSizePolicy, QMenu
+from PyQt6.QtGui import QAction
 import os
 from PyQt6.QtGui import QPixmap, QPalette, QColor, QPainter, QLinearGradient, QShortcut, QKeySequence, QMouseEvent
 from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF, QObject, QRunnable, QTimer
@@ -9,7 +10,8 @@ from src.ui.components.flow_layout import FlowLayout
 from src.ui.reader_view import ReaderView
 from src.utils.img_utils import crop_pixmap
 from pathlib import Path
-from src.utils.img_utils import get_chapter_number
+from src.workers.group_worker import GroupPagesWorker
+from src.utils.img_utils import get_chapter_number, crop_pixmap
 
 class ChapterListLoaderSignals(QObject):
     chapter_processed = pyqtSignal(object, int, int)  # chapter, page_count, index
@@ -32,10 +34,8 @@ class ChapterListLoader(QRunnable):
             full_chapter_path = Path(chapter['path'])
             if full_chapter_path.exists() and full_chapter_path.is_dir():
                 try:
-                    # Get raw images
                     images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
                     
-                    # Group them using AltManager
                     chapter_name = full_chapter_path.name
                     chapter_alts = alt_config.get(chapter_name, {})
                     grouped_pages = AltManager.group_images(images, chapter_alts)
@@ -49,6 +49,7 @@ class ChapterListLoader(QRunnable):
 
 class ChapterListItemWidget(QWidget):
     chapter_selected = pyqtSignal(object)
+    group_pages_requested = pyqtSignal(object)
 
     def __init__(self, chapter, series, chapter_name, library_manager, parent=None):
         super().__init__(parent)
@@ -137,6 +138,13 @@ class ChapterListItemWidget(QWidget):
         self.update()
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             self.chapter_selected.emit(self.chapter)
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        group_action = QAction("Group Pages (Auto-Alt)", self)
+        group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter))
+        menu.addAction(group_action)
+        menu.exec(event.globalPos())
 
     def set_highlight(self, is_highlighted):
         self.is_highlighted = is_highlighted
@@ -374,6 +382,7 @@ class ChapterListView(QWidget):
             chapter_name = f"Ch {i+1}" if chapter.get('name') != self.series['name'] else self.series['name']
             item_widget = ChapterListItemWidget(chapter, self.series, chapter_name, self.library_manager, self)
             item_widget.chapter_selected.connect(self.on_chapter_selected)
+            item_widget.group_pages_requested.connect(self.on_group_pages_requested)
             self.content_layout.addWidget(item_widget)
             self.chapter_widgets.append(item_widget)
 
@@ -406,6 +415,18 @@ class ChapterListView(QWidget):
 
     def on_chapter_selected(self, chapter):
         self.open_reader.emit(self.series, chapter)
+
+    def on_group_pages_requested(self, chapter):
+        series_path = str(self.series['path'])
+        chapter_path = str(chapter['path'])
+        
+        print(f"Starting Group Pages for: {chapter['name']}")
+        
+        worker = GroupPagesWorker(series_path, chapter_path)
+        worker.signals.finished.connect(lambda msg: print(f"Group Pages Finished: {msg}"))
+        worker.signals.error.connect(lambda err: print(f"Group Pages Error: {err}"))
+        
+        QThreadPool.globalInstance().start(worker)
 
     def on_thumbnail_loaded(self, pixmap, item, index, generation, item_type):
         if index < len(self.chapter_widgets):

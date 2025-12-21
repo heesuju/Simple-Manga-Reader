@@ -18,16 +18,12 @@ class AltManager:
         # Map filenames to full paths for easy lookup
         path_map = {Path(p).name: p for p in image_paths}
 
-        # Pre-populate processed_files with all known alts/translations
-        # This prevents them from being added as standalone pages if they are processed before their main image
         for main_file_name, entry in alt_config.items():
             if isinstance(entry, list):
-                # Legacy list of alts
                 for alt_name in entry:
                      if alt_name in path_map:
                          processed_files.add(alt_name)
             elif isinstance(entry, dict):
-                 # New dict format
                  if "alts" in entry and isinstance(entry["alts"], list):
                      for alt_name in entry["alts"]:
                          if alt_name in path_map:
@@ -53,19 +49,23 @@ class AltManager:
                 
                 # Check structure type: List (Legacy) vs Dict (New)
                 if isinstance(entry, list):
-                     # Legacy: List of strings
                      for alt_name in entry:
                         if alt_name in path_map:
                             found_alts.append(path_map[alt_name])
                             processed_files.add(alt_name)
                 elif isinstance(entry, dict):
-                     # New: {"alts": [], "translations": {}}
                      # 1. Alts
                      if "alts" in entry and isinstance(entry["alts"], list):
                          for alt_name in entry["alts"]:
                              if alt_name in path_map:
                                  found_alts.append(path_map[alt_name])
                                  processed_files.add(alt_name)
+                             else:
+                                 main_dir = Path(path).parent
+                                 alt_path_check = main_dir / "alts" / alt_name
+                                 if alt_path_check.exists():
+                                     found_alts.append(str(alt_path_check))
+
                      # 2. Translations
                      if "translations" in entry and isinstance(entry["translations"], dict):
                          for lang_key, trans_file in entry["translations"].items():
@@ -156,9 +156,9 @@ class AltManager:
         if chapter_name not in data:
             data[chapter_name] = {}
         
-        # Ensure we are using filenames, not full paths
+        # Ensure we are using filenames or relative paths
         main_name = Path(main_file).name
-        alt_names = [Path(p).name for p in alt_files]
+        alt_names = [p.replace('\\', '/') for p in alt_files]
 
         # Init or Migrate entry
         if main_name in data[chapter_name]:
@@ -176,7 +176,6 @@ class AltManager:
         data[chapter_name][main_name] = entry
 
         # Clean up: Ensure alt files are not keys themselves
-        # Note: This logic for cleanup is simplified and assumes alts don't have their own alts in a complex tree.
         for alt in alt_names:
             if alt in data[chapter_name]:
                 # Merge its alts?
