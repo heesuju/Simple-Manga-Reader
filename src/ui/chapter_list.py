@@ -11,6 +11,8 @@ from src.ui.reader_view import ReaderView
 from src.utils.img_utils import crop_pixmap
 from pathlib import Path
 from src.workers.group_worker import GroupPagesWorker
+from src.workers.translation_matcher_worker import TranslationMatcherWorker
+from src.ui.add_translation_dialog import AddTranslationDialog
 from src.utils.img_utils import get_chapter_number, crop_pixmap
 
 class ChapterListLoaderSignals(QObject):
@@ -50,6 +52,7 @@ class ChapterListLoader(QRunnable):
 class ChapterListItemWidget(QWidget):
     chapter_selected = pyqtSignal(object)
     group_pages_requested = pyqtSignal(object, object) # chapter, widget
+    add_translation_requested = pyqtSignal(object, object) # chapter, widget
 
     def __init__(self, chapter, series, chapter_name, library_manager, parent=None):
         super().__init__(parent)
@@ -151,6 +154,11 @@ class ChapterListItemWidget(QWidget):
         group_action = QAction("Group Pages (Auto-Alt)", self)
         group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter, self))
         menu.addAction(group_action)
+        
+        trans_action = QAction("Add Translations...", self)
+        trans_action.triggered.connect(lambda: self.add_translation_requested.emit(self.chapter, self))
+        menu.addAction(trans_action)
+
         menu.exec(event.globalPos())
 
     def set_processing(self, processing: bool):
@@ -399,6 +407,7 @@ class ChapterListView(QWidget):
             item_widget = ChapterListItemWidget(chapter, self.series, chapter_name, self.library_manager, self)
             item_widget.chapter_selected.connect(self.on_chapter_selected)
             item_widget.group_pages_requested.connect(self.on_group_pages_requested)
+            item_widget.add_translation_requested.connect(self.on_add_translation_requested)
             self.content_layout.addWidget(item_widget)
             self.chapter_widgets.append(item_widget)
 
@@ -468,6 +477,50 @@ class ChapterListView(QWidget):
         worker.signals.error.connect(on_error)
         
         QThreadPool.globalInstance().start(worker)
+
+    def on_add_translation_requested(self, chapter, widget):
+        dialog = AddTranslationDialog(self)
+        if dialog.exec():
+            source_images = dialog.get_image_paths()
+            lang = dialog.get_selected_language()
+            
+            if not source_images:
+                return
+
+            widget.set_processing(True)
+            print(f"Adding translations for {chapter['name']} ({lang.value})")
+            
+            series_path = str(self.series['path'])
+            chapter_path = str(chapter['path'])
+            
+            worker = TranslationMatcherWorker(series_path, chapter_path, source_images, lang)
+            
+            def on_finished(msg):
+                print(f"Translation Add Finished: {msg}")
+                try:
+                    full_chapter_path = Path(chapter['path'])
+                    alt_config = AltManager.load_alts(series_path)
+                    
+                    if full_chapter_path.exists() and full_chapter_path.is_dir():
+                        images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
+                        
+                        chapter_name = full_chapter_path.name
+                        chapter_alts = alt_config.get(chapter_name, {})
+                        grouped_pages = AltManager.group_images(images, chapter_alts)
+                        widget.set_page_count(len(grouped_pages))
+                except Exception as e:
+                    print(f"Error refreshing page count: {e}")
+                    
+                widget.set_processing(False)
+
+            def on_error(err):
+                print(f"Translation Add Error: {err}")
+                widget.set_processing(False)
+
+            worker.signals.finished.connect(on_finished)
+            worker.signals.error.connect(on_error)
+            
+            QThreadPool.globalInstance().start(worker)
 
     def on_thumbnail_loaded(self, pixmap, item, index, generation, item_type):
         if index < len(self.chapter_widgets):

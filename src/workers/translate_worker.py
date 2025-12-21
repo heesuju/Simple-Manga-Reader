@@ -220,10 +220,12 @@ class TranslateWorker(QRunnable):
                         if '|' not in self.image_path:
                             original_path = Path(self.image_path)
                             chapter_dir = original_path.parent
-                            translations_dir = chapter_dir / "translations"
+                            lang_suffix = self.target_lang.value # "ENG", "KOR"
+                            
+                            # Update: Use language subfolder
+                            translations_dir = chapter_dir / "translations" / lang_suffix
                             translations_dir.mkdir(parents=True, exist_ok=True)
                             
-                            lang_suffix = self.target_lang.value # "ENG", "KOR"
                             new_filename = f"{original_path.stem}_{lang_suffix}.jpg"
                             save_path = translations_dir / new_filename
                             

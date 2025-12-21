@@ -271,14 +271,23 @@ class ReaderModel(QObject):
                         found_alts.append(str(candidate))
                         break
             
-            # Resolve Translations (if any)
+             # Resolve Translations (if any)
             if isinstance(entry, dict) and "translations" in entry and isinstance(entry["translations"], dict):
                  for lang_key, trans_file in entry["translations"].items():
+                     # Check direct match in possible_dirs
+                     found = False
                      for d in possible_dirs:
                          candidate = d / trans_file
                          if candidate.exists():
                              translations[lang_key] = str(candidate)
+                             found = True
                              break
+                     
+                     if not found:
+                         # Check internal structure: translations/LANG/file
+                         candidate = chapter_dir / "translations" / lang_key / trans_file
+                         if candidate.exists():
+                             translations[lang_key] = str(candidate)
 
             # Sort alts (re-use sort logic if possible, or duplicate for now as it's small)
             ANIM_EXTS = {'.gif'}

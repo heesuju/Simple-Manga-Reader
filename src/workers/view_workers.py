@@ -83,6 +83,16 @@ class ChapterLoaderWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        if not self.manga_dir:
+            self.signals.finished.emit({
+                "manga_dir": None,
+                "images": [],
+                "initial_index": 0,
+                "initial_pixmap": None,
+                "start_from_end": False
+            })
+            return
+
         # Perform blocking I/O and processing here
         image_list = self._get_image_list()
         image_list = sorted(image_list, key=get_chapter_number)

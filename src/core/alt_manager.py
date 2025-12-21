@@ -72,6 +72,12 @@ class AltManager:
                              if trans_file in path_map:
                                  translations[lang_key] = path_map[trans_file]
                                  processed_files.add(trans_file)
+                             else:
+                                 # Check 'translations/<LANG>/<filename>'
+                                 main_dir = Path(path).parent
+                                 trans_path_check = main_dir / "translations" / lang_key / trans_file
+                                 if trans_path_check.exists():
+                                     translations[lang_key] = str(trans_path_check)
 
 
                 # Sort alts: Image < GIF < Video, then filename
