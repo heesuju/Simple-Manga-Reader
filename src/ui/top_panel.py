@@ -1,14 +1,15 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon
 from src.utils.resource_utils import resource_path
-
+from src.enums import Language
 
 class TopPanel(QWidget):
     """A simple panel at the top of the reader view."""
     slideshow_clicked = pyqtSignal()
     speed_changed = pyqtSignal()
     repeat_changed = pyqtSignal(bool)
+    translate_clicked = pyqtSignal(str) # Emits selected language code
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -56,11 +57,29 @@ class TopPanel(QWidget):
         self.repeat_button.setToolTip("Toggle Repeat")
         self.repeat_button.toggled.connect(self._on_repeat_toggled)
 
+        # Translate controls
+        self.translate_layout = QHBoxLayout()
+        self.translate_layout.setSpacing(5)
+        
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems([lang.value for lang in Language])
+        self.lang_combo.setFixedSize(60, 32)
+        self.lang_combo.setStyleSheet("color: white; background-color: rgba(255, 255, 255, 30); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px;")
+        
+        self.translate_btn = QPushButton("Translate")
+        self.translate_btn.setFixedSize(80, 32)
+        self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        self.translate_btn.clicked.connect(self._on_translate_clicked)
+
+        self.translate_layout.addWidget(self.lang_combo)
+        self.translate_layout.addWidget(self.translate_btn)
+
         self.layout.addWidget(self.series_label, 1) # Add stretch
         
         # Add slideshow controls to layout temporarily, will be ordered correctly by inserts or addWidgets
-        # We want: Back | Series Title | Layout | Slideshow | Speed | Repeat
+        # We want: Back | Series Title | Translate | Layout | Slideshow | Speed | Repeat
         
+        self.layout.addLayout(self.translate_layout)
         self.layout.addWidget(self.slideshow_button)
         self.layout.addWidget(self.speed_button)
         self.layout.addWidget(self.repeat_button)
@@ -91,3 +110,7 @@ class TopPanel(QWidget):
         else:
             self.repeat_button.setIcon(self.repeat_off_icon)
         self.repeat_changed.emit(checked)
+
+    def _on_translate_clicked(self):
+        lang = Language(self.lang_combo.currentText())
+        self.translate_clicked.emit(lang)

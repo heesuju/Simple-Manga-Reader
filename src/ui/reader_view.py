@@ -20,7 +20,7 @@ from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
 from src.ui.video_control_panel import VideoControlPanel
 from src.ui.image_view import ImageView
-
+from src.enums import Language
 
 
 from src.data.reader_model import ReaderModel
@@ -189,6 +189,7 @@ class ReaderView(QWidget):
         self.top_panel.slideshow_clicked.connect(self.start_page_slideshow)
         self.top_panel.speed_changed.connect(self._on_slideshow_speed_changed)
         self.top_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
+        self.top_panel.translate_clicked.connect(self.translate_page)
         self.slider_panel.page_changed.connect(self.change_page)
         self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
@@ -685,11 +686,33 @@ class ReaderView(QWidget):
         if self.current_viewer == self.video_viewer:
             self.video_viewer._toggle_play_pause()
 
-    def translate_page(self, path: str):
-        self.loading_label.setText("Translating...")
+    def translate_page(self, arg: Language = None):
+        target_lang = Language.ENG
+        path = None
+        
+        # Check if arg is a path or a language code
+        if arg:
+            if arg in list(Language):
+                target_lang = arg
+                # Get current page path
+                if self.model.images and self.model.current_index < len(self.model.images):
+                    path = self.model.images[self.model.current_index].path
+            else:
+                path = arg
+                if hasattr(self, 'top_panel'):
+                    target_lang = Language(self.top_panel.lang_combo.currentText())
+        
+        if not path:
+             # Fallback if no arg and no current image
+             if self.model.images and self.model.current_index < len(self.model.images):
+                  path = self.model.images[self.model.current_index].path
+             else:
+                  return
+
+        self.loading_label.setText(f"Translating to {target_lang}...")
         self.loading_label.show()
         
-        worker = TranslateWorker(path)
+        worker = TranslateWorker(path, target_lang=target_lang)
         worker.signals.finished.connect(self._on_translation_finished)
         self.thread_pool.start(worker)
 

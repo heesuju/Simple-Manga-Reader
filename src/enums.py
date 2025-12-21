@@ -9,3 +9,7 @@ class ItemType(str, Enum):
     ZIP="zip"
     FOLDER="folder"
     IMAGE="image"
+
+class Language(str, Enum):
+    ENG="ENG"
+    KOR="KOR"

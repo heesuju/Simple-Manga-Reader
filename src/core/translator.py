@@ -3,6 +3,7 @@ import os
 import requests
 import json
 from dotenv import load_dotenv
+from src.enums import Language
 
 # Load params from .env (e.g. LLAMA_API_URL)
 load_dotenv()
@@ -11,14 +12,21 @@ class Translator:
     def __init__(self):
         self.api_url = os.getenv("LLAMA_API_URL", "http://localhost:8080/completion")
 
-    def translate(self, text: str) -> str:
+    def translate(self, text: str, target_lang: Language = Language.ENG) -> str:
         """
-        Translate text using local Llama LLM.
+        Translate text using local Llama.CPP.
         """
         if not text or not text.strip():
             return ""
 
-        prompt = f"Translate the following manga text to English. Output only the translation.\n\nText: {text}\n\nTranslation:"
+        map_lang = {
+            Language.KOR: "Korean",
+            Language.ENG: "English"
+        }
+
+        target_name = map_lang.get(target_lang, "English")
+
+        prompt = f"Translate the following manga text to {target_name}. Output only the translation.\n\nText: {text}\n\nTranslation:"
         
         data = {
             "prompt": prompt,

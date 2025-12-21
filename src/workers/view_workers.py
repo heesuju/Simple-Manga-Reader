@@ -375,14 +375,16 @@ from src.core.translator import Translator
 from src.core.ocr import OCR
 from PIL import Image
 import io
+from src.enums import Language
 
 class TranslateSignals(QObject):
     finished = pyqtSignal(list) # List of overlays
 
 class TranslateWorker(QRunnable):
-    def __init__(self, image_path: str):
+    def __init__(self, image_path: str, target_lang: Language = Language.ENG):
         super().__init__()
         self.image_path = image_path
+        self.target_lang = target_lang
         self.signals = TranslateSignals()
 
     @pyqtSlot()
@@ -481,7 +483,7 @@ class TranslateWorker(QRunnable):
                     detected_text = "" 
 
                 if detected_text:
-                    translated_text = translator.translate(detected_text)
+                    translated_text = translator.translate(detected_text, target_lang=self.target_lang)
                 else:
                     translated_text = "[No Text Detected]"
                 
