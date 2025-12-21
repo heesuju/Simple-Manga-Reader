@@ -276,7 +276,7 @@ class ImageViewer(BaseViewer):
             
             # Create background (white with some opacity)
             bg_item = QGraphicsRectItem(x, y, w, h)
-            bg_item.setBrush(QBrush(QColor(255, 255, 255, 230)))
+            bg_item.setBrush(QBrush(QColor(255, 255, 255, 255)))
             bg_item.setPen(QPen(Qt.PenStyle.NoPen))
             bg_item.setZValue(10) # Above image
             

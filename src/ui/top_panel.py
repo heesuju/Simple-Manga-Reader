@@ -114,3 +114,13 @@ class TopPanel(QWidget):
     def _on_translate_clicked(self):
         lang = Language(self.lang_combo.currentText())
         self.translate_clicked.emit(lang)
+
+    def set_translating(self, is_translating: bool):
+        if is_translating:
+            self.translate_btn.setText("Working...")
+            self.translate_btn.setEnabled(False)
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(100, 100, 100, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: rgba(255, 255, 255, 100);")
+        else:
+            self.translate_btn.setText("Translate")
+            self.translate_btn.setEnabled(True)
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")

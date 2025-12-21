@@ -709,6 +709,8 @@ class ReaderView(QWidget):
              else:
                   return
 
+        if hasattr(self, 'top_panel'):
+             self.top_panel.set_translating(True)
         self.loading_label.setText(f"Translating to {target_lang}...")
         self.loading_label.show()
         
@@ -717,6 +719,9 @@ class ReaderView(QWidget):
         self.thread_pool.start(worker)
 
     def _on_translation_finished(self, overlays: list):
+        if hasattr(self, 'top_panel'):
+             self.top_panel.set_translating(False)
+             
         self.loading_label.hide()
         self.loading_label.setText("Loading...") # Reset
         

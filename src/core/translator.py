@@ -26,30 +26,71 @@ class Translator:
 
         target_name = map_lang.get(target_lang, "English")
 
-        prompt = f"Translate the following manga text to {target_name}. Output only the translation.\n\nText: {text}\n\nTranslation:"
+        # Few-shot examples
+        examples = ""
+        
+        if target_lang == Language.ENG:
+            examples = (
+                "Example 1:\n"
+                "Text: こんにちは\n"
+                "Translation: Hello\n\n"
+                "Example 2:\n"
+                "Text: 何をしているの？\n"
+                "Translation: What are you doing?\n\n"
+                "Example 3:\n"
+                "Text: やめろ！\n"
+                "Translation: Stop it!\n\n"
+            )
+        elif target_lang == Language.KOR:
+            examples = (
+                "Example 1:\n"
+                "Text: こんにちは\n"
+                "Translation: 안녕하세요\n\n"
+                "Example 2:\n"
+                "Text: 何をしているの？\n"
+                "Translation: 뭐 하고 있어?\n\n"
+                "Example 3:\n"
+                "Text: やめろ！\n"
+                "Translation: 그만해!\n\n"
+            )
+
+        prompt = (
+            f"You are a professional manga translator. Translate the Japanese text below to {target_name}.\n"
+            "Output only the final translation. Do not provide lists, or alternatives.\n\n"
+            f"{examples}"
+            f"Text: {text}\n"
+            "Translation:"
+        )
         
         data = {
             "prompt": prompt,
             "n_predict": 100,
-            "temperature": 0.3,
-            "stop": ["\n"] # Stop at newline to avoid hallucinations
+            "temperature": 0.1, # Lower temperature for deterministic output
+            "stop": ["\n", "Text:", "Translation:"] # Stop at newline or prompt injection
         }
         
         try:
             response = requests.post(self.api_url, json=data, timeout=10)
             if response.status_code == 200:
                 res_json = response.json()
-                # Llama.cpp completion endpoint returns 'content' or 'content' in choices?
-                # Usually: { "content": "..." } or { "choices": [ { "text": "..." } ] } depending on endpoint /v1 or direct.
-                # Default /completion returns: { "content": "..." }
                 content = res_json.get("content", "")
                 if not content:
-                     # Check standard OAI format just in case
                      choices = res_json.get("choices", [])
                      if choices:
                          content = choices[0].get("text", "") or choices[0].get("message", {}).get("content", "")
                 
-                return content.strip()
+                # Post-processing
+                content = content.strip()
+                
+                # Remove surrounding quotes if present
+                if (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'")):
+                    content = content[1:-1].strip()
+
+                # Take only the first line if multiple leaked through
+                if '\n' in content:
+                    content = content.split('\n')[0].strip()
+
+                return content
             else:
                 print(f"Translation API error: {response.status_code} - {response.text}")
                 return "[Error]"
