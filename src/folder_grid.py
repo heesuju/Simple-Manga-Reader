@@ -691,6 +691,13 @@ class FolderGrid(QWidget):
                 else:
                     return # User cancelled
 
+            # Use root if no chapters selected
+            if not series_data.get('chapters'):
+                series_data['chapters'] = [{
+                    "name": series_data['name'],
+                    "path": series_data['path']
+                }]
+
             # 3. Add to library using the (potentially modified) series data
             self.library_manager.add_series_from_data(series_data)
             
@@ -757,11 +764,19 @@ class FolderGrid(QWidget):
             dialog = ChapterSelectionDialog(series_data['chapters'], self)
             if dialog.exec():
                 selected_chapters = dialog.get_selected_chapters()
+                # Update series_data with selected chapters
                 series_data['chapters'] = selected_chapters
             else:
                 return # User cancelled
 
-        # 3. Add to library
+        # 2a. If NO chapters selected (or none found initially but logic implies finding none?),
+        # If user deselected ALL chapters, treat root as the single chapter
+        if not series_data.get('chapters'):
+            # Construct a single chapter pointing to series root
+            series_data['chapters'] = [{
+                "name": series_data['name'],
+                "path": series_data['path']
+            }]
         self.library_manager.add_series_from_data(series_data)
         
         # 4. Show info dialog
