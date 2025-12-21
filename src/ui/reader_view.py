@@ -715,7 +715,10 @@ class ReaderView(QWidget):
         self.loading_label.setText(f"Translating to {target_lang}...")
         self.loading_label.show()
         
-        worker = TranslateWorker(path, target_lang=target_lang)
+        series_path = str(self.model.series['path'])
+        chapter_name = Path(self.model.manga_dir).name
+        
+        worker = TranslateWorker(path, series_path, chapter_name, target_lang=target_lang)
         worker.signals.finished.connect(self._on_translation_finished)
         self.thread_pool.start(worker)
 

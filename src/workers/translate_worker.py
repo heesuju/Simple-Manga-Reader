@@ -17,9 +17,11 @@ class TranslateSignals(QObject):
     finished = pyqtSignal(str, list) # path, overlays
 
 class TranslateWorker(QRunnable):
-    def __init__(self, image_path: str, target_lang: Language = Language.ENG):
+    def __init__(self, image_path: str, series_path: str, chapter_name: str, target_lang: Language = Language.ENG):
         super().__init__()
         self.image_path = image_path
+        self.series_path = series_path
+        self.chapter_name = chapter_name
         self.target_lang = target_lang
         self.signals = TranslateSignals()
 
@@ -244,13 +246,8 @@ class TranslateWorker(QRunnable):
                     
                     q_img.save(str(save_path), "JPG")
                     
-                    # Register with AltManager
-                    # link_pages(series_path, chapter_name, main_file, alt_files)
-                    # series_path: chapter_dir.parent
-                    series_path = chapter_dir.parent
-                    chapter_name = chapter_dir.name
-                    
-                    AltManager.link_pages(str(series_path), chapter_name, str(original_path), [str(save_path)])
+                    # Register with AltManager using explicit series/chapter info
+                    AltManager.link_pages(self.series_path, self.chapter_name, str(original_path), [str(save_path)])
                     print(f"Saved translated page to {save_path}")
 
                 except Exception as e:
