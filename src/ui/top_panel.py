@@ -63,7 +63,8 @@ class TopPanel(QWidget):
         self.translate_layout.setSpacing(5)
         
         self.lang_combo = QComboBox()
-        self.lang_combo.addItems([lang.value for lang in Language])
+        items = ["Original"] + [lang.value for lang in Language]
+        self.lang_combo.addItems(items)
         self.lang_combo.setFixedSize(60, 32)
         self.lang_combo.setStyleSheet("color: white; background-color: rgba(255, 255, 255, 30); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px;")
         self.lang_combo.currentTextChanged.connect(self.lang_changed.emit)

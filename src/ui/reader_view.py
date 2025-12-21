@@ -191,7 +191,7 @@ class ReaderView(QWidget):
         self.top_panel.speed_changed.connect(self._on_slideshow_speed_changed)
         self.top_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
         self.top_panel.translate_clicked.connect(self.translate_page)
-        self.top_panel.lang_changed.connect(self.update_top_panel)
+        self.top_panel.lang_changed.connect(self._on_lang_changed)
         self.slider_panel.page_changed.connect(self.change_page)
         self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
@@ -691,6 +691,22 @@ class ReaderView(QWidget):
         if self.current_viewer == self.video_viewer:
             self.video_viewer._toggle_play_pause()
 
+    def _on_lang_changed(self, text: str):
+        if not self.model.images:
+             return
+             
+        if text == "Original":
+            self.model.set_preferred_language(None)
+        else:
+            try:
+                lang = Language(text).value
+                self.model.set_preferred_language(lang)
+            except ValueError:
+                self.model.set_preferred_language(None)
+                
+        # self.model.load_image() handled by set_preferred_language
+        self.update_top_panel()
+
     def update_top_panel(self, _=None):
         """Update top panel translate button state based on current page."""
         if not hasattr(self, 'top_panel') or not self.model.images:
@@ -701,56 +717,52 @@ class ReaderView(QWidget):
             return
 
         page = self.model.images[self.model.current_index]
-        target_lang = Language(self.top_panel.lang_combo.currentText()).value
+        combo_text = self.top_panel.lang_combo.currentText()
         
-        print(f"[DEBUG] update_top_panel: index={self.model.current_index}, lang={target_lang}")
-        print(f"[DEBUG] page.translations keys: {list(page.translations.keys())}")
-        print(f"[DEBUG] is_showing_translation: {page.is_showing_translation()}")
+        if combo_text == "Original":
+             # Cannot translate Original to Original
+             self.top_panel.update_translate_button('TRANSLATE')
+             self.top_panel.translate_btn.setEnabled(False)
+             self.top_panel.translate_btn.setText("Translate")
+             self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(100, 100, 100, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: rgba(255, 255, 255, 100);")
+             return
 
-        if page.is_showing_translation():
-            # If showing ANY translation, button allows going back to original
-            # We assume toggle logic: if showing TL, button reverts to Original
-            self.top_panel.update_translate_button('SHOW_ORG')
-        elif target_lang in page.translations:
-             self.top_panel.update_translate_button('SHOW_TL', target_lang)
+        target_lang = Language(combo_text).value
+        
+        if target_lang in page.translations:
+             # Translation exists -> Offer Redo
+             self.top_panel.translate_btn.setEnabled(True)
+             self.top_panel.translate_btn.setText("Redo TL")
+             # Use a distinct color for Redo? e.g. Purple or Orange
+             self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(156, 39, 176, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
         else:
+             # Translation missing -> Offer Translate
              self.top_panel.update_translate_button('TRANSLATE')
 
-    def translate_page(self, arg: Language = None):
+    def translate_page(self, arg=None):
         if not self.model.images or self.model.current_index >= len(self.model.images):
             return
 
-        # Explicitly fetch target language from combo if not provided or if arg is Language enum
-        if hasattr(self, 'top_panel'):
-            target_lang_enum = Language(self.top_panel.lang_combo.currentText())
-        else:
-            target_lang_enum = Language.ENG 
+        # Fetch target language from combo
+        if not hasattr(self, 'top_panel'):
+            return
             
+        combo_text = self.top_panel.lang_combo.currentText()
+        if combo_text == "Original":
+            return # Cannot translate
+
+        target_lang_enum = Language(combo_text)
         target_lang = target_lang_enum.value
         page = self.model.images[self.model.current_index]
         
-        # Check current state for Toggle
-        if page.is_showing_translation():
-            # If currently showing translation, toggle back to original
-            page.clear_translation()
-            self.model.load_image()
-            self.update_top_panel()
-            return
+        # Always translate from source (Redo or First Time)
+        # Use explicit source variant path
+        if 0 <= page.current_variant_index < len(page.images):
+            path = page.images[page.current_variant_index]
+        else:
+            path = page.images[0]
             
-        # Check if translation exists for target language
-        if target_lang in page.translations:
-             # Switch to it
-             page.set_translation(target_lang)
-             self.model.load_image()
-             self.update_top_panel()
-             return
-
-        # Otherwise start translation
-        path = page.path # This should be the variant path since is_showing_translation is False (or active one)
-        # Using page.path works because:
-        # 1. If we are showing translation, we captured 'toggle back' above.
-        # 2. If we are not showing translation, page.path is the variant path.
-        
+        # Start translation (Overwrite logic handled by TranslateWorker saving to same path)
         if hasattr(self, 'top_panel'):
              self.top_panel.set_translating(True)
         self.loading_label.setText(f"Translating to {target_lang}...")
@@ -762,6 +774,8 @@ class ReaderView(QWidget):
         worker = TranslateWorker(path, series_path, chapter_name, target_lang=target_lang_enum)
         worker.signals.finished.connect(self._on_translation_finished)
         self.thread_pool.start(worker)
+
+
 
     def _on_translation_finished(self, original_path: str, saved_path: str, overlays: list, lang_code: str):
         if hasattr(self, 'top_panel'):

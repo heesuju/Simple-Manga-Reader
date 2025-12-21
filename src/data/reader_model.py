@@ -28,6 +28,7 @@ class ReaderModel(QObject):
         self.chapters = manga_dirs if manga_dirs else []
         self.chapter_index = index if manga_dirs else 0
         self.manga_dir = self.chapters[self.chapter_index] if manga_dirs else None
+        self.preferred_language = None # Stores global language preference (e.g. "ENG")
 
         if self.chapters:
             self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
@@ -62,6 +63,11 @@ class ReaderModel(QObject):
         """Should be called after model data is updated to refresh the view."""
         self.refreshed.emit()
 
+    def set_preferred_language(self, lang: Union[str, None]):
+        """Set the preferred language for display. None means 'Original'."""
+        self.preferred_language = lang
+        self.load_image() # Reload to apply preference
+
     def _get_double_view_images(self, right_to_left:bool=True) -> List[Page]:
         new_images = list(self.images)
         i = 0
@@ -92,10 +98,34 @@ class ReaderModel(QObject):
 
         if self.view_mode == ViewMode.SINGLE:
             page = images[self.current_index]
+            
+            # Apply preference
+            if self.preferred_language and self.preferred_language in page.translations:
+                 page.set_translation(self.preferred_language)
+            elif self.preferred_language is None:
+                 page.clear_translation()
+            # If preference is set but translation missing, we keep it cleared (Original)
+            # effectively logic: if desired TL exists, show it. Else show original.
+            if self.preferred_language and self.preferred_language not in page.translations:
+                 page.clear_translation()
+            
             self.image_loaded.emit(page.path)
         elif self.view_mode == ViewMode.DOUBLE:
             page1 = images[self.current_index]
             page2 = images[self.current_index + 1] if self.current_index + 1 < len(images) else None
+            
+            p1_path = page1.path if page1 else None
+            p2_path = page2.path if page2 else None
+            
+            # Apply preference for Double View as well
+            for p in [page1, page2]:
+                if p:
+                    if self.preferred_language and self.preferred_language in p.translations:
+                        p.set_translation(self.preferred_language)
+                    elif self.preferred_language is None:
+                        p.clear_translation()
+                    elif self.preferred_language and self.preferred_language not in p.translations:
+                        p.clear_translation()
             
             p1_path = page1.path if page1 else None
             p2_path = page2.path if page2 else None
