@@ -93,8 +93,10 @@ class AltManager:
                 
                 found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), Path(p).name.lower()))
                 variants.extend(found_alts)
-            
-            grouped_pages.append(Page(variants, translations if 'translations' in locals() else None))
+                
+                grouped_pages.append(Page(variants, translations))
+            else:
+                grouped_pages.append(Page(variants, None))
         
         return grouped_pages
     INFO_FILE_NAME = "info.json"
