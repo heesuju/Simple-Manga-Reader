@@ -155,7 +155,7 @@ class ChapterListItemWidget(QWidget):
         group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter, self))
         menu.addAction(group_action)
         
-        trans_action = QAction("Add Translations...", self)
+        trans_action = QAction("Edit Translations", self)
         trans_action.triggered.connect(lambda: self.add_translation_requested.emit(self.chapter, self))
         menu.addAction(trans_action)
 

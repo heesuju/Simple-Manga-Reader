@@ -85,6 +85,7 @@ class TranslationSlot(QFrame):
                 border-radius: 5px;
             }
         """)
+        self.removed.emit()
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
@@ -183,12 +184,23 @@ class MappingRow(QWidget):
             }
         """)
         self.remove_btn.clicked.connect(self.slot.clear)
+        self.remove_btn.hide() # Hidden by default
+        
+        # Connect slot changed/cleared signals to button visibility
+        self.slot.file_dropped.connect(self._on_slot_changed)
+        self.slot.removed.connect(self._on_slot_changed) 
+        # TranslationSlot needs to emit signal when cleared via set_image(None) too?
+        # Actually TranslationSlot.clear() is called by remove_btn.
+        # But set_translation calls set_image.
         
         layout.addWidget(self.main_frame)
         layout.addWidget(arrow)
         layout.addWidget(self.slot)
         layout.addWidget(self.remove_btn)
         layout.addStretch()
+
+    def _on_slot_changed(self):
+        self.remove_btn.setVisible(bool(self.slot.current_path))
 
     def get_main_filename(self):
         return Path(self.main_path).name
@@ -198,6 +210,7 @@ class MappingRow(QWidget):
 
     def set_translation(self, path):
         self.slot.set_image(path)
+        self._on_slot_changed()
 
 
 class AddTranslationDialog(QDialog):
