@@ -15,6 +15,7 @@ from src.core.alt_manager import AltManager
 
 class TranslateSignals(QObject):
     finished = pyqtSignal(str, str, list, str) # original_path, saved_path, overlays, lang_code
+    started = pyqtSignal(str) # lang_code
 
 class TranslateWorker(QRunnable):
     def __init__(self, image_path: str, series_path: str, chapter_name: str, target_lang: Language = Language.ENG):
@@ -30,6 +31,7 @@ class TranslateWorker(QRunnable):
         saved_path_str = None
         overlays = []
         try:
+            self.signals.started.emit(self.target_lang.value)
             print("Starting translation worker...")
             detector = TextDetector()
             # Initialize  lazily or here. It might take time to load model.

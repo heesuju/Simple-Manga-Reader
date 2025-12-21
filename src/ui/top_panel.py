@@ -118,28 +118,13 @@ class TopPanel(QWidget):
         lang = Language(self.lang_combo.currentText())
         self.translate_clicked.emit(lang)
 
-    def set_translating(self, is_translating: bool):
-        if is_translating:
-            self.translate_btn.setText("Working...")
-            self.translate_btn.setEnabled(False)
-            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(100, 100, 100, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: rgba(255, 255, 255, 100);")
-        else:
-            self.translate_btn.setText("Translate")
-            self.translate_btn.setEnabled(True)
-            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
 
-    def update_translate_button(self, state: str, lang: str = ""):
+
+    def update_translate_button(self, state: str = 'TRANSLATE', lang: str = ""):
         """
-        Update translate button appearance and text.
-        state: 'TRANSLATE', 'SHOW_TL', 'SHOW_ORG'
+        Reset translate button to default state.
+        'state' arg is kept for compatibility but only 'TRANSLATE' is supported effectively.
         """
         self.translate_btn.setEnabled(True)
-        if state == 'TRANSLATE':
-            self.translate_btn.setText("Translate")
-            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
-        elif state == 'SHOW_TL':
-            self.translate_btn.setText(f"Show {lang}")
-            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 200, 83, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
-        elif state == 'SHOW_ORG':
-            self.translate_btn.setText("Show Original")
-            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(255, 152, 0, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        self.translate_btn.setText("Translate")
+        self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")

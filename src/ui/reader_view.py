@@ -28,6 +28,7 @@ from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
 from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS
 from src.workers.translate_worker import TranslateWorker
+from src.core.translation_service import TranslationService
 
 from src.ui.viewer.image_viewer import ImageViewer
 from src.ui.viewer.video_viewer import VideoViewer
@@ -66,6 +67,8 @@ class ReaderView(QWidget):
         self._last_total_scale = 1.0
         
         self.thread_pool = QThreadPool()
+        # self.translation_pool removed in favor of global service
+        # self.translation_pool.setMaxThreadCount(1) # Sequential execution
 
         self.original_view_mouse_press = None
         self.is_zoomed = False
@@ -90,6 +93,9 @@ class ReaderView(QWidget):
         self.strip_viewer = StripViewer(self)
         self.current_viewer = self.image_viewer
         
+        
+        TranslationService.instance().task_status_changed.connect(self._on_translation_status_changed_global)
+
         self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
 
     def _setup_ui(self):
@@ -729,7 +735,25 @@ class ReaderView(QWidget):
 
         target_lang = Language(combo_text).value
         
-        if target_lang in page.translations:
+        # Check global status first
+        # We need the source path for the current page to check status
+        page_source_path = ""
+        if 0 <= page.current_variant_index < len(page.images):
+            page_source_path = page.images[page.current_variant_index]
+        elif page.images:
+            page_source_path = page.images[0]
+            
+        status = TranslationService.instance().get_status(page_source_path, target_lang)
+        
+        if status:
+            self.top_panel.translate_btn.setEnabled(False)
+            if status == "queued":
+                 self.top_panel.translate_btn.setText("Queued...")
+                 self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(255, 165, 0, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+            elif status == "translating":
+                 self.top_panel.translate_btn.setText("Translating...")
+                 self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 128, 0, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        elif target_lang in page.translations:
              # Translation exists -> Offer Redo
              self.top_panel.translate_btn.setEnabled(True)
              self.top_panel.translate_btn.setText("Redo TL")
@@ -763,28 +787,47 @@ class ReaderView(QWidget):
             path = page.images[0]
             
         # Start translation (Overwrite logic handled by TranslateWorker saving to same path)
-        if hasattr(self, 'top_panel'):
-             self.top_panel.set_translating(True)
-        self.loading_label.setText(f"Translating to {target_lang}...")
-        self.loading_label.show()
+
+ 
         
         series_path = str(self.model.series['path'])
         chapter_name = Path(self.model.manga_dir).name
         
         worker = TranslateWorker(path, series_path, chapter_name, target_lang=target_lang_enum)
         worker.signals.finished.connect(self._on_translation_finished)
-        self.thread_pool.start(worker)
+        
+        TranslationService.instance().submit(worker)
+        self.update_top_panel() # Update immediately to show Queued status
+
+    def _on_translation_status_changed_global(self, path: str, lang: str, status: str):
+        # Update loading label if this page is active
+        # And update top panel button
+        
+        # 1. Update Top Panel (Button State)
+        # If current page matches path
+        if self.model.images and 0 <= self.model.current_index < len(self.model.images):
+             page = self.model.images[self.model.current_index]
+             # Check if path applies to any variant or the main image
+             # Simplest is if path is in page.images (list of variants)
+             if path in page.images:
+                 self.update_top_panel()
+                 
+                 # 2. Update Loading Label
+                 if status == "translating":
+                      self.loading_label.setText(f"Translating to {lang}...")
+                      self.loading_label.show()
+                 elif status == "finished":
+                      self.loading_label.hide()
+                      # update_top_panel will be called again? No, finished signal triggers _on_translation_finished
+                      self.update_top_panel() # Refresh to show "Redo TL"
+        
+
 
 
 
     def _on_translation_finished(self, original_path: str, saved_path: str, overlays: list, lang_code: str):
-        if hasattr(self, 'top_panel'):
-             self.top_panel.set_translating(False)
-             
-        self.loading_label.hide()
-        self.loading_label.setText("Loading...") # Reset
-
         if not self.model.images:
+             self.loading_label.hide()
              return
 
         # 1. Find the page object that this translation belongs to
@@ -801,6 +844,7 @@ class ReaderView(QWidget):
         
         if not target_page:
             print(f"Translation finished for {original_path}, but could not find corresponding page in model.")
+            self.loading_label.hide()
             return
 
         # 2. Update the Page data
@@ -811,6 +855,11 @@ class ReaderView(QWidget):
         current_page = self.model.images[self.model.current_index]
         
         if target_page == current_page:
+
+            
+            self.loading_label.hide()
+            self.loading_label.setText("Loading...") # Reset
+            
             current_ui_lang = Language(self.top_panel.lang_combo.currentText()).value
             
             # Only switch view if the finished translation matches the currently selected UI language
