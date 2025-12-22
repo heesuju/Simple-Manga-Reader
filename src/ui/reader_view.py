@@ -812,7 +812,7 @@ class ReaderView(QWidget):
 
 
 
-    def _on_translation_finished(self, original_path: str, saved_path: str, overlays: list, lang_code: str):
+    def _on_translation_finished(self, original_path: str, saved_path: str, overlays: list, lang_code: str, history: list):
         if not self.model.images:
              self.loading_label.hide()
              return

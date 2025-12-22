@@ -14,16 +14,17 @@ from src.enums import Language
 from src.core.alt_manager import AltManager
 
 class TranslateSignals(QObject):
-    finished = pyqtSignal(str, str, list, str) # original_path, saved_path, overlays, lang_code
+    finished = pyqtSignal(str, str, list, str, list) # original_path, saved_path, overlays, lang_code, history
     started = pyqtSignal(str) # lang_code
 
 class TranslateWorker(QRunnable):
-    def __init__(self, image_path: str, series_path: str, chapter_name: str, target_lang: Language = Language.ENG):
+    def __init__(self, image_path: str, series_path: str, chapter_name: str, target_lang: Language = Language.ENG, history: list = None):
         super().__init__()
         self.image_path = image_path
         self.series_path = series_path
         self.chapter_name = chapter_name
         self.target_lang = target_lang
+        self.history = history if history is not None else []
         self.signals = TranslateSignals()
 
     @pyqtSlot()
@@ -39,7 +40,7 @@ class TranslateWorker(QRunnable):
                 ocr_engine = OCR()
             except Exception as e:
                 print(f"OCR Init failed: {e}")
-                self.signals.finished.emit(self.image_path, None, [], self.target_lang.value)
+                self.signals.finished.emit(self.image_path, None, [], self.target_lang.value, self.history)
                 return
 
             translator = Translator()
@@ -94,10 +95,18 @@ class TranslateWorker(QRunnable):
             else:
                 detections = detector.detect(target_path)
 
+            # Sort Detections: Top-to-Bottom, then Right-to-Left
+            # A Y threshold (e.g. 50px) is used to group bubbles into "rows" or "panels" slightly.
+            # This prevents a slightly lower Right bubble from being processed after a slightly higher Left bubble in the same panel.
+            # key: (y, -x)
+            if detections:
+                detections.sort(key=lambda d: (d['bbox'][1], -d['bbox'][0]))
+
             for det in detections:
                 bbox = det['bbox'] # [x, y, w, h] (top-left x, top-left y, width, height)
                 
                 # Perform OCR
+                detected_text = ""
                 if full_pil_img:
                     x, y, w, h = bbox
                     # Crop the text bubble
@@ -125,7 +134,13 @@ class TranslateWorker(QRunnable):
                 translated_text = ""
                 if detected_text:
                     try:
-                        translated_text = translator.translate(detected_text, target_lang=self.target_lang)
+                        translated_text = translator.translate_contextual(detected_text, self.history, target_lang=self.target_lang)
+                        # Append to history
+                        self.history.append((detected_text, translated_text))
+                        # Limit history size if needed (handled in translator implicitly by slicing, but good to keep memory low)
+                        if len(self.history) > 20:
+                             self.history.pop(0)
+                             
                     except Exception as e:
                         print(f"Translation failed: {e}")
                         # Abort the entire task on translation failure as per user request
@@ -242,11 +257,11 @@ class TranslateWorker(QRunnable):
                     import traceback
                     traceback.print_exc()
 
-            # Emit results (now with saved path and language)
-            self.signals.finished.emit(self.image_path, saved_path_str, overlays, self.target_lang.value)
+            # Emit results (now with saved path and language and history)
+            self.signals.finished.emit(self.image_path, saved_path_str, overlays, self.target_lang.value, self.history)
             
         except Exception as e:
             print(f"Error in translation worker: {e}")
             import traceback
             traceback.print_exc()
-            self.signals.finished.emit(self.image_path, None, [], self.target_lang.value)
+            self.signals.finished.emit(self.image_path, None, [], self.target_lang.value, self.history)

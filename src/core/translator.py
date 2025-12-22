@@ -95,3 +95,82 @@ class Translator:
                 raise Exception(f"Translation API error: {response.status_code} - {response.text}")
         except Exception as e:
             raise Exception(f"Translation logic error: {e}")
+
+    def translate_contextual(self, text: str, history: list, target_lang: Language = Language.ENG) -> str:
+        """
+        Translate text using local Llama.CPP with conversation context.
+        history: list of tuples (source_text, translated_text)
+        """
+        if not text or not text.strip():
+            return ""
+
+        map_lang = {
+            Language.KOR: "Korean",
+            Language.ENG: "English"
+        }
+
+        target_name = map_lang.get(target_lang, "English")
+
+        # Few-shot examples (Base examples)
+        examples = ""
+        if target_lang == Language.ENG:
+            examples = (
+                "Example 1:\n"
+                "Text: こんにちは\n"
+                "Translation: Hello\n\n"
+            )
+        elif target_lang == Language.KOR:
+            examples = (
+                "Example 1:\n"
+                "Text: こんにちは\n"
+                "Translation: 안녕하세요\n\n"
+            )
+
+        # Context from history
+        context_prompt = ""
+        if history:
+            context_prompt = "Previous context:\n"
+            # Use last 5 items
+            recent_history = history[-5:]
+            for src, tr in recent_history:
+                context_prompt += f"Text: {src}\nTranslation: {tr}\n"
+            context_prompt += "\n"
+
+        prompt = (
+            f"You are a professional manga translator. Translate the Japanese text below to {target_name}.\n"
+            "Output only the final translation. Do not provide lists, or alternatives.\n"
+            "Use the previous context to ensure continuity in the conversation.\n\n"
+            f"{examples}"
+            f"{context_prompt}"
+            f"Current Text: {text}\n"
+            "Translation:"
+        )
+        print(prompt)
+        data = {
+            "prompt": prompt,
+            "n_predict": 100,
+            "temperature": 0.1,
+            "stop": ["\n", "Text:", "Translation:", "Current Text:"]
+        }
+        
+        try:
+            response = requests.post(self.api_url, json=data, timeout=10)
+            if response.status_code == 200:
+                res_json = response.json()
+                content = res_json.get("content", "")
+                if not content:
+                     choices = res_json.get("choices", [])
+                     if choices:
+                         content = choices[0].get("text", "") or choices[0].get("message", {}).get("content", "")
+                
+                content = content.strip()
+                if (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'")):
+                    content = content[1:-1].strip()
+                if '\n' in content:
+                    content = content.split('\n')[0].strip()
+
+                return content
+            else:
+                raise Exception(f"Translation API error: {response.status_code} - {response.text}")
+        except Exception as e:
+            raise Exception(f"Translation logic error: {e}")
