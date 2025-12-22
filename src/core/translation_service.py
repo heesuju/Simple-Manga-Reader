@@ -24,7 +24,8 @@ class TranslationService(QObject):
         
         # Connect signals to maintain state
         worker.signals.started.connect(lambda lang: self.update_status(worker.image_path, lang, "translating"))
-        worker.signals.finished.connect(lambda p, s, o, l: self.update_status(p, l, None))
+        # Updated to handle history argument (5th arg)
+        worker.signals.finished.connect(lambda p, s, o, l, h: self.update_status(p, l, None))
         
         self.thread_pool.start(worker)
 

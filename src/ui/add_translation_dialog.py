@@ -3,13 +3,15 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QListWidget, QDialogButtonBox, 
     QPushButton, QHBoxLayout, QWidget, QComboBox, QAbstractItemView,
-    QListWidgetItem, QScrollArea, QFrame, QMenu
+    QListWidgetItem, QScrollArea, QFrame, QMenu, QCheckBox, QProgressBar
 )
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, QMimeData
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QMimeData, QThreadPool
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap, QDrag
 from src.utils.img_utils import load_thumbnail_from_path, extract_page_number
 from src.enums import Language
 from src.core.alt_manager import AltManager
+from src.workers.translate_worker import TranslateWorker
+from src.core.translation_service import TranslationService
 
 class TranslationSlot(QFrame):
     """
@@ -126,6 +128,8 @@ class TranslationSlot(QFrame):
                          event.acceptProposedAction() 
 
 class MappingRow(QWidget):
+    translation_changed = pyqtSignal()
+
     def __init__(self, main_page_path, page_num, parent=None):
         super().__init__(parent)
         self.main_path = main_page_path
@@ -133,6 +137,12 @@ class MappingRow(QWidget):
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 5, 0, 5)
+
+        # Checkbox
+        self.checkbox = QCheckBox()
+        # Connect to parent's update logic if needed, but easier to handle in parent or via signal.
+        # Since parent holds refs to rows, we can connect later.
+        layout.addWidget(self.checkbox)
         
         # Left: Main Page
         self.main_frame = QFrame()
@@ -167,40 +177,28 @@ class MappingRow(QWidget):
         # Right: Translation Slot
         self.slot = TranslationSlot()
         
-        # Remove Button
-        self.remove_btn = QPushButton("✕")
-        self.remove_btn.setFixedSize(30, 30)
-        self.remove_btn.setToolTip("Remove Translation")
-        self.remove_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 0, 0, 50);
-                color: white;
-                border: 1px solid #555;
-                font-weight: bold;
-                border-radius: 15px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 0, 0, 100);
-            }
-        """)
-        self.remove_btn.clicked.connect(self.slot.clear)
-        self.remove_btn.hide() # Hidden by default
+        # Status Label (Hidden by default or empty)
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: #aaa; font-size: 10px; font-weight: bold;")
+        self.status_label.setFixedWidth(60)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Connect slot changed/cleared signals to button visibility
         self.slot.file_dropped.connect(self._on_slot_changed)
         self.slot.removed.connect(self._on_slot_changed) 
-        # TranslationSlot needs to emit signal when cleared via set_image(None) too?
-        # Actually TranslationSlot.clear() is called by remove_btn.
-        # But set_translation calls set_image.
         
         layout.addWidget(self.main_frame)
         layout.addWidget(arrow)
         layout.addWidget(self.slot)
-        layout.addWidget(self.remove_btn)
+        layout.addWidget(self.status_label) # Add status label
         layout.addStretch()
 
+    def set_status(self, status: str, color: str = "#aaa"):
+        self.status_label.setText(status)
+        self.status_label.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
+
     def _on_slot_changed(self):
-        self.remove_btn.setVisible(bool(self.slot.current_path))
+        self.translation_changed.emit()
 
     def get_main_filename(self):
         return Path(self.main_path).name
@@ -239,14 +237,61 @@ class AddTranslationDialog(QDialog):
         lang_layout.addStretch()
         self.layout.addLayout(lang_layout)
         
-        # 2. Instructions
+        # 2. Instructions and Controls
+        valid_exts_msg = "Supports: .jpg, .png, .webp"
         self.instructions = QLabel(
-            "1. Drag a FOLDER here to auto-match translations by number.\n"
-            "2. Drag individual files to slots to manually assign.\n"
-            "3. Click the X button to remove a translation."
+            "1. Check pages to translate.\n"
+            "2. Click 'Translate Selected' to auto-translate with context.\n"
+            "3. Or Drag & Drop files to manual slots."
         )
-        self.instructions.setStyleSheet("color: #aaa; font-size: 12px; margin-bottom: 10px;")
+        self.instructions.setStyleSheet("color: #aaa; font-size: 12px; margin-bottom: 5px;")
         self.layout.addWidget(self.instructions)
+
+        # Batch Selection Control (Top)
+        top_controls_layout = QHBoxLayout()
+        self.select_all_cb = QCheckBox("Select All")
+        self.select_all_cb.stateChanged.connect(self._on_select_all)
+        top_controls_layout.addWidget(self.select_all_cb)
+        
+        top_controls_layout.addStretch()
+
+        self.remove_selected_btn = QPushButton("Remove")
+        self.remove_selected_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #F44336; color: white; padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #D32F2F;
+            }
+            QPushButton:disabled {
+                background-color: #e57373; color: #eee;
+            }
+        """)
+        self.remove_selected_btn.setEnabled(False) # Explicitly disable mainly
+        self.remove_selected_btn.clicked.connect(self._remove_selected)
+
+        self.translate_btn = QPushButton("Translate")
+        self.translate_btn.setStyleSheet("""
+            QPushButton {
+                 background-color: #4CAF50; color: white; padding: 5px;
+            }
+            QPushButton:hover {
+                 background-color: #388E3C;
+            }
+            QPushButton:disabled {
+                 background-color: #81c784; color: #eee;
+            }
+        """)
+        self.translate_btn.setEnabled(False) # Explicitly disable mainly
+        self.translate_btn.clicked.connect(self._start_batch_translation)
+        
+        top_controls_layout.addWidget(self.remove_selected_btn)
+        top_controls_layout.addWidget(self.translate_btn)
+        
+        self.layout.addLayout(top_controls_layout)
+
+        
+        # 3. Scroll Area for Rows
         
         # 3. Scroll Area for Rows
         self.scroll = QScrollArea()
@@ -261,13 +306,33 @@ class AddTranslationDialog(QDialog):
         
         self.scroll.setWidget(self.container)
         self.layout.addWidget(self.scroll)
+
         
-        # 4. Buttons
+        # 4. Buttons Layout (Bottom Row)
+        bottom_layout = QHBoxLayout()
+        
+        self.bg_btn = QPushButton("Continue in Background")
+        self.bg_btn.setStyleSheet("""
+            QPushButton {
+                 background-color: #2196F3; color: white; padding: 5px;
+            }
+            QPushButton:hover {
+                 background-color: #1976D2;
+            }
+        """)
+        self.bg_btn.clicked.connect(self.accept) # Close dialog means "Continue in Background"
+        self.bg_btn.hide() 
+        
+        bottom_layout.addWidget(self.bg_btn)
+        bottom_layout.addStretch()
+        
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True) 
-        self.layout.addWidget(self.button_box)
+        
+        bottom_layout.addWidget(self.button_box)
+        self.layout.addLayout(bottom_layout)
         
         self.rows: list[MappingRow] = []
         self.pages: list = [] # Store Page objects
@@ -278,6 +343,109 @@ class AddTranslationDialog(QDialog):
         
         # Initial load for default language
         self._on_language_changed(self.lang_combo.currentText())
+
+        # Update initial button state
+        self._update_button_state()
+        
+        self.is_translating = False
+
+        # Connect to TranslationService signals to update row status if dialog is open
+        TranslationService.instance().task_status_changed.connect(self._on_task_status_changed)
+
+    def _update_button_state(self):
+        selected_rows = [row for row in self.rows if row.checkbox.isChecked()]
+        any_selected = bool(selected_rows)
+        
+        self.translate_btn.setEnabled(any_selected)
+        
+        # Only enable remove if at least one selected row has a translation
+        any_removable = any(row.get_translation_path() is not None for row in selected_rows)
+        self.remove_selected_btn.setEnabled(any_removable)
+
+    def _on_select_all(self, state):
+        checked = state == Qt.CheckState.Checked.value
+        for row in self.rows:
+            row.checkbox.blockSignals(True)
+            row.checkbox.setChecked(checked)
+            row.checkbox.blockSignals(False)
+        self._update_button_state()
+
+    def _remove_selected(self):
+        """Remove translations from selected rows"""
+        for row in self.rows:
+            if row.checkbox.isChecked():
+                row.slot.clear() 
+                row.set_status("Removed", "#F44336")
+
+    def _start_batch_translation(self):
+        if self.is_translating:
+            return
+            
+        selected_rows = [row for row in self.rows if row.checkbox.isChecked()]
+        if not selected_rows:
+            return
+            
+        self.is_translating = True
+        self.translate_btn.setEnabled(False)
+        self.remove_selected_btn.setEnabled(False)
+        self.select_all_cb.setEnabled(False)
+        self.button_box.setEnabled(False)
+        
+        self.bg_btn.show()
+
+        target_lang = self.get_selected_language()
+        
+        # Create a shared history list for this batch context
+        shared_history = []
+        
+        # Submit all tasks to TranslationService
+        for row in selected_rows:
+            row.set_status("Queued", "#aaa")
+            worker = TranslateWorker(
+                image_path=str(row.main_path), 
+                series_path=self.series_path, 
+                chapter_name=self.chapter_path.name, 
+                target_lang=target_lang,
+                history=shared_history # Shared list reference
+            )
+            # Connect to UI update
+            worker.signals.finished.connect(lambda orig, saved, overlays, lang, hist, r=row: self._on_worker_finished(r, saved))
+            
+            TranslationService.instance().submit(worker)
+
+    def _on_worker_finished(self, row: MappingRow, saved_path):
+        if saved_path:
+            row.set_status("Done", "#4CAF50") # Green
+            row.set_translation(saved_path)
+        else:
+            row.set_status("Failed", "#F44336") 
+        
+        # Check if all done for this batch? 
+        # TranslationService might have other tasks. 
+        # We can check if any rows are still "Queued" or "Translating..."?
+        # A simple check:
+        if self.is_translating and TranslationService.instance().active_tasks() == 0:
+             self._on_batch_finished()
+
+    def _on_task_status_changed(self, image_path, lang_code, status):
+         for row in self.rows:
+            if str(row.main_path) == str(image_path):
+                if status == "translating":
+                     row.set_status("Translating...", "#FFFF00")
+    
+    def _on_batch_finished(self):
+        self.is_translating = False
+        self.translate_btn.setEnabled(True)
+        self.remove_selected_btn.setEnabled(True)
+        self.select_all_cb.setEnabled(True)
+        self.button_box.setEnabled(True)
+        self.bg_btn.hide()
+        
+        # Auto-deselect
+        self.select_all_cb.blockSignals(True)
+        self.select_all_cb.setChecked(False)
+        self.select_all_cb.blockSignals(False)
+        self._on_select_all(Qt.CheckState.Unchecked.value)
 
     def _load_chapter_pages(self):
         # Use AltManager to Group Pages
@@ -306,6 +474,9 @@ class AddTranslationDialog(QDialog):
              num = extract_page_number(main_img)
              
              row = MappingRow(main_img, num)
+             # Connect checkbox change to button update
+             row.checkbox.stateChanged.connect(self._update_button_state)
+             row.translation_changed.connect(self._update_button_state)
              self.rows_layout.addWidget(row)
              self.rows.append(row)
         
