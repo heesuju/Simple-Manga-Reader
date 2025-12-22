@@ -212,6 +212,11 @@ class ReaderModel(QObject):
         else:
             self.view_mode = ViewMode(0)
 
+        # If switching TO Double mode, ensure snapping to the start of a pair
+        if self.view_mode == ViewMode.DOUBLE:
+             if self.current_index % 2 != 0:
+                 self.current_index -= 1
+
         self.update_layout()
 
     def update_layout(self):
