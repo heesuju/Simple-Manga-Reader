@@ -27,11 +27,14 @@ class ImageView(QGraphicsView):
         self._zoom_factor = 1.0  # 1.0 = fit to screen
 
         # Smooth rendering
-        self.setRenderHints(
+        hints = (
             QPainter.RenderHint.Antialiasing |
             QPainter.RenderHint.SmoothPixmapTransform |
             QPainter.RenderHint.TextAntialiasing
         )
+        if hasattr(QPainter.RenderHint, 'LosslessImageRendering'):
+            hints |= QPainter.RenderHint.LosslessImageRendering
+        self.setRenderHints(hints)
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
     def contextMenuEvent(self, event):

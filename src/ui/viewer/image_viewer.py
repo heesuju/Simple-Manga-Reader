@@ -6,7 +6,7 @@ from PIL import Image, ImageQt
 
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem
 from PyQt6.QtGui import QPixmap, QMovie, QImage, QBrush, QColor, QFont, QPen, QTextOption
-from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool
+from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool, QSize
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
@@ -329,13 +329,15 @@ class ImageViewer(BaseViewer):
         # Logic to decide if we need to scale
         if not self.original_pixmap or self.original_pixmap.isNull():
             return
-            
+
         if self.movie:
             return
             
         view = self.reader_view.view
         
         scene_rect = self.reader_view.scene.sceneRect()
+        if scene_rect.isEmpty(): return
+
         mapped_poly = view.mapFromScene(scene_rect)
         mapped_rect = mapped_poly.boundingRect()
         
