@@ -37,6 +37,45 @@ class Translator:
     def __init__(self):
         self.api_url = os.getenv("LLAMA_API_URL", "http://localhost:8080/completion")
 
+    def _perform_translation(self, prompt: str, stop_tokens: list, retries: int = 3) -> str:
+        data = {
+            "prompt": prompt,
+            "n_predict": 100,
+            "temperature": 0.1,
+            "stop": stop_tokens
+        }
+        
+        for attempt in range(retries):
+            try:
+                response = requests.post(self.api_url, json=data, timeout=10)
+                if response.status_code == 200:
+                    res_json = response.json()
+                    content = res_json.get("content", "")
+                    if not content:
+                         choices = res_json.get("choices", [])
+                         if choices:
+                             content = choices[0].get("text", "") or choices[0].get("message", {}).get("content", "")
+                    
+                    # Post-processing
+                    content = content.strip()
+                    
+                    # Remove surrounding quotes if present
+                    if (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'")):
+                        content = content[1:-1].strip()
+
+                    # Take only the first line if multiple leaked through
+                    if '\n' in content:
+                        content = content.split('\n')[0].strip()
+                    
+                    if content:
+                        return content
+                else:
+                    print(f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
+            except Exception as e:
+                print(f"Attempt {attempt+1} error: {e}")
+                
+        return ""
+
     def translate(self, text: str, target_lang: Language = Language.ENG) -> str:
         """
         Translate text using local Llama.CPP.
@@ -62,39 +101,7 @@ class Translator:
             "Translation:"
         )
         
-        data = {
-            "prompt": prompt,
-            "n_predict": 100,
-            "temperature": 0.1, # Lower temperature for deterministic output
-            "stop": ["\n", "Text:", "Translation:"] # Stop at newline or prompt injection
-        }
-        
-        try:
-            response = requests.post(self.api_url, json=data, timeout=10)
-            if response.status_code == 200:
-                res_json = response.json()
-                content = res_json.get("content", "")
-                if not content:
-                     choices = res_json.get("choices", [])
-                     if choices:
-                         content = choices[0].get("text", "") or choices[0].get("message", {}).get("content", "")
-                
-                # Post-processing
-                content = content.strip()
-                
-                # Remove surrounding quotes if present
-                if (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'")):
-                    content = content[1:-1].strip()
-
-                # Take only the first line if multiple leaked through
-                if '\n' in content:
-                    content = content.split('\n')[0].strip()
-
-                return content
-            else:
-                raise Exception(f"Translation API error: {response.status_code} - {response.text}")
-        except Exception as e:
-            raise Exception(f"Translation logic error: {e}")
+        return self._perform_translation(prompt, ["\n", "Text:", "Translation:"])
 
     def translate_contextual(self, text: str, history: list, target_lang: Language = Language.ENG) -> str:
         """
@@ -135,32 +142,6 @@ class Translator:
             f"Current Text: {text}\n"
             "Translation:"
         )
-        print(prompt)
-        data = {
-            "prompt": prompt,
-            "n_predict": 100,
-            "temperature": 0.1,
-            "stop": ["\n", "Text:", "Translation:", "Current Text:"]
-        }
         
-        try:
-            response = requests.post(self.api_url, json=data, timeout=10)
-            if response.status_code == 200:
-                res_json = response.json()
-                content = res_json.get("content", "")
-                if not content:
-                     choices = res_json.get("choices", [])
-                     if choices:
-                         content = choices[0].get("text", "") or choices[0].get("message", {}).get("content", "")
-                
-                content = content.strip()
-                if (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'")):
-                    content = content[1:-1].strip()
-                if '\n' in content:
-                    content = content.split('\n')[0].strip()
+        return self._perform_translation(prompt, ["\n", "Text:", "Translation:", "Current Text:"])
 
-                return content
-            else:
-                raise Exception(f"Translation API error: {response.status_code} - {response.text}")
-        except Exception as e:
-            raise Exception(f"Translation logic error: {e}")
