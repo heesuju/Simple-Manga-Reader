@@ -74,13 +74,7 @@ class StripViewer(BaseViewer):
 
         # Initialize zoom from ReaderView state
         mode = getattr(self.reader_view, 'last_zoom_mode', "Fit Width")
-        if mode == "Fit Page" or mode == "Fit Width":
-            self._strip_zoom_factor = 1.0
-        else:
-            try:
-                self._strip_zoom_factor = float(mode.replace('%', '')) / 100.0
-            except ValueError:
-                self._strip_zoom_factor = 1.0
+        self.zoom(mode)
 
         # Clear existing
         while self.reader_view.vbox.count():
@@ -237,8 +231,8 @@ class StripViewer(BaseViewer):
                 if i in self.page_pixmaps:
                     # Optimize: only resize if needed (e.g. placeholder or size mismatch)
                     # _resize_single_label handles caching
-                    # Calculate target width
-                    target_w = int(self.reader_view.scroll_area.viewport().width() * self._strip_zoom_factor - (self.reader_view.vbox.contentsMargins().left() + self.reader_view.vbox.contentsMargins().right()))
+                    
+                    target_w = self._get_target_width(self.page_pixmaps[i])
                     
                     # Check if resize is needed:
                     # 1. No pixmap (Loading...)
@@ -256,12 +250,24 @@ class StripViewer(BaseViewer):
                  # For now, keep it simple.
                  pass
 
+    def _get_target_width(self, pixmap: QPixmap, viewport_w: int = None) -> int:
+        if viewport_w is None:
+             viewport_w = self.reader_view.scroll_area.viewport().width()
+        
+        # Adjust for margins
+        margins = self.reader_view.vbox.contentsMargins()
+        available_w = viewport_w - (margins.left() + margins.right())
+
+        if getattr(self, 'is_fit_width', True):
+            return int(available_w)
+        else:
+            # Scale relative to original image size
+            return int(pixmap.width() * self._strip_zoom_factor)
+
     def _resize_single_label(self, label: QLabel, orig_pix: QPixmap, index: int):
-        w = self.reader_view.scroll_area.viewport().width() * self._strip_zoom_factor - (self.reader_view.vbox.contentsMargins().left() + self.reader_view.vbox.contentsMargins().right())
-        if w <= 0 or orig_pix.isNull():
+        target_w = self._get_target_width(orig_pix)
+        if target_w <= 0 or orig_pix.isNull():
             return
-            
-        target_w = int(w)
         
         # Check cache
         if index in self.scaled_pixmaps:
@@ -294,7 +300,10 @@ class StripViewer(BaseViewer):
             self.scaling_indices.remove(index)
             
         # Check for stale result
-        target_w = int(self.reader_view.scroll_area.viewport().width() * self._strip_zoom_factor - (self.reader_view.vbox.contentsMargins().left() + self.reader_view.vbox.contentsMargins().right()))
+        if index not in self.page_pixmaps:
+            return
+            
+        target_w = self._get_target_width(self.page_pixmaps[index])
         if abs(q_image.width() - target_w) > 5:
             # Stale result (user probably resized again while this was processing)
             return
@@ -325,6 +334,7 @@ class StripViewer(BaseViewer):
             return
             
         viewport_rect = self.reader_view.scroll_area.viewport().rect()
+        viewport_w = viewport_rect.width()
         viewport_top = self.reader_view.scroll_area.verticalScrollBar().value()
         viewport_bottom = viewport_top + viewport_rect.height()
 
@@ -362,11 +372,8 @@ class StripViewer(BaseViewer):
                 orig_pix = self.page_pixmaps[i]
                 if not orig_pix.isNull() and orig_pix.width() > 0:
                     aspect_ratio = orig_pix.height() / orig_pix.width()
-                    target_w = self.reader_view.scroll_area.viewport().width() * self._strip_zoom_factor
-                    # Adjust for margins if any (currently 0)
-                    margins = self.reader_view.vbox.contentsMargins()
-                    target_w -= (margins.left() + margins.right())
-                    target_h = int(target_w * aspect_ratio)
+                    
+                    target_w = self._get_target_width(orig_pix, viewport_w)
                     target_h = int(target_w * aspect_ratio)
                     if lbl.height() != target_h:
                         lbl.setFixedHeight(target_h)
@@ -393,7 +400,7 @@ class StripViewer(BaseViewer):
                 # Pre-calculate target height for off-screen images too
                 if not pixmap.isNull() and pixmap.width() > 0:
                      aspect_ratio = pixmap.height() / pixmap.width()
-                     target_w = self.reader_view.scroll_area.viewport().width() * self._strip_zoom_factor
+                     target_w = self._get_target_width(pixmap, viewport_w)
                      target_h = int(target_w * aspect_ratio)
                      if lbl.height() != target_h:
                         lbl.setFixedHeight(target_h)
@@ -426,10 +433,12 @@ class StripViewer(BaseViewer):
     def zoom(self, mode: str):
         self.reader_view.last_zoom_mode = mode
         if mode == "Fit Page" or mode == "Fit Width":
+            self.is_fit_width = True
             self._strip_zoom_factor = 1.0
             self.reader_view.zoom_changed.emit("Fit Width")
         else:
             try:
+                self.is_fit_width = False
                 self._strip_zoom_factor = float(mode.replace('%', '')) / 100.0
             except ValueError:
                 return # Ignore
@@ -495,7 +504,33 @@ class StripViewer(BaseViewer):
             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 angle = event.angleDelta().y()
                 factor = 1.25 if angle > 0 else 0.8
-                self._strip_zoom_factor *= factor
+                
+                if getattr(self, 'is_fit_width', True):
+                     # Transition from Fit Width to Explicit Zoom
+                     # Calculate effective zoom of the current center image
+                     center_y = self.reader_view.scroll_area.viewport().height() / 2 + self.reader_view.scroll_area.verticalScrollBar().value()
+                     
+                     # Find image at center
+                     center_img_index = -1
+                     for i, lbl in enumerate(self.page_labels):
+                         if lbl.y() <= center_y <= lbl.y() + lbl.height():
+                             center_img_index = i
+                             break
+                     
+                     current_scale = 1.0
+                     if center_img_index != -1 and center_img_index in self.page_pixmaps:
+                         pix = self.page_pixmaps[center_img_index]
+                         if pix.width() > 0:
+                             viewport_w = self.reader_view.scroll_area.viewport().width()
+                             margins = self.reader_view.vbox.contentsMargins()
+                             available_w = viewport_w - (margins.left() + margins.right())
+                             current_scale = available_w / pix.width()
+                    
+                     self._strip_zoom_factor = current_scale * factor
+                     self.is_fit_width = False
+                else:
+                     self._strip_zoom_factor *= factor
+                
                 self._resize_vertical_images()
                 zoom_str = f"{self._strip_zoom_factor*100:.0f}%"
                 self.reader_view.last_zoom_mode = zoom_str
