@@ -31,7 +31,7 @@ class ImageViewer(BaseViewer):
         
         self.resize_timer = QTimer(reader_view)
         self.resize_timer.setSingleShot(True)
-        self.resize_timer.setInterval(200) # 200ms debounce
+        self.resize_timer.setInterval(100) # 100ms debounce
         self.resize_timer.timeout.connect(self._trigger_hq_rescale)
 
     def set_active(self, active: bool):
