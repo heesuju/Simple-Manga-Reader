@@ -135,8 +135,10 @@ class TranslateWorker(QRunnable):
                 if detected_text:
                     try:
                         translated_text = translator.translate_contextual(detected_text, self.history, target_lang=self.target_lang)
-                        # Append to history
-                        self.history.append((detected_text, translated_text))
+                        # Append to history ONLY if translation succeeded
+                        if translated_text:
+                             self.history.append((detected_text, translated_text))
+                        
                         # Limit history size if needed (handled in translator implicitly by slicing, but good to keep memory low)
                         if len(self.history) > 20:
                              self.history.pop(0)
