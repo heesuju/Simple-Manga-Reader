@@ -385,6 +385,10 @@ class ReaderView(QWidget):
         
         if self.slider_panel:
             self.slider_panel.set_range(len(self.model.images) - 1)
+            # Set step based on layout
+            step = 2 if self.model.view_mode == ViewMode.DOUBLE else 1
+            self.slider_panel.set_step(step)
+            
             self.slider_panel.set_value(self.model.current_index)
             self.slider_panel.update_alt_indicators(self.model.images)
         else:
