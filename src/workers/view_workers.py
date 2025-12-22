@@ -371,12 +371,13 @@ class AsyncScaleSignals(QObject):
     finished = pyqtSignal(int, QImage, int)
 
 class AsyncScaleWorker(QRunnable):
-    def __init__(self, image: QImage, target_width: int, index: int, generation_id: int):
+    def __init__(self, image: QImage, target_width: int, index: int, generation_id: int, high_quality: bool = True):
         super().__init__()
         self.q_image = image.copy() 
         self.target_width = target_width
         self.index = index
         self.generation_id = generation_id
+        self.high_quality = high_quality
         self.signals = AsyncScaleSignals()
 
     @pyqtSlot()
@@ -385,6 +386,12 @@ class AsyncScaleWorker(QRunnable):
             return
 
         try:
+            if not self.high_quality:
+                # Fast path using Qt
+                scaled = self.q_image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
+                self.signals.finished.emit(self.index, scaled, self.generation_id)
+                return
+
             # 1. Convert QImage -> PIL
             buffer = QBuffer()
             buffer.open(QBuffer.OpenModeFlag.ReadWrite)
@@ -403,7 +410,7 @@ class AsyncScaleWorker(QRunnable):
             self.signals.finished.emit(self.index, q_out, self.generation_id)
             
         except Exception as e:
-            print(f"Error in HQ scale: {e}")
+            print(f"Error in scale: {e}")
             # Fallback to Qt scaling if PIL fails
             scaled = self.q_image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
             self.signals.finished.emit(self.index, scaled, self.generation_id)

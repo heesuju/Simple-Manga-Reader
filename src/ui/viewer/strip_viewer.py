@@ -282,7 +282,7 @@ class StripViewer(BaseViewer):
         self.scaling_indices.add(index)
         # Convert QPixmap to QImage for thread safety
         q_image = orig_pix.toImage()
-        worker = AsyncScaleWorker(q_image, target_w, index, self.layout_generation)
+        worker = AsyncScaleWorker(q_image, target_w, index, self.layout_generation, high_quality=False)
         worker.signals.finished.connect(self._on_image_scaled)
         self.reader_view.thread_pool.start(worker)
 
