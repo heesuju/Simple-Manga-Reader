@@ -36,7 +36,7 @@ class ChapterListLoader(QRunnable):
             full_chapter_path = Path(chapter['path'])
             if full_chapter_path.exists() and full_chapter_path.is_dir():
                 try:
-                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
                     
                     chapter_name = full_chapter_path.name
                     chapter_alts = alt_config.get(chapter_name, {})
@@ -458,7 +458,7 @@ class ChapterListView(QWidget):
                 alt_config = AltManager.load_alts(series_path)
                 
                 if full_chapter_path.exists() and full_chapter_path.is_dir():
-                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
                     
                     chapter_name = full_chapter_path.name
                     chapter_alts = alt_config.get(chapter_name, {})
@@ -504,7 +504,7 @@ class ChapterListView(QWidget):
                     alt_config = AltManager.load_alts(series_path)
                     
                     if full_chapter_path.exists() and full_chapter_path.is_dir():
-                        images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and 'cover' not in p.name.lower()]
+                        images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
                         
                         chapter_name = full_chapter_path.name
                         chapter_alts = alt_config.get(chapter_name, {})

@@ -289,7 +289,7 @@ class AddTranslationDialog(QDialog):
         
         valid_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
         images = [str(p) for p in self.chapter_path.iterdir() 
-                  if p.is_file() and p.suffix.lower() in valid_exts and 'cover' not in p.name.lower()]
+                  if p.is_file() and p.suffix.lower() in valid_exts and p.stem.lower() != 'cover']
         
         grouped_pages = AltManager.group_images(images, chapter_alts)
         self.pages = grouped_pages
