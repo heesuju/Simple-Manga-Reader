@@ -584,7 +584,7 @@ class ReaderView(QWidget):
 
     def cycle_current_variant(self):
         # Cycles the "main" page variant
-        self.image_viewer.cycle_variant()
+        self.model.cycle_variant(self.model.current_index)
 
     def _on_view_zoom_started(self):
         if self.current_viewer == self.image_viewer:
