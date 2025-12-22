@@ -5,7 +5,7 @@ from typing import Union, List
 from PIL import Image, ImageQt
 
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem
-from PyQt6.QtGui import QPixmap, QMovie, QImage, QBrush, QColor, QFont, QPen, QTextOption
+from PyQt6.QtGui import QPixmap, QMovie, QImage, QBrush, QPainter, QColor, QFont, QPen, QTextOption
 from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool, QSize
 
 from src.ui.viewer.base_viewer import BaseViewer
@@ -134,7 +134,14 @@ class ImageViewer(BaseViewer):
         self.reader_view.scene.setSceneRect(0, 0, total_width, total_height)
         self.pixmap_item = item1
         
-        self.original_pixmap = None # Disable HQ scaling for double view for now
+        # Combine for HQ scaling support
+        combined = QPixmap(total_width, total_height)
+        combined.fill(Qt.GlobalColor.transparent)
+        p = QPainter(combined)
+        p.drawPixmap(0, 0, pix1)
+        p.drawPixmap(pix1.width(), 0, pix2)
+        p.end()
+        self.original_pixmap = combined
 
     def _stop_movie(self):
         if self.movie:
@@ -368,10 +375,17 @@ class ImageViewer(BaseViewer):
         scaled_w = scaled_pixmap.width()
         
         if scaled_w == 0: return
+        
+        # In double view, we might have multiple items. Clear them and use single item for HQ result.
+        if len(self.reader_view.scene.items()) > 1:
+             self._clear_scene_pixmaps()
+             self.pixmap_item = QGraphicsPixmapItem(scaled_pixmap)
+             self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+             self.reader_view.scene.addItem(self.pixmap_item)
+        else:
+             self.pixmap_item.setPixmap(scaled_pixmap)
 
         scale_factor = original_w / scaled_w
-        
-        self.pixmap_item.setPixmap(scaled_pixmap)
         self.pixmap_item.setScale(scale_factor)
         
         self.scaled_pixmap_item = True # flag
