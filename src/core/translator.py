@@ -9,6 +9,31 @@ from src.enums import Language
 load_dotenv()
 
 class Translator:
+    EXAMPLES = {
+        Language.ENG: (
+            "Example 1:\n"
+            "Text: こんにちは\n"
+            "Translation: Hello\n\n"
+            "Example 2:\n"
+            "Text: 何をしているの？\n"
+            "Translation: What are you doing?\n\n"
+            "Example 3:\n"
+            "Text: やめろ！\n"
+            "Translation: Stop it!\n\n"
+        ),
+        Language.KOR: (
+            "Example 1:\n"
+            "Text: こんにちは\n"
+            "Translation: 안녕하세요\n\n"
+            "Example 2:\n"
+            "Text: 何をしているの？\n"
+            "Translation: 뭐 하고 있어?\n\n"
+            "Example 3:\n"
+            "Text: やめろ！\n"
+            "Translation: 그만해!\n\n"
+        )
+    }
+
     def __init__(self):
         self.api_url = os.getenv("LLAMA_API_URL", "http://localhost:8080/completion")
 
@@ -27,32 +52,7 @@ class Translator:
         target_name = map_lang.get(target_lang, "English")
 
         # Few-shot examples
-        examples = ""
-        
-        if target_lang == Language.ENG:
-            examples = (
-                "Example 1:\n"
-                "Text: こんにちは\n"
-                "Translation: Hello\n\n"
-                "Example 2:\n"
-                "Text: 何をしているの？\n"
-                "Translation: What are you doing?\n\n"
-                "Example 3:\n"
-                "Text: やめろ！\n"
-                "Translation: Stop it!\n\n"
-            )
-        elif target_lang == Language.KOR:
-            examples = (
-                "Example 1:\n"
-                "Text: こんにちは\n"
-                "Translation: 안녕하세요\n\n"
-                "Example 2:\n"
-                "Text: 何をしているの？\n"
-                "Translation: 뭐 하고 있어?\n\n"
-                "Example 3:\n"
-                "Text: やめろ！\n"
-                "Translation: 그만해!\n\n"
-            )
+        examples = self.EXAMPLES.get(target_lang, "")
 
         prompt = (
             f"You are a professional manga translator. Translate the Japanese text below to {target_name}.\n"
@@ -111,20 +111,10 @@ class Translator:
 
         target_name = map_lang.get(target_lang, "English")
 
-        # Few-shot examples (Base examples)
+        # Few-shot examples (Base examples) - Only if no history
         examples = ""
-        if target_lang == Language.ENG:
-            examples = (
-                "Example 1:\n"
-                "Text: こんにちは\n"
-                "Translation: Hello\n\n"
-            )
-        elif target_lang == Language.KOR:
-            examples = (
-                "Example 1:\n"
-                "Text: こんにちは\n"
-                "Translation: 안녕하세요\n\n"
-            )
+        if not history:
+            examples = self.EXAMPLES.get(target_lang, "")
 
         # Context from history
         context_prompt = ""
