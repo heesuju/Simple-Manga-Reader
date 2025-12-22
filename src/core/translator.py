@@ -92,8 +92,6 @@ class Translator:
 
                 return content
             else:
-                print(f"Translation API error: {response.status_code} - {response.text}")
-                return "[Error]"
+                raise Exception(f"Translation API error: {response.status_code} - {response.text}")
         except Exception as e:
-            print(f"Translation logic error: {e}")
-            return "[Error]"
+            raise Exception(f"Translation logic error: {e}")

@@ -830,20 +830,30 @@ class ReaderView(QWidget):
                 break
         
         if not target_page:
+            # If saved_path is None, it means the worker failed/aborted
+            if saved_path is None:
+                self.loading_label.hide()
+                QMessageBox.critical(self, "Translation Failed", "The translation process failed. Please check the logs or your connection.")
+                return
+
             print(f"Translation finished for {original_path}, but could not find corresponding page in model.")
             self.loading_label.hide()
             return
 
+        current_page = self.model.images[self.model.current_index]
+
         # 2. Update the Page data
         if saved_path:
             target_page.translations[lang_code] = saved_path
+        else:
+             # Translation failed
+             if target_page == current_page:
+                  self.loading_label.hide()
+                  QMessageBox.critical(self, "Translation Failed", "The translation process failed. Please check your connection.")
+             return
             
-        # 3. If this is the currently viewed page, update the UI
-        current_page = self.model.images[self.model.current_index]
-        
+        # 3. If this is the currently viewed page, update the UI        
         if target_page == current_page:
-
-            
             self.loading_label.hide()
             self.loading_label.setText("Loading...") # Reset
             

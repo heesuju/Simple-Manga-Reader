@@ -128,7 +128,8 @@ class TranslateWorker(QRunnable):
                         translated_text = translator.translate(detected_text, target_lang=self.target_lang)
                     except Exception as e:
                         print(f"Translation failed: {e}")
-                        translated_text = "[Translation Error]"
+                        # Abort the entire task on translation failure as per user request
+                        raise e
                 else:
                     translated_text = "[No Text Detected]"
                 
