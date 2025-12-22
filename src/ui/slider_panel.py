@@ -199,3 +199,6 @@ class SliderPanel(QWidget):
         
         self.page_changed.emit(real_index + 1) # emitted value is 1-based usually expect by change_page
 
+    def refresh_alt_selector(self, index: int):
+        if self.alt_selector:
+             self.alt_selector._update_selector(index)

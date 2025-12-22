@@ -553,8 +553,8 @@ class ReaderView(QWidget):
                  self.current_viewer.set_active(True)
         
         if self.current_viewer == self.strip_viewer:
-             # Already handled by setup?
-             pass
+             # Refresh current index just in case, though on_page_updated handles specific updates
+             self.strip_viewer.refresh(self.model.current_index)
         else:
              self.current_viewer.load(path)
 
@@ -584,7 +584,21 @@ class ReaderView(QWidget):
 
     def cycle_current_variant(self):
         # Cycles the "main" page variant
-        self.model.cycle_variant(self.model.current_index)
+        if self.model.view_mode == ViewMode.SINGLE:
+            self.model.cycle_variant(self.model.current_index)
+        elif self.model.view_mode == ViewMode.DOUBLE:
+             # Cycle both current and next page if valid (since double view shows 2 pages)
+             # Ensure we start at the beginning of the pair (even index)
+             current_idx = self.model.current_index
+             if current_idx % 2 != 0:
+                 current_idx -= 1
+                 
+             self.model.cycle_variant(current_idx)
+             if current_idx + 1 < len(self.model.images):
+                 self.model.cycle_variant(current_idx + 1)
+        elif self.model.view_mode == ViewMode.STRIP:
+             idx = self.model.current_index
+             self.model.cycle_variant(idx)
 
     def _on_view_zoom_started(self):
         if self.current_viewer == self.image_viewer:

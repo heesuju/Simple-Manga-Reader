@@ -142,6 +142,8 @@ class ReaderModel(QObject):
     def change_variant(self, page_index: int, variant_index: int):
         if 0 <= page_index < len(self.images):
             self.images[page_index].set_variant(variant_index)
+            self.page_updated.emit(page_index) # Notify valid update
+            
             # If the changed page is the current one, reload
             if page_index == self.current_index or \
                (self.view_mode == ViewMode.DOUBLE and abs(page_index - self.current_index) <= 1):

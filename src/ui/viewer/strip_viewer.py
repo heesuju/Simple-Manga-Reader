@@ -78,16 +78,22 @@ class StripViewer(BaseViewer):
                 del self.page_pixmaps[index]
             if index in self.scaled_pixmaps:
                 del self.scaled_pixmaps[index]
-            # If the index is currently loading or scaling, let it finish? 
-            # Or assume the ongoing load will pick up the old path?
-            # It's safer to remove from loading set so it can be retried if needed
+            
             if index in self.loading_indices:
                 self.loading_indices.remove(index)
+            
+            if index not in self.load_queue:
+                self.load_queue.insert(0, index) # Prioritize
         else:
             self.page_pixmaps.clear()
             self.scaled_pixmaps.clear()
             self.loading_indices.clear()
-            self.load_queue.clear()
+            
+            if self.current_model_images:
+                 self.load_queue = list(range(len(self.current_model_images)))
+            else:
+                 self.load_queue.clear()
+
             self.eager_scale_timer.stop()
             self.eager_scale_queue.clear()
             
@@ -245,6 +251,7 @@ class StripViewer(BaseViewer):
             self.reader_view.model.current_index = topmost_visible_index
             self.reader_view.page_panel._update_page_selection(self.reader_view.model.current_index)
             self.reader_view.slider_panel.set_value(self.reader_view.model.current_index)
+            self.reader_view.slider_panel.refresh_alt_selector(self.reader_view.model.current_index)
 
         # Trigger priority update
         if self.load_queue or self.loading_indices:
