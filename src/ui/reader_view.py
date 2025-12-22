@@ -6,12 +6,12 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene, QGraphicsView, QGraphicsPixmapItem,
     QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
-    QMessageBox, QScrollArea, QSizePolicy, QPinchGesture, QStackedWidget, QGridLayout
+    QMessageBox, QScrollArea, QSizePolicy, QPinchGesture, QStackedWidget, QGridLayout,
+    QFrame
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, pyqtSignal, QSize, QUrl, QRectF, QSizeF
 from src.utils.resource_utils import resource_path
-
 
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
@@ -21,7 +21,6 @@ from src.ui.slider_panel import SliderPanel
 from src.ui.video_control_panel import VideoControlPanel
 from src.ui.image_view import ImageView
 from src.enums import Language
-
 
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
@@ -33,9 +32,6 @@ from src.core.translation_service import TranslationService
 from src.ui.viewer.image_viewer import ImageViewer
 from src.ui.viewer.video_viewer import VideoViewer
 from src.ui.viewer.strip_viewer import StripViewer
-
-
-
 
 
 class ReaderView(QWidget):
@@ -67,8 +63,6 @@ class ReaderView(QWidget):
         self._last_total_scale = 1.0
         
         self.thread_pool = QThreadPool()
-        # self.translation_pool removed in favor of global service
-        # self.translation_pool.setMaxThreadCount(1) # Sequential execution
 
         self.original_view_mouse_press = None
         self.is_zoomed = False
@@ -117,6 +111,10 @@ class ReaderView(QWidget):
         self.view.zoom_started.connect(self._on_view_zoom_started)
 
         self.media_stack = QStackedWidget()
+        self.media_stack.setFrameShape(QFrame.Shape.NoFrame)
+        self.media_stack.setLineWidth(0)
+        self.media_stack.setContentsMargins(0, 0, 0, 0)
+        self.media_stack.setStyleSheet("border: none; padding: 0px; margin: 0px;")
         self.media_stack.addWidget(self.view)
 
         self.back_btn = QPushButton()
@@ -143,6 +141,8 @@ class ReaderView(QWidget):
 
         # Create and add the scroll area for vertical view, but hide it initially
         self.scroll_area = QScrollArea(self)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setStyleSheet("border: none; padding: 0px; margin: 0px;")
         self.scroll_area.setMouseTracking(True)
         self.scroll_area.viewport().setMouseTracking(True)
         self.scroll_area.setWidgetResizable(True)
@@ -293,9 +293,6 @@ class ReaderView(QWidget):
 
     def _on_slideshow_repeat_changed(self, is_checked: bool):
         self.slideshow_repeat = is_checked
-        # VideoViewer uses this? Or its own? VideoViewer has self.video_repeat. 
-        # But maybe we should sync them?
-        # VideoViewer updates its own repetition via signal from VideoControlPanel, which is separate from SliderPanel.
         pass
 
     def start_page_slideshow(self):
@@ -354,10 +351,6 @@ class ReaderView(QWidget):
         if self.model.view_mode == ViewMode.STRIP:
              new_viewer = self.strip_viewer
         else:
-             # Default to image viewer, but if it is actually video, _load_image will handle deferred?
-             # But we need basic UI setup.
-             # If we are in Single mode, we might be watching a video.
-             # But on layout update, we transition.
              if self.model.images and self.model.current_index < len(self.model.images):
                  ext = os.path.splitext(self.model.images[self.model.current_index].path)[1].lower()
                  if ext in VIDEO_EXTS:
@@ -400,11 +393,6 @@ class ReaderView(QWidget):
                 should_reload = True
         elif self.model.view_mode == ViewMode.DOUBLE:
              # Check if page_index is currently visible
-             # In double mode logic (ReaderModel.load_image), we load current_index and next if applicable.
-             # Actually, ReaderModel.load_image uses:
-             # page1 = images[self.current_index]
-             # page2 = images[self.current_index + 1]
-             # So we check if page_index matches either.
              if abs(page_index - self.model.current_index) <= 1:
                  should_reload = True
         elif self.model.view_mode == ViewMode.STRIP:
@@ -743,7 +731,6 @@ class ReaderView(QWidget):
         target_lang = Language(combo_text).value
         
         # Check global status first
-        # We need the source path for the current page to check status
         page_source_path = ""
         if 0 <= page.current_variant_index < len(page.images):
             page_source_path = page.images[page.current_variant_index]
@@ -792,11 +779,7 @@ class ReaderView(QWidget):
             path = page.images[page.current_variant_index]
         else:
             path = page.images[0]
-            
-        # Start translation (Overwrite logic handled by TranslateWorker saving to same path)
-
- 
-        
+           
         series_path = str(self.model.series['path'])
         chapter_name = Path(self.model.manga_dir).name
         
