@@ -198,6 +198,7 @@ class ReaderView(QWidget):
         self.scroll_area.setWidget(self.vertical_container)
         
         # Note: Connection to valueChanged handled by StripViewer now
+        self.scroll_area.installEventFilter(self)
         self.scroll_area.viewport().installEventFilter(self)
         main_layout.addWidget(self.scroll_area, 0, 0)
         self.scroll_area.hide()
@@ -376,7 +377,7 @@ class ReaderView(QWidget):
         self.model.update_layout()
 
         if self.model.view_mode == ViewMode.STRIP:
-            self.strip_viewer.load(None)
+            self.strip_viewer.refresh()
 
     def on_layout_updated(self):
         self.page_panel.model = self.model
@@ -449,7 +450,7 @@ class ReaderView(QWidget):
         if should_reload:
             self.model.load_image()
             if self.model.view_mode == ViewMode.STRIP:
-                self.strip_viewer.load(None)
+                self.strip_viewer.refresh(page_index)
         
         self.update_top_panel()
                  
@@ -516,11 +517,11 @@ class ReaderView(QWidget):
 
     def eventFilter(self, obj, event):
         if self.current_viewer:
-             if self.current_viewer == self.strip_viewer and obj is self.scroll_area.viewport():
-                 if self.strip_viewer.handle_event(event):
-                     # handled
-                     return True
-             # Delegate other events if needed
+            if self.current_viewer == self.strip_viewer:
+                if obj is self.scroll_area.viewport() or obj is self.scroll_area:
+                    if self.strip_viewer.handle_event(event):
+                        return True
+            # Delegate other events if needed
              
         if obj is self.view.viewport():
             if event.type() == QEvent.Type.MouseMove:

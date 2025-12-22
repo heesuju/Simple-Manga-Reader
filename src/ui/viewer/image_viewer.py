@@ -109,8 +109,7 @@ class ImageViewer(BaseViewer):
             pix2 = QPixmap.fromImage(imgs[1])
             
             self._setup_double_view(pix1, pix2, paths[0], paths[1])
-            # Scaling double view is complex, skipping for simplicty in this iteration unless requested.
-            # Usually double page spreads don't need as aggressive downscaling as they fill the screen more.
+            self._trigger_hq_rescale()
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)

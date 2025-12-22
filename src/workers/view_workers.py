@@ -160,17 +160,7 @@ class ChapterLoaderWorker(QRunnable):
             files.extend([str(p) for p in manga_path.iterdir() 
                           if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
             
-            # 2. Scan alts/ subfolder
-            alts_dir = manga_path / "alts"
-            if alts_dir.exists() and alts_dir.is_dir():
-                files.extend([str(p) for p in alts_dir.iterdir() 
-                              if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
-
-            # 3. Scan translations/ subfolder
-            trans_dir = manga_path / "translations"
-            if trans_dir.exists() and trans_dir.is_dir():
-                files.extend([str(p) for p in trans_dir.iterdir() 
-                              if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name])
+            # Subfolders (alts/translations) are handled by AltManager resolution and should not be added to the main list
                 
             return sorted(files)
         return []

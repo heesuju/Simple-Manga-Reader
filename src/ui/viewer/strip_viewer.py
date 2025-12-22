@@ -68,6 +68,33 @@ class StripViewer(BaseViewer):
     def load(self, item):
         self._show_vertical_layout()
 
+    def refresh(self, index: int = None):
+        """
+        Refresh image content without rebuilding layout.
+        If index is provided, only refresh that specific page's image.
+        """
+        if index is not None:
+            if index in self.page_pixmaps:
+                del self.page_pixmaps[index]
+            if index in self.scaled_pixmaps:
+                del self.scaled_pixmaps[index]
+            # If the index is currently loading or scaling, let it finish? 
+            # Or assume the ongoing load will pick up the old path?
+            # It's safer to remove from loading set so it can be retried if needed
+            if index in self.loading_indices:
+                self.loading_indices.remove(index)
+        else:
+            self.page_pixmaps.clear()
+            self.scaled_pixmaps.clear()
+            self.loading_indices.clear()
+            self.load_queue.clear()
+            self.eager_scale_timer.stop()
+            self.eager_scale_queue.clear()
+            
+        # Trigger reload of visible area
+        self._process_load_queue()
+
+
     def _show_vertical_layout(self):
         self.layout_generation += 1
         self.current_model_images = self.reader_view.model.images
