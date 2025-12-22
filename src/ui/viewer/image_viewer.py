@@ -265,8 +265,21 @@ class ImageViewer(BaseViewer):
 
         if mode == "Fit Page":
             self.reader_view.view.resetTransform()
-            self.reader_view.view.fitInView(self.reader_view.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-            self.reader_view.view.reset_zoom_state()
+            
+            scene_rect = self.reader_view.scene.sceneRect()
+            viewport_rect = self.reader_view.view.viewport().rect()
+            
+            if scene_rect.width() > 0 and scene_rect.height() > 0:
+                scale_w = viewport_rect.width() / scene_rect.width()
+                scale_h = viewport_rect.height() / scene_rect.height()
+                scale = min(scale_w, scale_h)
+                
+                self.reader_view.view.scale(scale, scale)
+                self.reader_view.view.centerOn(scene_rect.center())
+                
+                # Update zoom factor to match reality so scrolling starts smoothly
+                self.reader_view.view._zoom_factor = scale
+
             self.reader_view.zoom_changed.emit("Fit Page")
             self._trigger_hq_rescale()
 
@@ -282,8 +295,21 @@ class ImageViewer(BaseViewer):
         else:
             try:
                 zoom_value = float(mode.replace('%', '')) / 100.0
+                
+                self.reader_view.view.resetTransform()
+                self.reader_view.view.scale(zoom_value, zoom_value)
+                
+                # Center on the image to ensure predictable positioning
+                if self.reader_view.scene.sceneRect().isValid():
+                     self.reader_view.view.centerOn(self.reader_view.scene.sceneRect().center())
+
                 self.reader_view.view._zoom_factor = zoom_value
-                self.reader_view._update_zoom(zoom_value)
+                
+                # Manually update tracking in ReaderView to keep UI in sync
+                self.reader_view.last_zoom_mode = f"{int(zoom_value*100)}%"
+                self.reader_view.zoom_changed.emit(self.reader_view.last_zoom_mode)
+                
+                self._trigger_hq_rescale()
             except ValueError:
                 pass
 

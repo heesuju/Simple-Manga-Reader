@@ -429,9 +429,6 @@ class ReaderView(QWidget):
 
         self.mouse_press_pos = None
 
-        if not math.isclose(self.view._zoom_factor, 1.0):
-            return
-
         w = self.view.width()
         x = event.position().x()
 

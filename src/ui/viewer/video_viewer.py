@@ -73,7 +73,7 @@ class VideoViewer(BaseViewer):
         if self.video_item is None:
             self.video_item = VideoItem()
             self.video_item.context_menu_requested.connect(self._show_context_menu)
-            # self.reader_view.scene.addItem(self.video_item) handled below logic 
+            self.video_item.nativeSizeChanged.connect(self._on_native_size_changed)
             
         if self.video_last_frame_item is None:
             self.video_last_frame_item = QGraphicsPixmapItem()
@@ -108,13 +108,18 @@ class VideoViewer(BaseViewer):
         self.video_item.setData(0, path)
         self.video_item.setVisible(True)
         
-        vp = self.reader_view.view.viewport().size()
-        self.video_item.setSize(QSizeF(vp.width(), vp.height()))
-        self.video_item.setPos(0, 0)
-        
-        self.reader_view.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
+        # Initial size might be invalid if not loaded, wait for nativeSizeChanged
+        # checking if valid immediately just in case
+        if not self.video_item.nativeSize().isEmpty():
+             self._on_native_size_changed(self.video_item.nativeSize())
+
         self.media_player.play()
         self.reader_view._reposition_video_control_panel()
+        
+    def _on_native_size_changed(self, size: QSizeF):
+        self.video_item.setSize(size)
+        self.video_item.setPos(0, 0)
+        self.reader_view.scene.setSceneRect(QRectF(0, 0, size.width(), size.height()))
         self.reader_view.apply_last_zoom()
 
     def _stop_video(self):
@@ -150,26 +155,23 @@ class VideoViewer(BaseViewer):
         if not (self.video_last_frame_item and self.video_last_frame_item.isVisible() and self.last_frame_pixmap):
             return
 
-        vp = self.reader_view.view.viewport().size()
+        # Use actual video item size for underlay, or scene rect since they match now
+        scene_rect = self.reader_view.scene.sceneRect()
+        if scene_rect.width() <= 0: return
+
         scaled_pixmap = self.last_frame_pixmap.scaled(
-            vp.width(), vp.height(), 
-            Qt.AspectRatioMode.KeepAspectRatio, 
+            int(scene_rect.width()), int(scene_rect.height()), 
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding, 
             Qt.TransformationMode.SmoothTransformation
         )
         
         self.video_last_frame_item.setPixmap(scaled_pixmap)
-        x = (vp.width() - scaled_pixmap.width()) / 2
-        y = (vp.height() - scaled_pixmap.height()) / 2
+        # Center if aspect ratio differs (unlikely for frame from same video)
+        x = (scene_rect.width() - scaled_pixmap.width()) / 2
+        y = (scene_rect.height() - scaled_pixmap.height()) / 2
         self.video_last_frame_item.setPos(x, y)
 
     def on_resize(self, event):
-        if self.video_item and self.video_item.isVisible():
-            vp = self.reader_view.view.viewport().size()
-            self.video_item.setSize(QSizeF(vp.width(), vp.height()))
-            self.video_item.setPos(0, 0)
-            self._update_video_underlay_geometry()
-            self.reader_view.scene.setSceneRect(QRectF(0, 0, vp.width(), vp.height()))
-            
         self.reader_view._reposition_video_control_panel()
 
     def zoom(self, mode: str):
@@ -179,14 +181,37 @@ class VideoViewer(BaseViewer):
 
         if mode == "Fit Page":
             self.reader_view.view.resetTransform()
-            self.reader_view.view.fitInView(self.reader_view.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-            self.reader_view.view.reset_zoom_state()
+            
+            scene_rect = self.reader_view.scene.sceneRect()
+            viewport_rect = self.reader_view.view.viewport().rect()
+            
+            if scene_rect.width() > 0 and scene_rect.height() > 0:
+                scale_w = viewport_rect.width() / scene_rect.width()
+                scale_h = viewport_rect.height() / scene_rect.height()
+                scale = min(scale_w, scale_h)
+                
+                self.reader_view.view.scale(scale, scale)
+                self.reader_view.view.centerOn(scene_rect.center())
+                
+                self.reader_view.view._zoom_factor = scale
+
             self.reader_view.zoom_changed.emit("Fit Page")
         else:
             try:
                 zoom_value = float(mode.replace('%', '')) / 100.0
+                
+                self.reader_view.view.resetTransform()
+                self.reader_view.view.scale(zoom_value, zoom_value)
+                
+                # Center on the image to ensure predictable positioning
+                if self.reader_view.scene.sceneRect().isValid():
+                     self.reader_view.view.centerOn(self.reader_view.scene.sceneRect().center())
+
                 self.reader_view.view._zoom_factor = zoom_value
-                self.reader_view._update_zoom(zoom_value)
+                
+                # Manually update tracking in ReaderView to keep UI in sync
+                self.reader_view.last_zoom_mode = f"{int(zoom_value*100)}%"
+                self.reader_view.zoom_changed.emit(self.reader_view.last_zoom_mode)
             except ValueError:
                 pass
 
