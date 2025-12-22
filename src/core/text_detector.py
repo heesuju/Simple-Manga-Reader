@@ -2,6 +2,7 @@ import os
 import shutil
 from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
+import torch
 
 class TextDetector:
     _model_cache = None
@@ -11,6 +12,9 @@ class TextDetector:
         self.model_path = os.path.join("models", "comic-text-segmenter-yolov8m.pt")
         self._ensure_model()
         self._load_model()
+        # Check device availability once
+        self.device = 0 if torch.cuda.is_available() else 'cpu'
+        print(f"TextDetector initialized on device: {self.device}")
 
     def _ensure_model(self):
         """Check if model exists, if not download from HF."""
@@ -50,7 +54,7 @@ class TextDetector:
         if not self.model:
             return []
 
-        results = self.model.predict(image_path, device='cpu', conf=0.25)
+        results = self.model.predict(image_path, device=self.device, conf=0.25)
         
         detections = []
         for result in results:

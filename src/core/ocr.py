@@ -2,6 +2,8 @@
 from manga_ocr import MangaOcr
 from PIL import Image
 
+import torch
+
 class OCR:
     _model_cache = None
 
@@ -17,7 +19,9 @@ class OCR:
         # This will download models if not present
         print("Initializing MangaOCR...")
         try:
-            self.mocr = MangaOcr()
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            print(f"MangaOCR initializing on device: {device}")
+            self.mocr = MangaOcr(device=device)
             OCR._model_cache = self.mocr
             print("MangaOCR initialized.")
         except Exception as e:
