@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QMimeData, QThreadPool
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap, QDrag
-from src.utils.img_utils import load_thumbnail_from_path, extract_page_number
+from src.utils.img_utils import load_thumbnail_from_path, extract_page_number, get_chapter_number
 from src.enums import Language
 from src.core.alt_manager import AltManager
 from src.workers.translate_worker import TranslateWorker
@@ -273,13 +273,13 @@ class AddTranslationDialog(QDialog):
         self.translate_btn = QPushButton("Translate")
         self.translate_btn.setStyleSheet("""
             QPushButton {
-                 background-color: #4CAF50; color: white; padding: 5px;
+                background-color: #4CAF50; color: white; padding: 5px;
             }
             QPushButton:hover {
-                 background-color: #388E3C;
+                background-color: #388E3C;
             }
             QPushButton:disabled {
-                 background-color: #81c784; color: #eee;
+                background-color: #81c784; color: #eee;
             }
         """)
         self.translate_btn.setEnabled(False) # Explicitly disable mainly
@@ -314,10 +314,10 @@ class AddTranslationDialog(QDialog):
         self.bg_btn = QPushButton("Continue in Background")
         self.bg_btn.setStyleSheet("""
             QPushButton {
-                 background-color: #2196F3; color: white; padding: 5px;
+                background-color: #2196F3; color: white; padding: 5px;
             }
             QPushButton:hover {
-                 background-color: #1976D2;
+                background-color: #1976D2;
             }
         """)
         self.bg_btn.clicked.connect(self.accept) # Close dialog means "Continue in Background"
@@ -458,6 +458,9 @@ class AddTranslationDialog(QDialog):
         valid_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
         images = [str(p) for p in self.chapter_path.iterdir() 
                   if p.is_file() and p.suffix.lower() in valid_exts and p.stem.lower() != 'cover']
+        
+        # Sort to match ReaderView logic (which uses get_chapter_number)
+        images = sorted(images, key=get_chapter_number)
         
         grouped_pages = AltManager.group_images(images, chapter_alts)
         self.pages = grouped_pages

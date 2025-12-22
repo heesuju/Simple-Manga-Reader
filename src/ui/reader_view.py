@@ -92,6 +92,50 @@ class ReaderView(QWidget):
 
         self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
 
+
+    def _on_translation_status_changed_global(self, image_path: str, lang_code: str, status: str):
+        """
+        Handle updates from the global translation service via fast O(1) lookup.
+        """
+        if not self.model.images or not self.model.manga_dir:
+             return
+
+        # Optimization 1: Quick check if path belongs to current chapter folder
+        if str(self.model.manga_dir) not in str(image_path):
+             # Not in current chapter -> ignore
+             pass
+
+        # Optimization 2: Use Model's Hash Map (O(1))
+        found_page_index = self.model.get_page_index(image_path)
+
+        if found_page_index == -1:
+            return
+
+        # 2. Update the model for that page if finished
+        if status == "finished":
+             self.model.update_page_variants(found_page_index)
+
+        # 3. If it is the CURRENT page (or visible), update UI
+        is_visible = False
+        if found_page_index == self.model.current_index:
+            is_visible = True
+        elif self.model.view_mode == ViewMode.DOUBLE and abs(found_page_index - self.model.current_index) <= 1:
+            is_visible = True
+        
+        if is_visible:
+             self.update_top_panel()
+             
+             if status == "translating":
+                  self.loading_label.setText(f"Translating to {lang_code}...")
+                  self.loading_label.show()
+             elif status == "finished":
+                  self.loading_label.hide()
+                  self.model.load_image()
+             elif status == "queued":
+                 self.top_panel.update_translate_button("QUEUED")
+             elif status is None:
+                 self.top_panel.update_translate_button(None)
+
     def _setup_ui(self):
         self.loading_label = QLabel("Loading...", self)
         self.loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -719,10 +763,8 @@ class ReaderView(QWidget):
         
         if combo_text == "Original":
              # Cannot translate Original to Original
-             self.top_panel.update_translate_button('TRANSLATE')
-             self.top_panel.translate_btn.setEnabled(False)
-             self.top_panel.translate_btn.setText("Translate")
-             self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(100, 100, 100, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: rgba(255, 255, 255, 100);")
+             # Cannot translate Original to Original
+             self.top_panel.update_translate_button('DISABLED')
              return
 
         target_lang = Language(combo_text).value
@@ -737,19 +779,10 @@ class ReaderView(QWidget):
         status = TranslationService.instance().get_status(page_source_path, target_lang)
         
         if status:
-            self.top_panel.translate_btn.setEnabled(False)
-            if status == "queued":
-                 self.top_panel.translate_btn.setText("Queued...")
-                 self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(255, 165, 0, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
-            elif status == "translating":
-                 self.top_panel.translate_btn.setText("Translating...")
-                 self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 128, 0, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+            self.top_panel.update_translate_button(status.upper())
         elif target_lang in page.translations:
              # Translation exists -> Offer Redo
-             self.top_panel.translate_btn.setEnabled(True)
-             self.top_panel.translate_btn.setText("Redo TL")
-             # Use a distinct color for Redo? e.g. Purple or Orange
-             self.top_panel.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(156, 39, 176, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+             self.top_panel.update_translate_button('REDO')
         else:
              # Translation missing -> Offer Translate
              self.top_panel.update_translate_button('TRANSLATE')
@@ -785,33 +818,7 @@ class ReaderView(QWidget):
         
         TranslationService.instance().submit(worker)
         self.update_top_panel() # Update immediately to show Queued status
-
-    def _on_translation_status_changed_global(self, path: str, lang: str, status: str):
-        # Update loading label if this page is active
-        # And update top panel button
         
-        # 1. Update Top Panel (Button State)
-        # If current page matches path
-        if self.model.images and 0 <= self.model.current_index < len(self.model.images):
-             page = self.model.images[self.model.current_index]
-             # Check if path applies to any variant or the main image
-             # Simplest is if path is in page.images (list of variants)
-             if path in page.images:
-                 self.update_top_panel()
-                 
-                 # 2. Update Loading Label
-                 if status == "translating":
-                      self.loading_label.setText(f"Translating to {lang}...")
-                      self.loading_label.show()
-                 elif status == "finished":
-                      self.loading_label.hide()
-                      # update_top_panel will be called again? No, finished signal triggers _on_translation_finished
-                      self.update_top_panel() # Refresh to show "Redo TL"
-        
-
-
-
-
     def _on_translation_finished(self, original_path: str, saved_path: str, overlays: list, lang_code: str, history: list):
         if not self.model.images:
              self.loading_label.hide()

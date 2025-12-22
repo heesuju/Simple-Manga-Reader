@@ -125,6 +125,23 @@ class TopPanel(QWidget):
         Reset translate button to default state.
         'state' arg is kept for compatibility but only 'TRANSLATE' is supported effectively.
         """
-        self.translate_btn.setEnabled(True)
-        self.translate_btn.setText("Translate")
-        self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        if state == 'TRANSLATING':
+            self.translate_btn.setEnabled(False)
+            self.translate_btn.setText("Translating...")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(255, 165, 0, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        elif state == 'QUEUED':
+            self.translate_btn.setEnabled(False)
+            self.translate_btn.setText("Queued")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(128, 128, 128, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        elif state == 'REDO':
+            self.translate_btn.setEnabled(True)
+            self.translate_btn.setText("Redo TL")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(156, 39, 176, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        elif state == 'DISABLED':
+            self.translate_btn.setEnabled(False)
+            self.translate_btn.setText("Translate")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(100, 100, 100, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: rgba(255, 255, 255, 100);")
+        else: # Default / Ready
+            self.translate_btn.setEnabled(True)
+            self.translate_btn.setText("Translate")
+            self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")

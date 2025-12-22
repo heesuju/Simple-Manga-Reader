@@ -25,7 +25,7 @@ class GroupPagesWorker(QRunnable):
             valid_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
             images = [
                 p for p in self.chapter_path.iterdir() 
-                if p.is_file() and p.suffix.lower() in valid_exts and 'cover' not in p.name.lower()
+                if p.is_file() and p.suffix.lower() in valid_exts and p.stem.lower() != 'cover'
             ]
 
             if not images:

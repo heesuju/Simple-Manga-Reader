@@ -1,5 +1,7 @@
 from typing import List, Union
 from pathlib import Path
+import os
+
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -24,6 +26,7 @@ class ReaderModel(QObject):
         self.start_file = start_file
         self.view_mode = ViewMode.SINGLE
         self.images: List[Page] = [] 
+        self._image_map = {} # Maps image path -> page_index
         self.current_index = 0
         self.chapters = manga_dirs if manga_dirs else []
         self.chapter_index = index if manga_dirs else 0
@@ -58,6 +61,23 @@ class ReaderModel(QObject):
         alt_config = AltManager.load_alts(str(self.series['path']))
         chapter_alts = alt_config.get(chapter_name, {})
         self.images = AltManager.group_images(images, chapter_alts)
+        
+        # Build Map
+        self._rebuild_map()
+
+    def _rebuild_map(self):
+        """Rebuild the hash map for O(1) lookup."""
+        self._image_map.clear()
+        for i, page in enumerate(self.images):
+            # Map variants using normalized path
+            for img_path in page.images:
+                 norm = os.path.normpath(img_path)
+                 self._image_map[norm] = i
+
+    def get_page_index(self, path: str) -> int:
+        """O(1) lookup for page index given a path."""
+        norm_path = os.path.normpath(path)
+        return self._image_map.get(norm_path, -1)
 
     def refresh(self):
         """Should be called after model data is updated to refresh the view."""
@@ -316,5 +336,15 @@ class ReaderModel(QObject):
             # If path lost (e.g. unlinked), default to 0
             page.current_variant_index = 0
         
-        # 3. Emit signal
+        # 3. Update Map for this page
+        # Remove old entries for this page? 
+        # Easier to just rebuild map logic or update partially
+        # Since variants changed, we should ideally remove old variants pointing to this index 
+        # and add new ones.
+        # For simplicity, we can just re-add new ones. 
+        # (Assuming distinct pages don't share files, which they shouldn't).
+        for var in new_variants:
+            self._image_map[os.path.normpath(var)] = page_index
+        
+        # 4. Emit signal
         self.page_updated.emit(page_index)

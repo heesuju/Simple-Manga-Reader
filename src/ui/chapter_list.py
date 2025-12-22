@@ -37,6 +37,7 @@ class ChapterListLoader(QRunnable):
             if full_chapter_path.exists() and full_chapter_path.is_dir():
                 try:
                     images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
+                    images = sorted(images, key=get_chapter_number)
                     
                     chapter_name = full_chapter_path.name
                     chapter_alts = alt_config.get(chapter_name, {})
