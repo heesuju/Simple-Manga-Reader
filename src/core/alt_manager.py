@@ -19,19 +19,27 @@ class AltManager:
         path_map = {Path(p).name: p for p in image_paths}
 
         for main_file_name, entry in alt_config.items():
+            # Support both exact path match (legacy) and filename match
+            # If main_file_name is absolute path in config (legacy bug), try to match by name
+            main_name_key = Path(main_file_name).name
+            
             if isinstance(entry, list):
                 for alt_name in entry:
-                     if alt_name in path_map:
-                         processed_files.add(alt_name)
+                     # Check exact match or name match
+                     alt_base = Path(alt_name).name
+                     if alt_base in path_map:
+                         processed_files.add(alt_base)
             elif isinstance(entry, dict):
                  if "alts" in entry and isinstance(entry["alts"], list):
                      for alt_name in entry["alts"]:
-                         if alt_name in path_map:
-                             processed_files.add(alt_name)
+                         alt_base = Path(alt_name).name
+                         if alt_base in path_map:
+                             processed_files.add(alt_base)
                  if "translations" in entry and isinstance(entry["translations"], dict):
                      for trans_name in entry["translations"].values():
-                         if trans_name in path_map:
-                             processed_files.add(trans_name)
+                         trans_base = Path(trans_name).name
+                         if trans_base in path_map:
+                             processed_files.add(trans_base)
 
         for path in image_paths:
             name = Path(path).name
@@ -42,6 +50,7 @@ class AltManager:
             variants = [path]
             processed_files.add(name)
 
+            # Check if this file is a key in alt_config (checking basename)
             if name in alt_config:
                 found_alts = []
                 translations = {}
@@ -50,32 +59,38 @@ class AltManager:
                 # Check structure type: List (Legacy) vs Dict (New)
                 if isinstance(entry, list):
                      for alt_name in entry:
-                        if alt_name in path_map:
-                            found_alts.append(path_map[alt_name])
-                            processed_files.add(alt_name)
+                        alt_base = Path(alt_name).name
+                        if alt_base in path_map:
+                            found_alts.append(path_map[alt_base])
+                            processed_files.add(alt_base)
                 elif isinstance(entry, dict):
                      # 1. Alts
                      if "alts" in entry and isinstance(entry["alts"], list):
                          for alt_name in entry["alts"]:
-                             if alt_name in path_map:
-                                 found_alts.append(path_map[alt_name])
-                                 processed_files.add(alt_name)
+                             alt_base = Path(alt_name).name
+                             if alt_base in path_map:
+                                 found_alts.append(path_map[alt_base])
+                                 processed_files.add(alt_base)
                              else:
+                                 # Fallback: Check if file exists in alts folder relative to main file
                                  main_dir = Path(path).parent
-                                 alt_path_check = main_dir / "alts" / alt_name
+                                 alt_path_check = main_dir / "alts" / alt_base
                                  if alt_path_check.exists():
                                      found_alts.append(str(alt_path_check))
 
                      # 2. Translations
                      if "translations" in entry and isinstance(entry["translations"], dict):
                          for lang_key, trans_file in entry["translations"].items():
-                             if trans_file in path_map:
-                                 translations[lang_key] = path_map[trans_file]
-                                 processed_files.add(trans_file)
+                             trans_base = Path(trans_file).name
+                             if trans_base in path_map:
+                                 translations[lang_key] = path_map[trans_base]
+                                 processed_files.add(trans_base)
                              else:
                                  # Check 'translations/<LANG>/<filename>'
                                  main_dir = Path(path).parent
-                                 trans_path_check = main_dir / "translations" / lang_key / trans_file
+                                 # Try simple name in main dir (if map failed but maybe it's there?) - unlikely if path_map constructed from glob
+                                 # Try translations dir
+                                 trans_path_check = main_dir / "translations" / lang_key / trans_base
                                  if trans_path_check.exists():
                                      translations[lang_key] = str(trans_path_check)
 
@@ -109,8 +124,6 @@ class AltManager:
     def load_alts(series_path: str) -> Dict[str, Dict[str, List[str]]]:
         """
         Load the alt configuration from info.json.
-        Returns a structure:
-        {
         Returns a structure:
         {
             "Chapter Name": {
@@ -166,7 +179,8 @@ class AltManager:
         
         # Ensure we are using filenames or relative paths
         main_name = Path(main_file).name
-        alt_names = [p.replace('\\', '/') for p in alt_files]
+        # FIX: Ensure we only store filenames, stripping any absolute paths
+        alt_names = [Path(p).name for p in alt_files]
 
         # Init or Migrate entry
         if main_name in data[chapter_name]:
@@ -197,8 +211,9 @@ class AltManager:
                     # For now just merging alts. Translations on alts might be edge case.
                 
                 for sub in sub_alts:
-                    if sub != main_name and sub not in entry["alts"]:
-                         entry["alts"].append(sub)
+                    sub_name = Path(sub).name
+                    if sub_name != main_name and sub_name not in entry["alts"]:
+                         entry["alts"].append(sub_name)
                 
                 # Re-sort
                 entry["alts"].sort()
