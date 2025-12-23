@@ -45,6 +45,8 @@ class ImageViewer(BaseViewer):
             if self.movie and self.movie.state() == QMovie.MovieState.NotRunning:
                 self.movie.start()
         else:
+            self.resize_timer.stop()
+            self.hq_generation_id += 1 # Invalidate any pending HQ workers
             if self.pixmap_item:
                 self.pixmap_item.setVisible(False)
             
@@ -55,6 +57,7 @@ class ImageViewer(BaseViewer):
 
     def load(self, item):
         self._stop_movie()
+        self.resize_timer.stop()
         self.current_request_id += 1
         req_id = self.current_request_id
         
