@@ -47,7 +47,7 @@ class Translator:
         
         for attempt in range(retries):
             try:
-                response = requests.post(self.api_url, json=data, timeout=10)
+                response = requests.post(self.api_url, json=data, timeout=60)
                 if response.status_code == 200:
                     res_json = response.json()
                     content = res_json.get("content", "")
