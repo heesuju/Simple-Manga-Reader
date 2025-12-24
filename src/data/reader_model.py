@@ -1,7 +1,8 @@
 from typing import List, Union
 from pathlib import Path
 import os
-
+import random
+from PyQt6.QtGui import QImageReader
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -64,6 +65,9 @@ class ReaderModel(QObject):
         
         # Build Map
         self._rebuild_map()
+
+        # Auto-detect spreads
+        self.auto_detect_spreads()
 
     def _rebuild_map(self):
         """Rebuild the hash map for O(1) lookup."""
@@ -138,6 +142,78 @@ class ReaderModel(QObject):
             p1_path = page1.path if page1 else None
             p2_path = page2.path if page2 else None
             self.double_image_loaded.emit(p1_path, p2_path)
+
+    def auto_detect_spreads(self):
+        """
+        Detects double-page spreads based on aspect ratio.
+        """
+        if not self.series or not self.manga_dir or not self.images:
+            return
+
+        # 1. Detect if "Manga" (consistent aspect ratio)
+        # Sample random 5 pages from middle 50%
+        valid_indices = range(len(self.images))
+        if len(self.images) > 10:
+             start = len(self.images) // 4
+             end = len(self.images) * 3 // 4
+             valid_indices = range(start, end)
+        
+        # Taking up to 5 samples
+        sample_indices = random.sample(valid_indices, min(5, len(valid_indices)))
+        ratios = []
+        
+        for i in sample_indices:
+             path = self.images[i].path
+             reader = QImageReader(path)
+             size = reader.size()
+             if size.isValid() and size.height() > 0:
+                 ratios.append(size.width() / size.height())
+        
+        if not ratios:
+            return
+
+        median_ratio = sorted(ratios)[len(ratios) // 2]
+        
+        # Check consistency (all within 10% of median)
+        if median_ratio == 0: return
+
+        is_consistent = all(abs(r - median_ratio) / median_ratio < 0.1 for r in ratios)
+        
+        if not is_consistent:
+            return
+            
+        # 2. Detect spreads
+        common_ratio = median_ratio
+        # Spread is roughly double the width, so ratio should be ~2x common_ratio
+        # We use a threshold, e.g., > 1.5x
+        spread_threshold = common_ratio * 1.5 
+        
+        updates = {}
+        chapter_name = Path(self.manga_dir).name
+        
+        for page in self.images:
+            # Skip if user explicitly set it (loaded from config as explicit) or manually handled
+            if page.is_spread_explicit:
+                continue
+                
+            path = page.path
+            reader = QImageReader(path)
+            size = reader.size()
+            
+            if size.isValid() and size.height() > 0:
+                 ratio = size.width() / size.height()
+                 
+                 is_spread = ratio > spread_threshold
+                 
+                 if page.is_spread != is_spread:
+                     page.is_spread = is_spread
+                     updates[path] = is_spread
+        
+        # 3. Save updates
+        if updates:
+             AltManager.save_spread_states(str(self.series['path']), chapter_name, updates)
+             self.refresh()
+
 
     def change_variant(self, page_index: int, variant_index: int):
         if 0 <= page_index < len(self.images):

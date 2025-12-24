@@ -12,6 +12,8 @@ class Page:
         self.translations = translations if translations else {}
         self.current_variant_index = 0
         self.active_translation_lang = None # Language code if showing translation
+        self.is_spread = False # If true, this page should be treated as a double-page spread
+        self.is_spread_explicit = False # If true, is_spread was set from config (don't auto-detect)
 
     @property
     def path(self) -> str:

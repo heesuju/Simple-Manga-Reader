@@ -109,7 +109,12 @@ class AltManager:
                 found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), Path(p).name.lower()))
                 variants.extend(found_alts)
                 
-                grouped_pages.append(Page(variants, translations))
+                p = Page(variants, translations)
+                if isinstance(entry, dict) and "is_spread" in entry:
+                     p.is_spread = entry["is_spread"]
+                     p.is_spread_explicit = True
+                
+                grouped_pages.append(p)
             else:
                 grouped_pages.append(Page(variants, None))
         
@@ -294,3 +299,35 @@ class AltManager:
             data[chapter_name][main_img] = entry
             AltManager.save_alts(series_path, data)
             return
+
+    @staticmethod
+    def save_spread_states(series_path: str, chapter_name: str, updates: Dict[str, bool]):
+        """
+        Batch update the is_spread flag for multiple pages.
+        updates: Dict mapping main_file_name -> is_spread (bool)
+        """
+        if not updates:
+            return
+
+        data = AltManager.load_alts(series_path)
+        if chapter_name not in data:
+            data[chapter_name] = {}
+            
+        changed = False
+        for main_file, is_spread in updates.items():
+            main_name = Path(main_file).name
+            
+            # Init or Migrate
+            if main_name in data[chapter_name]:
+                entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
+            else:
+                entry = {"alts": [], "translations": {}, "is_spread": False}
+                
+            current_val = entry.get("is_spread", False)
+            if current_val != is_spread:
+                entry["is_spread"] = is_spread
+                data[chapter_name][main_name] = entry
+                changed = True
+        
+        if changed:
+            AltManager.save_alts(series_path, data)
