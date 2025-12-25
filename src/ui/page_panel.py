@@ -1,13 +1,7 @@
-import shutil
-import os
-from pathlib import Path
-from typing import Set
-
+from typing import Set, List
 from PyQt6.QtCore import QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog
 from PyQt6.QtGui import QAction, QCursor, QKeySequence
-import uuid
-import subprocess
 
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
@@ -17,6 +11,7 @@ from src.enums import ViewMode
 from src.utils.img_utils import empty_placeholder, load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.core.alt_manager import AltManager
 from src.ui.components.drag_drop_alt_dialog import DragDropAltDialog
+import src.ui.page_utils as page_utils
 
 class PagePanel(CollapsiblePanel):
     reload_requested = pyqtSignal()
@@ -352,163 +347,18 @@ class PagePanel(CollapsiblePanel):
         menu.exec(QCursor.pos())
 
     def _save_page_as(self, index: int):
-        page = self.model.images[index]
-        if not page:
-            return
-            
-        # Get the path of the main image (first variant)
-        # Avoid saving virtual paths (zips) directly unless we extract? 
-        # For now, assume path is extractable or handle standard files.
-        src_path = page.images[0]
-        if '|' in src_path:
-             # Virtual path (e.g. zip). We might not support saving directly from zip without extraction.
-             # But ReaderView extracts it. Here we have just path.
-             # For simplicity, if it's zip, we skip or show error (or maybe just block it).
-             # Wait, copying a file out of zip requires extraction.
-             # Let's assume standard file for now as 'Save As' implies file copy.
-             # If it's inside zip, src_path is like /path/to/archive.zip|internal/path.jpg
-             pass
-        
-        path_to_save = src_path
-        if '|' in path_to_save:
-             # Logic to extract from zip if needed?
-             # For now, let's just support local filesystem files to match behavior.
-             return
-
-        if not os.path.exists(path_to_save):
-            return
-
-        base_name = os.path.basename(path_to_save)
-        ext = os.path.splitext(base_name)[1]
-        
-        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-        initial_path = os.path.join(downloads_dir, base_name)
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Image As",
-            initial_path,
-            f"Image (*{ext});;All Files (*)"
-        )
-        
-        if file_path:
-            try:
-                shutil.copy2(path_to_save, file_path)
-            except Exception as e:
-                print(f"Error copying image: {e}")
+        page_utils.save_page_as(self, self.model, index)
 
     def _link_selected_pages(self):
-        if len(self.edit_selected_indices) < 2:
-            return
-        
-        sorted_indices = sorted(list(self.edit_selected_indices))
-        main_page_idx = sorted_indices[0]
-        
-        main_page = self.model.images[main_page_idx]
-        if not main_page: return
-
-        all_paths = []
-        for idx in sorted_indices:
-            page = self.model.images[idx]
-            if page:
-                all_paths.extend(page.images)
-
-        unique_paths = []
-        seen = set()
-        for p in all_paths:
-            if p not in seen:
-                unique_paths.append(p)
-                seen.add(p)
-        
-        series_path = self.model.series['path']
-        chapter_dir = Path(self.model.manga_dir) # Ensure we have chapter dir
-        chapter_name = chapter_dir.name
-        
-        main_file = unique_paths[0]
-        original_alt_files = unique_paths[1:]
-        
-        main_stem = Path(main_file).stem
-        
-        # Move alts to alts/ folder
-        alts_dir = chapter_dir / "alts"
-        if not alts_dir.exists():
-            alts_dir.mkdir(parents=True, exist_ok=True)
-            
-        final_alt_files = []
-        for i, alt_path in enumerate(original_alt_files):
-            p = Path(alt_path)
-            new_name = f"{main_stem}_{i+1}{p.suffix}"
-            dst = alts_dir / new_name
-
-            counter = i + 1
-            while dst.exists() and dst.resolve() != p.resolve():
-                new_name = f"{main_stem}_{counter}_{uuid.uuid4().hex[:4]}{p.suffix}"
-                dst = alts_dir / new_name
-            
-            if alts_dir in p.parents and p.name == new_name:
-                final_alt_files.append(str(p))
-            else:
-                try:
-                    shutil.move(p, dst)
-                    final_alt_files.append(str(dst))
-                except Exception as e:
-                    print(f"Error moving alt {p}: {e}")
-                    final_alt_files.append(str(p))
-        
-        AltManager.link_pages(series_path, chapter_name, main_file, final_alt_files)
-        
-        self.reload_requested.emit()
-        self.on_page_changed(main_page_idx + 1)
+        page_utils.link_selected_pages(
+            self.model, 
+            self.edit_selected_indices, 
+            lambda: self.reload_requested.emit(), 
+            self.on_page_changed
+        )
 
     def _unlink_page(self, index: int):
-        page = self.model.images[index]
-        if not page: return
-        
-        series_path = self.model.series['path']
-        chapter_dir = Path(self.model.manga_dir)
-        if isinstance(chapter_dir, str): chapter_dir = Path(chapter_dir)
-        chapter_name = chapter_dir.name
-        
-        current_file_path = Path(page.path)
-        
-        # Check if we are unlinking the main page (images[0]) or an alt
-        main_file_path = Path(page.images[0])
-        is_main_file = (current_file_path.resolve() == main_file_path.resolve())
-        
-        # 1. Update JSON Configuration
-        # If main file: remove the entire key (dissolve group)
-        # If alt file: remove just that alt from the list
-        AltManager.unlink_page(series_path, chapter_name, str(current_file_path))
-        
-        # 2. Rename files to _detached
-        files_to_rename = []
-        
-        if is_main_file:
-            # If main was selected, we dissolved the group. 
-            # We should rename ALL alts (images[1:]) to _detached.
-            # Convert paths to Path objects
-            files_to_rename = [Path(p) for p in page.images if Path(p).resolve() != main_file_path.resolve()]
-        else:
-            # Only rename the current alt we just detached
-            files_to_rename = [current_file_path]
-            
-        for p in files_to_rename:
-            # Only rename if it's in the 'alts/' directory (standard behavior)
-            if "alts" in str(p.parent.name):
-                new_stem = f"{p.stem}_detached_{uuid.uuid4().hex[:8]}"
-                new_name = f"{new_stem}{p.suffix}"
-                # Rename in place
-                dst_path = p.parent / new_name
-                
-                try:
-                    shutil.move(p, dst_path)
-                except Exception as e:
-                    print(f"Error moving detached file: {e}")
-        
-        # Unlinking (detaching) a page means it is removed from the group but stays in alts folder (hidden from pages).
-        # So no new page is added to the main list.
-        # Thus, we can just update the variants.
-        self.model.update_page_variants(index)
+        page_utils.unlink_page(self.model, index)
 
     def _paste_as_alternate(self):
         clipboard = QApplication.clipboard()
@@ -532,23 +382,7 @@ class PagePanel(CollapsiblePanel):
             self._add_alts_logic(file_paths)
 
     def _open_in_explorer(self, index: int):
-        page = self.model.images[index]
-        if not page:
-             return
-             
-        # Resolve path if it's a virtual path (zip) or just a file
-        # We want to highlight the file itself.
-        path = page.images[0] # Use the first image (main)
-        if '|' in path:
-            path = path.split('|')[0] # Get the zip file path
-            
-        path = os.path.normpath(path)
-        
-        if os.name == 'nt':
-            subprocess.Popen(['explorer', '/select,', str(path)])
-        # elif os.name == 'posix': # Mac/Linux support if needed
-        #     subprocess.Popen(['open', '-R', str(path)]) # Mac
-        #     # Linux usually varies (xdg-open doesn't support select usually)
+        page_utils.open_in_explorer(self.model, index)
 
     def refresh_thumbnail(self, index: int):
         if 0 <= index < len(self.page_thumbnail_widgets):
@@ -564,7 +398,7 @@ class PagePanel(CollapsiblePanel):
             if files:
                 self._add_alts_logic(files, target_index=index)
 
-    def _add_alts_logic(self, file_paths: list[str], target_index: int = -1):
+    def _add_alts_logic(self, file_paths: List[str], target_index: int = -1):
         target_idx = target_index
         if target_idx == -1:
             if not self.edit_selected_indices:
@@ -574,110 +408,13 @@ class PagePanel(CollapsiblePanel):
             else:
                  target_idx = list(self.edit_selected_indices)[0]
 
-        target_page = self.model.images[target_idx]
-        if not target_page: return
-        
-        target_main_file = target_page.images[0] # Always link to the main file of the group
-        
-        chapter_dir = Path(self.model.manga_dir)
-        alts_dir = chapter_dir / "alts"
-        if not alts_dir.exists():
-            try:
-                alts_dir.mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                print(f"Error creating alts directory: {e}")
-                return
-
-        series_path = self.model.series['path']
-        chapter_name = chapter_dir.name
-        
-        files_to_link = []
-        main_stem = Path(target_main_file).stem
-        start_index = len(target_page.images)
-        if start_index < 1: start_index = 1
-
-        for i, file_path in enumerate(file_paths):
-            src_path = Path(file_path)
-            if not src_path.exists(): continue
-            
-            new_name = f"{main_stem}_{start_index + i}{src_path.suffix}"
-            dst_path = alts_dir / new_name
-            
-            # Verify no collision
-            while dst_path.exists() and dst_path.resolve() != src_path.resolve():
-                 new_name = f"{main_stem}_{start_index + i}_{uuid.uuid4().hex[:4]}{src_path.suffix}"
-                 dst_path = alts_dir / new_name
-            
-            if src_path.resolve() == dst_path.resolve():
-                files_to_link.append(str(dst_path))
-                continue
-
-            try:
-                # Check if source is in the same directory as the target main file
-                # If so, MOVE instead of COPY
-                target_parent = Path(target_main_file).parent.resolve()
-                src_parent = src_path.parent.resolve()
-                
-                # If src is in the same folder as main file (chapter folder), we MOVE it to alts.
-                # If src is internal (same folder), we trigger granular update because we are effectively just organizing it?
-                # Wait, if src is existing page in chapter, it's already in the page list. 
-                # If we link it, it disappears from page list and becomes alt. That requires RELOAD.
-                
-                # BUT, this function (`_add_alts_logic`) handles "Add Alternate from File..." which implies external file or file selection dialog.
-                # If user selects a file that is ALREADY a page in the reader (internal file), 
-                # then `ReaderModel` needs to know to REMOVE it from pages list.
-                
-                # The prompt said: "when it is added from existing chapter... this case should be fully reloaded."
-                # "but if it is an external directory... no new page is added... just an update to the image... not requiring a full reload."
-                
-                # So we need to detect if src_path is "internal" (already part of pages list implicitly or explicitly).
-                # Simple check: Is src_path inside chapter_dir but NOT in alts dir? 
-                # And is it one of the pages? (Ideally yes).
-                
-                is_internal = False
-                if chapter_dir in src_path.parents:
-                     # It is inside chapter dir.
-                     if "alts" not in src_path.parts: # Not in alts folder
-                         is_internal = True
-                
-                if src_parent == target_parent:
-                     shutil.move(src_path, dst_path)
-                else:
-                     shutil.copy2(src_path, dst_path)
-                     
-                files_to_link.append(str(dst_path))
-                
-                if is_internal:
-                    # If any file was internal, we must do full reload because a page (probably) disappeared from main list.
-                    # We can't easily patch the pages list without full logic.
-                    # So we set a flag.
-                    pass 
-
-            except Exception as e:
-                print(f"Error processing file {src_path}: {e}")
-
-        if files_to_link:
-            AltManager.link_pages(series_path, chapter_name, target_main_file, files_to_link)
-            
-            # Check if we need full reload
-            needs_full_reload = False
-            for fp in file_paths:
-                p = Path(fp)
-                # If path was inside chapter dir and not in alts, it was likely a page.
-                if chapter_dir.resolve() in p.resolve().parents:
-                    # Check if it was in alts?
-                    # If it was in alts, it wasn't a main page (usually). 
-                    # But verifying 'internal' usually means it was a visible page.
-                    if p.parent.name != "alts":
-                        needs_full_reload = True
-                        break
-            
-            if needs_full_reload:
-                 self.reload_requested.emit()
-            else:
-                 self.model.update_page_variants(target_idx)
-                 # self.refresh_thumbnail(target_idx) # Handled by signal connection in ReaderView?
-                 # ReaderView connects model.page_updated to on_page_updated.
+        page_utils.process_add_alts(
+            self.model,
+            file_paths,
+            target_idx,
+            lambda: self.reload_requested.emit(),
+            lambda idx: self.model.update_page_variants(idx)
+        )
     def eventFilter(self, source, event):
         if source == self.content_area and event.type() == event.Type.KeyPress and self.is_expanded:
             if event.key() == Qt.Key.Key_Up:
