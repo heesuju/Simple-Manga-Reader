@@ -62,15 +62,11 @@ class PagePanel(CollapsiblePanel):
 
     def _go_prev(self):
         if self.model:
-            current = self.model.current_index + 1
-            if current > 1:
-                self.on_page_changed(current - 1)
+            self.model.navigate(-1)
 
     def _go_next(self):
         if self.model:
-            current = self.model.current_index + 1
-            if current < len(self.model.images):
-                self.on_page_changed(current + 1)
+            self.model.navigate(1)
 
     def _go_last(self):
         if self.model:

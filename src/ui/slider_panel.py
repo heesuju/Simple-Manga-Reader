@@ -45,8 +45,6 @@ class SliderPanel(QWidget):
         self.slider = AltSlider(Qt.Orientation.Horizontal)
         self.slider.valueChanged.connect(self.on_slider_value_changed)
         
-        self.step = 1 # Default step
-
         self.chapter_input = InputLabel("Chapter", 1, 1)
         self.page_input = InputLabel("Page", 1, 1)
 
@@ -105,8 +103,9 @@ class SliderPanel(QWidget):
 
     def set_range(self, max_value):
         """Sets the range of the slider."""
-        self._raw_max_value = max_value
-        self._update_slider_range()
+        self.slider.blockSignals(True)
+        self.slider.setRange(0, max_value)
+        self.slider.blockSignals(False)
         self.update_page_input_total(max_value)
     
     def update_alt_indicators(self, images):
@@ -115,6 +114,9 @@ class SliderPanel(QWidget):
             if len(page.images) > 1:
                 alt_indices.append(i)
         self.slider.set_alt_indices(alt_indices)
+
+    def set_alt_indices(self, indices: list[int]):
+        self.slider.set_alt_indices(indices)
 
     def set_value(self, value):
         """Sets the current value of the slider and updates the label."""
@@ -126,19 +128,6 @@ class SliderPanel(QWidget):
 
     def on_slider_value_changed(self, value):
         """Emits the valueChanged signal and updates the label."""
-        # With adjusted range, we don't strictly need snapping logic for the END, 
-        # but we still need it for intermediate values if the user somehow drags to an odd pixel 
-        # (though setSingleStep usually handles ticks).
-        # We'll keep snapping just in case.
-        if self.step > 1:
-            remainder = value % self.step
-            if remainder != 0:
-                new_value = value - remainder
-                self.slider.blockSignals(True)
-                self.slider.setValue(new_value)
-                self.slider.blockSignals(False)
-                value = new_value
-
         self.update_page_input_value(value)
         self.valueChanged.emit(value)
 
@@ -146,52 +135,16 @@ class SliderPanel(QWidget):
         self.chapter_input.set_value(current)
         self.chapter_input.set_total(total)
 
-    # --- Step / Double Page Logic ---
-
-    def set_step(self, step: int):
-        self.step = step
-        self.slider.setSingleStep(step)
-        self.slider.setPageStep(step * 10) # Jump 10 "pages"
-        
-        self._update_slider_range()
-        
-        # Re-update the input labels with the new step
-        # Use raw max value if available
-        max_val = getattr(self, '_raw_max_value', self.slider.maximum())
-        self.update_page_input_total(max_val)
-        self.update_page_input_value(self.slider.value())
-
-    def _update_slider_range(self):
-        if not hasattr(self, '_raw_max_value'): 
-            return
-
-        # Adjust max so the last tick is reachable and represents the last page/pair
-        remainder = self._raw_max_value % self.step
-        adjusted_max = self._raw_max_value - remainder
-        
-        self.slider.blockSignals(True)
-        self.slider.setRange(0, adjusted_max)
-        self.slider.blockSignals(False)
-
     def update_page_input_total(self, max_value):
-        # If step is 2, total is roughly half
-        # e.g. 0..9 (10 pages). step=2 -> 5 pairs.
-        # indices: 0, 2, 4, 6, 8.
-        # count: (max_val // step) + 1
-        total_display = (max_value // self.step) + 1
+        total_display = max_value + 1
         self.page_input.set_total(total_display)
 
     def update_page_input_value(self, index):
-        # e.g. index 0 -> page 1
-        # index 2 -> page 2 (in pairs)
-        display_val = (index // self.step) + 1
+        display_val = index + 1
         self.page_input.set_value(display_val)
 
     def _on_page_input_entered(self, display_val):
-        # Convert back to index
-        # page 1 -> index 0
-        # page 2 -> index 2 (if step=2)
-        real_index = (display_val - 1) * self.step
+        real_index = display_val - 1
         
         # Bounds check
         if real_index < 0: real_index = 0

@@ -245,7 +245,7 @@ class ReaderView(QWidget):
         self.top_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
         self.top_panel.translate_clicked.connect(self.translate_page)
         self.top_panel.lang_changed.connect(self._on_lang_changed)
-        self.slider_panel.page_changed.connect(self.change_page)
+        self.slider_panel.page_changed.connect(self.change_page_from_input)
         self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
         self.slider_panel.chapter_input_clicked.connect(self._show_chapter_panel)
@@ -364,13 +364,8 @@ class ReaderView(QWidget):
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
         if self.slider_panel:
-            self.slider_panel.set_range(len(self.model.images) - 1)
-            self.slider_panel.set_value(self.model.current_index)
             self.slider_panel.set_chapter(self.model.chapter_index + 1, len(self.model.chapters))
-            self.slider_panel.update_alt_indicators(self.model.images)
-        else:
-            self.slider_panel.set_range(0)
-            self.slider_panel.set_value(0)
+        self._update_slider_state()
 
         self.page_panel._update_page_selection(self.model.current_index)
 
@@ -384,16 +379,7 @@ class ReaderView(QWidget):
         self.page_panel._update_page_thumbnails(self.model)
         self.page_panel._update_page_selection(self.model.current_index)
         
-        if self.slider_panel:
-            self.slider_panel.set_range(len(self.model.images) - 1)
-            # Use step 1 for all modes to allow fine-grained access to pages in Smart Double Layout
-            self.slider_panel.set_step(1)
-            
-            self.slider_panel.set_value(self.model.current_index)
-            self.slider_panel.update_alt_indicators(self.model.images)
-        else:
-            self.slider_panel.set_range(0)
-            self.slider_panel.set_value(0)
+        self._update_slider_state()
 
         # Switch Viewer
         if self.model.view_mode == ViewMode.STRIP:
@@ -430,9 +416,7 @@ class ReaderView(QWidget):
     def on_page_updated(self, page_index: int):
         self.page_panel.refresh_thumbnail(page_index)
         
-        # Update slider indicators
-        if self.slider_panel:
-            self.slider_panel.update_alt_indicators(self.model.images)
+        self._update_slider_state()
         
         # If the updated page is the current one (or visible in double view), reload the viewer
         should_reload = False
@@ -558,7 +542,12 @@ class ReaderView(QWidget):
              self.current_viewer.load(path)
 
         self.page_panel._update_page_selection(self.model.current_index)
-        self.slider_panel.set_value(self.model.current_index)
+        
+        if self.model.view_mode == ViewMode.DOUBLE:
+             self.slider_panel.set_value(self.model._get_current_layout_index())
+        else:
+             self.slider_panel.set_value(self.model.current_index)
+             
         self.update_top_panel()
 
     def _load_double_images(self, image1_path, image2_path):
@@ -569,7 +558,7 @@ class ReaderView(QWidget):
              
         self.image_viewer.load((image1_path, image2_path))
         self.page_panel._update_page_selection(self.model.current_index)
-        self.slider_panel.set_value(self.model.current_index)
+        self.slider_panel.set_value(self.model._get_current_layout_index())
 
     def set_zoom_mode(self, mode: str):
         self.last_zoom_mode = mode
@@ -631,7 +620,65 @@ class ReaderView(QWidget):
         else:
             self._change_chapter(-1)
 
-    def change_page(self, page:int):
+    def _update_slider_state(self):
+        if not self.slider_panel or not self.model.images:
+            self.slider_panel.set_range(0)
+            self.slider_panel.set_value(0)
+            return
+
+        if self.model.view_mode == ViewMode.DOUBLE:
+            max_val = max(0, len(self.model._layout_pairs) - 1)
+            current_val = self.model._get_current_layout_index()
+            
+            self.slider_panel.set_range(max_val)
+            self.slider_panel.set_value(current_val)
+            
+            # Map alt indices
+            alt_indices = []
+            for i, pair in enumerate(self.model._layout_pairs):
+                has_alt = False
+                for p in pair:
+                    if p and hasattr(p, 'images') and len(p.images) > 1:
+                        has_alt = True
+                        break
+                if has_alt:
+                    alt_indices.append(i)
+            self.slider_panel.set_alt_indices(alt_indices)
+
+        else:
+            max_val = len(self.model.images) - 1
+            current_val = self.model.current_index
+            
+            self.slider_panel.set_range(max_val)
+            self.slider_panel.set_value(current_val)
+            
+            # Map alt indices
+            alt_indices = []
+            for i, page in enumerate(self.model.images):
+                if page and len(page.images) > 1:
+                    alt_indices.append(i)
+            self.slider_panel.set_alt_indices(alt_indices)
+
+    def _slider_val_to_page(self, val_0b: int) -> int:
+        """Convert 0-based Slider/Layout index to 1-based Page index."""
+        if self.model.view_mode == ViewMode.DOUBLE:
+             # val_0b is Layout Index
+             if 0 <= val_0b < len(self.model._layout_pairs):
+                  pair = self.model._layout_pairs[val_0b]
+                  # Find first valid page in pair to navigate to
+                  target = pair[0]
+                  if not (target and hasattr(target, 'path')):
+                      target = pair[1]
+                  
+                  if target and hasattr(target, 'path'):
+                      return self.model.get_page_index(target.path) + 1
+             return 1 # Fallback
+        else:
+             # val_0b is Page Index
+             return val_0b + 1
+
+    def change_page(self, page: int):
+        # page is ALWAYS 1-based raw page index
         if self.model.view_mode == ViewMode.STRIP:
             self.strip_viewer._scroll_to_page(page - 1)
             self.page_panel._update_page_selection(page - 1)
@@ -639,14 +686,16 @@ class ReaderView(QWidget):
             return
 
         self.model.change_page(page)
-        self.page_panel._update_page_selection(self.model.current_index)
-        self.slider_panel.set_value(self.model.current_index)
 
-    def change_page_from_slider(self, page_index: int):
-        if self.model.view_mode == ViewMode.STRIP:
-            self.strip_viewer._scroll_to_page(page_index)
-            return
-        self.model.change_page(page_index+1)
+    def change_page_from_slider(self, val: int):
+        # val is 0-based index from Slider (Page Index or Layout Index)
+        target_page = self._slider_val_to_page(val)
+        self.change_page(target_page)
+
+    def change_page_from_input(self, val: int):
+        # val is 1-based index from Input (Page Number or Layout Number)
+        target_page = self._slider_val_to_page(val - 1)
+        self.change_page(target_page)
 
     def _show_page_panel(self):
         if self.chapter_panel.content_area.isVisible():
