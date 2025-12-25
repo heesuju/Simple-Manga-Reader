@@ -5,6 +5,7 @@ from PyQt6.QtGui import QAction, QCursor, QKeySequence
 
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
+from src.ui.double_page_thumbnail import DoublePageThumbnail
 from src.workers.thumbnail_worker import ThumbnailWorker
 from src.data.reader_model import ReaderModel
 from src.enums import ViewMode
@@ -15,6 +16,7 @@ import src.ui.page_utils as page_utils
 
 class PagePanel(CollapsiblePanel):
     reload_requested = pyqtSignal()
+    expand_toggled = pyqtSignal(bool) 
 
     def __init__(self, parent=None, model:ReaderModel=None, on_page_changed=None):
         super().__init__(parent, "Page")
@@ -28,7 +30,9 @@ class PagePanel(CollapsiblePanel):
         self.edit_selected_indices: Set[int] = set()
 
         self.edit_selected_indices: Set[int] = set()
-        self.click_map = [] # Map thumbnail index -> real page index
+        # Map thumbnail index -> (real_page_index, is_double)
+        # For Double Mode: index -> (base_index, is_double)
+        self.thumbnail_to_page_map = [] 
         
         self.BATCH_SIZE = 10
         self.image_paths_to_load = []
@@ -99,92 +103,140 @@ class PagePanel(CollapsiblePanel):
                 
         self.page_thumbnail_widgets.clear()
         self.edit_selected_indices.clear()
-        self.click_map.clear()
+        self.thumbnail_to_page_map.clear()
 
         if model.view_mode == ViewMode.DOUBLE:
-            # Reconstruct visual list from layout pairs
-            # Layout Pair: (Left, Right)
-            # Visual Strip (assuming standard reading dir? Or just LTR strip?)
-            # If RTL reading: Pair is [LeftPage, RightPage].
-            # Previous logic showed [RightMap, LeftMap].
-            # So we add Right, then Left.
+            # Layout Pairs are (LeftPage, RightPage) usually.
+            # Visual order: [LeftPage] [RightPage] (e.g. Page 2, Page 1)
+            # Construct a list of items to display.
+            # Each item: { 'type': 'double'/'spread', 'left': page_obj, 'right': page_obj }
             
             display_items = []
             
-            # _layout_pairs is [(LeftItem, RightItem), ...]
-            for pair in model._layout_pairs:
+            for i, pair in enumerate(model._layout_pairs):
                 left, right = pair
                 
-                # Add Right then Left (RTL visual order)
-                # Filter out None (Spread empty slot)
+                # Check for spread
+                is_spread = False
+                # If one is None and the other says is_spread? 
+                # Theoretically ReaderModel handles spread logic and might put the spread page in 'right' and None in 'left' or vice versa.
+                # Usually spread takes up a full slot.
                 
-                # Pairs to process in order
-                items = [right, left]
+                item_data = {
+                    'layout_index': i,
+                    'left': left,
+                    'right': right,
+                    'is_spread': False
+                }
                 
-                for item in items:
-                    if item is None: continue
-                    
-                    display_items.append(item)
-                    
-                    # Calculate Target Index using O(1) lookup
-                    target_idx = -1
-                    if isinstance(item, str) and item == "placeholder":
-                        # Map to partner
-                        partner = left if item is right else right
-                        if partner and hasattr(partner, 'path'): # Is Page
-                             target_idx = model.get_page_index(partner.path)
-                    elif hasattr(item, 'path'): # Is Page
-                        target_idx = model.get_page_index(item.path)
-                        
-                    self.click_map.append(target_idx)
-            
+                # Spread detection based on page objects
+                if right and getattr(right, 'is_spread', False):
+                    item_data['is_spread'] = True
+                elif left and getattr(left, 'is_spread', False):
+                     item_data['is_spread'] = True
+                
+                display_items.append(item_data)
+                
+                # Map logic: layout index -> start page index?
+                # Need to know which REAL page index this thumbnail represents to navigate to it.
+                # Target the first non-none page in the pair.
+                target_page_idx = -1
+                # Usually pair is (Next, Current) -> (Page 2, Page 1).
+                # Navigating to Page 1 is safer.
+                if right and hasattr(right, 'path'):
+                    target_page_idx = model.get_page_index(right.path)
+                elif left and hasattr(left, 'path'):
+                    target_page_idx = model.get_page_index(left.path)
+                
+                self.thumbnail_to_page_map.append(target_page_idx)
+
             self.image_paths_to_load = display_items
 
         else:
             self.image_paths_to_load = model.images
             # 1-to-1 map
-            self.click_map = list(range(len(model.images)))
+            self.thumbnail_to_page_map = list(range(len(model.images)))
 
 
         self.current_batch_index = 0
         
         if self.image_paths_to_load:
-            self.batch_timer.start(50) # Start loading the first batch
+            self.batch_timer.start(50) 
 
     def _add_next_thumbnail_batch(self):
         start_index = self.current_batch_index
         end_index = min(start_index + self.BATCH_SIZE, len(self.image_paths_to_load))
 
-        # Disable updates to prevent flicker and unnecessary layout calcs during batch
         self.content_area.setUpdatesEnabled(False)
         try:
             for i in range(start_index, end_index):
-                page_obj = self.image_paths_to_load[i]
+                item_data = self.image_paths_to_load[i]
                 
-                thumb_label = str(i + 1)
-                # If we want label to match REAL page number?
-                if i < len(self.click_map) and self.click_map[i] != -1:
-                    thumb_label = str(self.click_map[i] + 1)
-                elif page_obj == "placeholder":
-                    thumb_label = ""
-                
-                alt_count = 0
-                if hasattr(page_obj, 'images'):
-                    alt_count = len(page_obj.images)
-                
-                widget = PageThumbnail(i, thumb_label, alt_count=alt_count)
-                widget.clicked.connect(self._on_thumbnail_clicked)
-                widget.right_clicked.connect(self._on_thumbnail_right_clicked)
-                
-                self.thumbnails_layout.insertWidget(i, widget)
-                self.page_thumbnail_widgets.append(widget)
+                if self.model.view_mode == ViewMode.DOUBLE:
+                    # Double Mode
+                    thumb_label = str(i + 1) # Layout Index 1-based
+                    
+                    widget = DoublePageThumbnail(i, thumb_label, is_spread=item_data['is_spread'])
+                    widget.clicked.connect(self._on_thumbnail_clicked)
+                    widget.right_clicked.connect(self._on_thumbnail_right_clicked)
+                    
+                    self.thumbnails_layout.insertWidget(i, widget)
+                    self.page_thumbnail_widgets.append(widget)
+                    
+                    # Async Load
+                    # Item Data has 'left' and 'right'
+                    left_page = item_data['left']
+                    right_page = item_data['right']
+                    
+                    if item_data['is_spread']:
+                        # Load only the spread page (which is usually the one that is not None)
+                        target = right_page if right_page else left_page
+                        if target and hasattr(target, 'path'):
+                             worker = ThumbnailWorker(i, target.path, self._load_thumbnail)
+                             # We need to know this is a spread load
+                             worker.signals.finished.connect(lambda idx, p, w=widget: w.set_spread_pixmap(p))
+                             self.thread_pool.start(worker)
+                    else:
+                        # Load Left (Visual Left)
+                        if left_page and hasattr(left_page, 'path'):
+                             worker_l = ThumbnailWorker(i, left_page.path, self._load_thumbnail)
+                             worker_l.signals.finished.connect(lambda idx, p, w=widget: w.set_visual_left_pixmap(p))
+                             self.thread_pool.start(worker_l)
+                        else:
+                             widget.set_visual_left_pixmap(empty_placeholder(100, 140))
+                        
+                        # Load Right (Visual Right)
+                        if right_page and hasattr(right_page, 'path'):
+                             worker_r = ThumbnailWorker(i, right_page.path, self._load_thumbnail)
+                             worker_r.signals.finished.connect(lambda idx, p, w=widget: w.set_visual_right_pixmap(p))
+                             self.thread_pool.start(worker_r)
+                        else:
+                             widget.set_visual_right_pixmap(empty_placeholder(100, 140))
 
-                if page_obj is None or page_obj == "placeholder":
-                     self._on_page_thumbnail_loaded(i, empty_placeholder())
                 else:
-                    worker = ThumbnailWorker(i, page_obj.path, self._load_thumbnail)
-                    worker.signals.finished.connect(self._on_page_thumbnail_loaded)
-                    self.thread_pool.start(worker)
+                    # Single/Strip Mode
+                    page_obj = item_data
+                    thumb_label = str(i + 1)
+                    
+                    alt_count = 0
+                    if hasattr(page_obj, 'images'):
+                        alt_count = len(page_obj.images)
+                    
+                    widget = PageThumbnail(i, thumb_label, alt_count=alt_count)
+                    widget.clicked.connect(self._on_thumbnail_clicked)
+                    widget.right_clicked.connect(self._on_thumbnail_right_clicked)
+                    
+                    self.thumbnails_layout.insertWidget(i, widget)
+                    self.page_thumbnail_widgets.append(widget)
+
+                    if page_obj is None or page_obj == "placeholder":
+                         if i < len(self.page_thumbnail_widgets):
+                            self.page_thumbnail_widgets[i].set_pixmap(empty_placeholder())
+                    else:
+                        worker = ThumbnailWorker(i, page_obj.path, self._load_thumbnail)
+                        worker.signals.finished.connect(self._on_page_thumbnail_loaded)
+                        self.thread_pool.start(worker)
+
         except Exception as e:
             print(f"Error adding batch: {e}")
         finally:
@@ -192,77 +244,39 @@ class PagePanel(CollapsiblePanel):
 
         self.current_batch_index = end_index
         if self.current_batch_index < len(self.image_paths_to_load):
-            self.batch_timer.start(50) # Schedule the next batch
+            self.batch_timer.start(50) 
 
-        # Initial selection update - needs mapping from real current_index to thumbnail index
-        # We can find thumbnail index that maps to current_index
         if self.model:
             self._update_page_selection(self.model.current_index, snap=True)
 
 
     def _on_page_thumbnail_loaded(self, index, pixmap):
         if index < len(self.page_thumbnail_widgets):
-            self.page_thumbnail_widgets[index].set_pixmap(pixmap)
+            widget = self.page_thumbnail_widgets[index]
+            if isinstance(widget, PageThumbnail):
+                widget.set_pixmap(pixmap)
 
     def _update_page_selection(self, index, snap=True):
         for thumbnail in self.current_page_thumbnails:
             thumbnail.set_selected(False)
         self.current_page_thumbnails.clear()
 
-        # Find all thumbnails that map to 'index' or 'index+1' (if double)??
-        # The logic is: highlight the thumbnail(s) corresponding to currently visible pages.
-        # In ReaderView Double, visible items are from _layout_pairs[current_layout].
-        # We need to find which THUMBNAILS correspond to the visible pages.
-        
-        # Simpler: Find all i where click_map[i] == index?
-        # Yes.
-        
         indices_to_select = []
         
-        # If double view, ReaderView might display index AND index+1 (if pair).
-        # Actually ReaderView current_index is enough to define state.
-        # But we need to know what pages are actually visible.
-        # ReaderModel _get_current_layout_index -> Layout Pair.
-        # Pair contains Pages.
-        # We find thumbnails matching those Pages.
-        
-        visible_pages = []
         if self.model and self.model.images:
-             if hasattr(self.model, 'view_mode') and self.model.view_mode == ViewMode.DOUBLE:
+             if self.model.view_mode == ViewMode.DOUBLE:
                   layout_idx = self.model._get_current_layout_index()
-                  if layout_idx != -1 and layout_idx < len(self.model._layout_pairs):
-                       l, r = self.model._layout_pairs[layout_idx]
-                       if l and hasattr(l, 'path'): visible_pages.append(l)
-                       if r and hasattr(r, 'path'): visible_pages.append(r)
-                       # Also include placeholders if they map to visible pages?
-                       # Or just select visible page thumbnails.
+                  if layout_idx != -1:
+                       indices_to_select.append(layout_idx)
              else:
-                  if 0 <= index < len(self.model.images):
-                      visible_pages.append(self.model.images[index])
+                  indices_to_select.append(index)
         
-        # Find partial matches in image_paths_to_load
-        for i, obj in enumerate(self.image_paths_to_load):
-            if obj in visible_pages:
-                indices_to_select.append(i)
-            elif obj == "placeholder":
-                # If placeholder logic: select it if its partner is visible?
-                # or if it maps to visible page?
-                if i < len(self.click_map):
-                    mapped_idx = self.click_map[i]
-                    # If mapped_idx corresponds to a visible page
-                    # Mapping is index -> RealIdx.
-                    # visible_pages contains Page objects.
-                    # Convert to RealIndices
-                    visible_indices = [self.model.images.index(p) for p in visible_pages]
-                    if mapped_idx in visible_indices:
-                        indices_to_select.append(i)
-
         for i in indices_to_select:
              if i < len(self.page_thumbnail_widgets):
                  w = self.page_thumbnail_widgets[i]
                  w.set_selected(True)
                  self.current_page_thumbnails.append(w)
-                 if snap and i == indices_to_select[0]: # Snap to first
+                 if snap and i == indices_to_select[0]: 
                      self.content_area.scrollToWidget(w)
 
 
@@ -276,9 +290,9 @@ class PagePanel(CollapsiblePanel):
             if self.edit_selected_indices:
                 self._clear_edit_selection()
             
-            # Use Click Map
-            if index < len(self.click_map):
-                real_idx = self.click_map[index]
+            # Navigate
+            if index < len(self.thumbnail_to_page_map):
+                real_idx = self.thumbnail_to_page_map[index]
                 if real_idx != -1:
                     self.on_page_changed(real_idx + 1)
 
@@ -308,48 +322,57 @@ class PagePanel(CollapsiblePanel):
     def _show_context_menu(self, index: int):
         menu = QMenu(self)
         
-        if len(self.edit_selected_indices) > 1:
-            link_action = QAction("Link selected pages as Alternates", self)
-            link_action.triggered.connect(self._link_selected_pages)
-            menu.addAction(link_action)
+        # NOTE: Linking not fully supported in Double Mode via Thumbnails yet logic-wise
+        if self.model.view_mode == ViewMode.DOUBLE:
+            save_as_action = QAction("Save As...", self)
+            save_as_action.triggered.connect(lambda: self._save_page_as(index))
+            menu.addAction(save_as_action)
+        else:
+            if len(self.edit_selected_indices) > 1:
+                link_action = QAction("Link selected pages as Alternates", self)
+                link_action.triggered.connect(self._link_selected_pages)
+                menu.addAction(link_action)
 
-        unlink_action = QAction("Unlink Page (Ungroup)", self)
-        unlink_action.triggered.connect(lambda: self._unlink_page(index))
-        menu.addAction(unlink_action)
-        
-        menu.addSeparator()
-        
-        paste_action = QAction("Paste as Alternate", self)
-        paste_action.triggered.connect(self._paste_as_alternate)
-        if not QApplication.clipboard().mimeData().hasUrls():
-            paste_action.setEnabled(False)
-        menu.addAction(paste_action)
+            unlink_action = QAction("Unlink Page (Ungroup)", self)
+            unlink_action.triggered.connect(lambda: self._unlink_page(index))
+            menu.addAction(unlink_action)
+            
+            menu.addSeparator()
+            
+            paste_action = QAction("Paste as Alternate", self)
+            paste_action.triggered.connect(self._paste_as_alternate)
+            if not QApplication.clipboard().mimeData().hasUrls():
+                paste_action.setEnabled(False)
+            menu.addAction(paste_action)
 
-        add_file_action = QAction("Add Alternate from File...", self)
-        add_file_action.triggered.connect(self._add_alt_from_file)
-        menu.addAction(add_file_action)
+            add_file_action = QAction("Add Alternate from File...", self)
+            add_file_action.triggered.connect(self._add_alt_from_file)
+            menu.addAction(add_file_action)
 
-        add_dd_action = QAction("Add Alternates (Drag & Drop)...", self)
-        add_dd_action.triggered.connect(lambda: self._open_drag_drop_dialog(index))
-        menu.addAction(add_dd_action)
+            add_dd_action = QAction("Add Alternates (Drag & Drop)...", self)
+            add_dd_action.triggered.connect(lambda: self._open_drag_drop_dialog(index))
+            menu.addAction(add_dd_action)
 
-        
-        menu.addSeparator()
+            
+            menu.addSeparator()
 
-        save_as_action = QAction("Save As...", self)
-        save_as_action.triggered.connect(lambda: self._save_page_as(index))
-        menu.addAction(save_as_action)
-        
-        open_explorer_action = QAction("Reveal in File Explorer", self)
-        open_explorer_action.triggered.connect(lambda: self._open_in_explorer(index))
-        menu.addAction(open_explorer_action)
+            save_as_action = QAction("Save As...", self)
+            save_as_action.triggered.connect(lambda: self._save_page_as(index))
+            menu.addAction(save_as_action)
+            
+            open_explorer_action = QAction("Reveal in File Explorer", self)
+            open_explorer_action.triggered.connect(lambda: self._open_in_explorer(index))
+            menu.addAction(open_explorer_action)
 
         menu.exec(QCursor.pos())
 
     def _save_page_as(self, index: int):
-        page_utils.save_page_as(self, self.model, index)
+        real_idx = self._get_real_index(index)
+        if real_idx != -1:
+             page_utils.save_page_as(self, self.model, real_idx)
 
     def _link_selected_pages(self):
+        # Only supported in Single/Strip mode easily
         page_utils.link_selected_pages(
             self.model, 
             self.edit_selected_indices, 
@@ -358,7 +381,9 @@ class PagePanel(CollapsiblePanel):
         )
 
     def _unlink_page(self, index: int):
-        page_utils.unlink_page(self.model, index)
+        real_idx = self._get_real_index(index)
+        if real_idx != -1:
+             page_utils.unlink_page(self.model, real_idx)
 
     def _paste_as_alternate(self):
         clipboard = QApplication.clipboard()
@@ -382,14 +407,22 @@ class PagePanel(CollapsiblePanel):
             self._add_alts_logic(file_paths)
 
     def _open_in_explorer(self, index: int):
-        page_utils.open_in_explorer(self.model, index)
+        real_idx = self._get_real_index(index)
+        if real_idx != -1:
+            page_utils.open_in_explorer(self.model, real_idx)
 
     def refresh_thumbnail(self, index: int):
-        if 0 <= index < len(self.page_thumbnail_widgets):
-            widget = self.page_thumbnail_widgets[index]
-            page_obj = self.model.images[index]
-            alt_count = len(page_obj.images) if page_obj else 0
-            widget.set_alt_count(alt_count)
+        if self.model.view_mode == ViewMode.DOUBLE:
+             # Refreshing Double thumbnail is trickier as index is Page Index not Widget index
+             # Find widget that contains this page
+             pass 
+        else:
+            if 0 <= index < len(self.page_thumbnail_widgets):
+                widget = self.page_thumbnail_widgets[index]
+                page_obj = self.model.images[index]
+                alt_count = len(page_obj.images) if page_obj else 0
+                if isinstance(widget, PageThumbnail):
+                    widget.set_alt_count(alt_count)
 
     def _open_drag_drop_dialog(self, index: int):
         dialog = DragDropAltDialog(self)
@@ -415,6 +448,12 @@ class PagePanel(CollapsiblePanel):
             lambda: self.reload_requested.emit(),
             lambda idx: self.model.update_page_variants(idx)
         )
+        
+    def _get_real_index(self, index):
+        if index < len(self.thumbnail_to_page_map):
+            return self.thumbnail_to_page_map[index]
+        return -1
+
     def eventFilter(self, source, event):
         if source == self.content_area and event.type() == event.Type.KeyPress and self.is_expanded:
             if event.key() == Qt.Key.Key_Up:

@@ -148,7 +148,6 @@ class ReaderModel(QObject):
                 
             else:
                 if buffer:
-                    # We have a partner.
                     # Current (i) is logically AFTER Preceding.
                     # RTL: [Left=Current, Right=Preceding]
                     pre_idx, pre_page = buffer.pop(0)
@@ -252,7 +251,6 @@ class ReaderModel(QObject):
         # 2. Detect spreads
         common_ratio = median_ratio
         # Spread is roughly double the width, so ratio should be ~2x common_ratio
-        # We use a threshold, e.g., > 1.5x
         spread_threshold = common_ratio * 1.5 
         
         updates = {}
@@ -326,8 +324,6 @@ class ReaderModel(QObject):
             self.page_updated.emit(page_index) # Notify valid update
             
             # If the changed page is the current one, reload
-            # In double mode, we check logic.
-            # Ideally we check if page_index is in current layout pair.
             # Checking abs diff is 'okay' approximation but let's be safe.
             should_reload = False
             if page_index == self.current_index:
@@ -339,8 +335,6 @@ class ReaderModel(QObject):
                     pair = self._layout_pairs[layout_idx]
                     # Check if page is in pair
                     # pair is (Item, Item). Item is Page or None or "placeholder"
-                    # We need to compare PAGE INSTANCES or indices.
-                    # We only have Page Instance reference in pair.
                     target_page = self.images[page_index]
                     if pair[0] == target_page or pair[1] == target_page:
                          should_reload = True
@@ -436,19 +430,11 @@ class ReaderModel(QObject):
 
         chapter_alts = alt_config.get(chapter_name, {})
         
-        if main_name in chapter_alts:
-            # We need to resolve paths. We don't have the full list of all files to map from name -> path easily 
-            # unless we scan or just assume they are in the same dir or alts dir.
-            # However, usually alts are in 'alts/' folder or same folder.
-            # Existing Page object has paths. 
-            # But we might have ADDED a new file which is not in Page object yet.
-            
-            # We can construct paths.
-            # If the alt config has names, we check if they exist in alts dir or main dir.
-            
+        alt_names = []
+        translations = {}
+
+        if main_name in chapter_alts:    
             entry = chapter_alts[main_name]
-            alt_names = []
-            translations = {}
             
             # Handle List (Legacy) vs Dict (New)
             if isinstance(entry, list):
@@ -457,20 +443,12 @@ class ReaderModel(QObject):
                 # Add alts
                 if "alts" in entry and isinstance(entry["alts"], list):
                     alt_names.extend(entry["alts"])
-                    
                 # Add translations
                 if "translations" in entry and isinstance(entry["translations"], dict):
-                    # We need to resolve paths for translations too
                     trans_dict = entry["translations"]
-                    # We will resolve them in the loop below or separately
-                    # Let's verify existence separately to keep logic clean or reuse loop
-                    # Actually, reuse loop logic is tricky because we need key->path mapping for translations
-                    pass
 
             found_alts = []
             
-            # Strategy: Check 'alts' and 'translations' subdirectories (if we want to be robust), 
-            # as well as the chapter folder itself.
             chapter_dir = Path(self.manga_dir)
             possible_dirs = [chapter_dir / "alts", chapter_dir / "translations", chapter_dir]
             
@@ -482,7 +460,7 @@ class ReaderModel(QObject):
                         found_alts.append(str(candidate))
                         break
             
-             # Resolve Translations (if any)
+            # Resolve Translations (if any)
             if isinstance(entry, dict) and "translations" in entry and isinstance(entry["translations"], dict):
                  for lang_key, trans_file in entry["translations"].items():
                      # Check direct match in possible_dirs
@@ -520,7 +498,7 @@ class ReaderModel(QObject):
         # Normalize paths for comparison just in case
         try:
             # Find index of current_variant_path in new_variants
-            # We use simple string match as they should be same absolute paths
+            # Use simple string match as they should be same absolute paths
             new_index = new_variants.index(current_variant_path)
             page.current_variant_index = new_index
         except ValueError:
@@ -528,12 +506,6 @@ class ReaderModel(QObject):
             page.current_variant_index = 0
         
         # 3. Update Map for this page
-        # Remove old entries for this page? 
-        # Easier to just rebuild map logic or update partially
-        # Since variants changed, we should ideally remove old variants pointing to this index 
-        # and add new ones.
-        # For simplicity, we can just re-add new ones. 
-        # (Assuming distinct pages don't share files, which they shouldn't).
         for var in new_variants:
             self._image_map[os.path.normpath(var)] = page_index
         
