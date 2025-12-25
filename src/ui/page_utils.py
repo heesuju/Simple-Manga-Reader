@@ -226,3 +226,66 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
              if on_reload: on_reload()
         else:
              if on_variants_updated: on_variants_updated(target_index)
+
+def save_merged_pair_as(parent: QWidget, model: ReaderModel, layout_index: int):
+    if layout_index < 0 or layout_index >= len(model._layout_pairs):
+        return
+
+    left, right = model._layout_pairs[layout_index]
+    
+    valid_left = left and hasattr(left, 'path') and left.path != "placeholder"
+    valid_right = right and hasattr(right, 'path') and right.path != "placeholder"
+
+    if valid_left and not valid_right:
+        idx = model.get_page_index(left.path)
+        save_page_as(parent, model, idx)
+        return
+    elif valid_right and not valid_left:
+        idx = model.get_page_index(right.path)
+        save_page_as(parent, model, idx)
+        return
+    elif not valid_left and not valid_right:
+        return
+
+    path_left = left.images[0]
+    path_right = right.images[0]
+    
+    if '|' in path_left or '|' in path_right:
+         return
+
+    from PyQt6.QtGui import QImage, QPainter, QColor
+    from PyQt6.QtCore import QPoint
+
+    img_left = QImage(path_left)
+    img_right = QImage(path_right)
+    
+    if img_left.isNull() or img_right.isNull():
+        return
+
+    h = max(img_left.height(), img_right.height())
+    w = img_left.width() + img_right.width()
+    
+    merged = QImage(w, h, QImage.Format.Format_ARGB32)
+    merged.fill(QColor(0, 0, 0, 0))
+    
+    p = QPainter(merged)
+    p.drawImage(0, 0, img_left)
+    p.drawImage(img_left.width(), 0, img_right)
+    p.end()
+    
+    base_name = os.path.basename(path_left)
+    name_part, ext = os.path.splitext(base_name)
+    default_name = f"{name_part}_merged{ext}"
+    
+    downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+    initial_path = os.path.join(downloads_dir, default_name)
+    
+    file_path, _ = QFileDialog.getSaveFileName(
+        parent,
+        "Save Merged Image As",
+        initial_path,
+        f"Image (*{ext});;PNG (*.png);;JPG (*.jpg);;All Files (*)"
+    )
+    
+    if file_path:
+        merged.save(file_path)

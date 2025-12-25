@@ -106,21 +106,10 @@ class PagePanel(CollapsiblePanel):
         self.thumbnail_to_page_map.clear()
 
         if model.view_mode == ViewMode.DOUBLE:
-            # Layout Pairs are (LeftPage, RightPage) usually.
-            # Visual order: [LeftPage] [RightPage] (e.g. Page 2, Page 1)
-            # Construct a list of items to display.
-            # Each item: { 'type': 'double'/'spread', 'left': page_obj, 'right': page_obj }
-            
             display_items = []
             
             for i, pair in enumerate(model._layout_pairs):
                 left, right = pair
-                
-                # Check for spread
-                is_spread = False
-                # If one is None and the other says is_spread? 
-                # Theoretically ReaderModel handles spread logic and might put the spread page in 'right' and None in 'left' or vice versa.
-                # Usually spread takes up a full slot.
                 
                 item_data = {
                     'layout_index': i,
@@ -129,7 +118,6 @@ class PagePanel(CollapsiblePanel):
                     'is_spread': False
                 }
                 
-                # Spread detection based on page objects
                 if right and getattr(right, 'is_spread', False):
                     item_data['is_spread'] = True
                 elif left and getattr(left, 'is_spread', False):
@@ -137,12 +125,7 @@ class PagePanel(CollapsiblePanel):
                 
                 display_items.append(item_data)
                 
-                # Map logic: layout index -> start page index?
-                # Need to know which REAL page index this thumbnail represents to navigate to it.
-                # Target the first non-none page in the pair.
                 target_page_idx = -1
-                # Usually pair is (Next, Current) -> (Page 2, Page 1).
-                # Navigating to Page 1 is safer.
                 if right and hasattr(right, 'path'):
                     target_page_idx = model.get_page_index(right.path)
                 elif left and hasattr(left, 'path'):
@@ -173,8 +156,7 @@ class PagePanel(CollapsiblePanel):
                 item_data = self.image_paths_to_load[i]
                 
                 if self.model.view_mode == ViewMode.DOUBLE:
-                    # Double Mode
-                    thumb_label = str(i + 1) # Layout Index 1-based
+                    thumb_label = str(i + 1)
                     
                     widget = DoublePageThumbnail(i, thumb_label, is_spread=item_data['is_spread'])
                     widget.clicked.connect(self._on_thumbnail_clicked)
@@ -183,21 +165,16 @@ class PagePanel(CollapsiblePanel):
                     self.thumbnails_layout.insertWidget(i, widget)
                     self.page_thumbnail_widgets.append(widget)
                     
-                    # Async Load
-                    # Item Data has 'left' and 'right'
                     left_page = item_data['left']
                     right_page = item_data['right']
                     
                     if item_data['is_spread']:
-                        # Load only the spread page (which is usually the one that is not None)
                         target = right_page if right_page else left_page
                         if target and hasattr(target, 'path'):
                              worker = ThumbnailWorker(i, target.path, self._load_thumbnail)
-                             # We need to know this is a spread load
                              worker.signals.finished.connect(lambda idx, p, w=widget: w.set_spread_pixmap(p))
                              self.thread_pool.start(worker)
                     else:
-                        # Load Left (Visual Left)
                         if left_page and hasattr(left_page, 'path'):
                              worker_l = ThumbnailWorker(i, left_page.path, self._load_thumbnail)
                              worker_l.signals.finished.connect(lambda idx, p, w=widget: w.set_visual_left_pixmap(p))
@@ -205,13 +182,13 @@ class PagePanel(CollapsiblePanel):
                         else:
                              widget.set_visual_left_pixmap(empty_placeholder(100, 140))
                         
-                        # Load Right (Visual Right)
                         if right_page and hasattr(right_page, 'path'):
                              worker_r = ThumbnailWorker(i, right_page.path, self._load_thumbnail)
                              worker_r.signals.finished.connect(lambda idx, p, w=widget: w.set_visual_right_pixmap(p))
                              self.thread_pool.start(worker_r)
                         else:
                              widget.set_visual_right_pixmap(empty_placeholder(100, 140))
+
 
                 else:
                     # Single/Strip Mode
@@ -367,9 +344,13 @@ class PagePanel(CollapsiblePanel):
         menu.exec(QCursor.pos())
 
     def _save_page_as(self, index: int):
-        real_idx = self._get_real_index(index)
-        if real_idx != -1:
-             page_utils.save_page_as(self, self.model, real_idx)
+        if self.model.view_mode == ViewMode.DOUBLE:
+             # Index is layout index
+             page_utils.save_merged_pair_as(self, self.model, index)
+        else:
+             real_idx = self._get_real_index(index)
+             if real_idx != -1:
+                  page_utils.save_page_as(self, self.model, real_idx)
 
     def _link_selected_pages(self):
         # Only supported in Single/Strip mode easily
