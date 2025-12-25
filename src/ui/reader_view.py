@@ -386,9 +386,8 @@ class ReaderView(QWidget):
         
         if self.slider_panel:
             self.slider_panel.set_range(len(self.model.images) - 1)
-            # Set step based on layout
-            step = 2 if self.model.view_mode == ViewMode.DOUBLE else 1
-            self.slider_panel.set_step(step)
+            # Use step 1 for all modes to allow fine-grained access to pages in Smart Double Layout
+            self.slider_panel.set_step(1)
             
             self.slider_panel.set_value(self.model.current_index)
             self.slider_panel.update_alt_indicators(self.model.images)
@@ -610,10 +609,9 @@ class ReaderView(QWidget):
         if self.model.view_mode == ViewMode.STRIP:
             self._change_chapter(1)
             return
-        step = 2 if self.model.view_mode == ViewMode.DOUBLE else 1
-        if self.model.current_index + step < len(self.model.images):
-            self.model.current_index += step
-            self.model.load_image()
+            
+        if self.model.navigate(1):
+            return
         else:
             if self.page_slideshow_timer.isActive() and self.slideshow_repeat:
                 self.model.current_index = 0
@@ -627,10 +625,9 @@ class ReaderView(QWidget):
         if self.model.view_mode == ViewMode.STRIP:
             self._change_chapter(-1)
             return
-        step = 2 if self.model.view_mode == ViewMode.DOUBLE else 1
-        if self.model.current_index - step >= 0:
-            self.model.current_index -= step
-            self.model.load_image()
+
+        if self.model.navigate(-1):
+            return
         else:
             self._change_chapter(-1)
 

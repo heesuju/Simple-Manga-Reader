@@ -28,11 +28,16 @@ class ReaderModel(QObject):
         self.view_mode = ViewMode.SINGLE
         self.images: List[Page] = [] 
         self._image_map = {} # Maps image path -> page_index
+        
+        # Double Mode Virtual Layout Logic
+        self._layout_pairs = [] 
+        self._page_to_layout_index = {} # Maps Real Page Index -> Layout Index
+
         self.current_index = 0
         self.chapters = manga_dirs if manga_dirs else []
         self.chapter_index = index if manga_dirs else 0
         self.manga_dir = self.chapters[self.chapter_index] if manga_dirs else None
-        self.preferred_language = None # Stores global language preference (e.g. "ENG")
+        self.preferred_language = None 
 
         if self.chapters:
             self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
@@ -42,32 +47,35 @@ class ReaderModel(QObject):
 
     def set_images(self, images: List[Union[str, Page]]):
         """
-        Set images. Accepts either raw paths (strings) or already grouped Page objects.
+        Set images. 
+        Accepts either raw paths (strings) or already grouped Page objects.
         """
         if not images:
             self.images = []
+            self._layout_pairs = []
             return
 
         # Check if first item is Page object
         if isinstance(images[0], Page):
             self.images = images
-            return
-
-        # Legacy/Fallback: Group raw image paths into Page objects
-        if not self.series or not self.manga_dir:
-            self.images = [Page([path]) for path in images]
-            return
-
-        chapter_name = Path(self.manga_dir).name
-        alt_config = AltManager.load_alts(str(self.series['path']))
-        chapter_alts = alt_config.get(chapter_name, {})
-        self.images = AltManager.group_images(images, chapter_alts)
+        else:
+            # Legacy/Fallback
+            if not self.series or not self.manga_dir:
+                self.images = [Page([path]) for path in images]
+            else:
+                chapter_name = Path(self.manga_dir).name
+                alt_config = AltManager.load_alts(str(self.series['path']))
+                chapter_alts = alt_config.get(chapter_name, {})
+                self.images = AltManager.group_images(images, chapter_alts)
         
         # Build Map
         self._rebuild_map()
 
         # Auto-detect spreads
         self.auto_detect_spreads()
+        
+        # Build Layout (Initial)
+        self._build_double_layout()
 
     def _rebuild_map(self):
         """Rebuild the hash map for O(1) lookup."""
@@ -85,6 +93,7 @@ class ReaderModel(QObject):
 
     def refresh(self):
         """Should be called after model data is updated to refresh the view."""
+        self._build_double_layout()
         self.refreshed.emit()
 
     def set_preferred_language(self, lang: Union[str, None]):
@@ -103,45 +112,103 @@ class ReaderModel(QObject):
 
         self.refresh() # Trigger full reload
 
-    def _get_double_view_images(self, right_to_left:bool=True) -> List[Page]:
-        new_images = list(self.images)
-        i = 0
-
-        result = [None] * len(new_images)
+    def _build_double_layout(self):
+        """
+        Builds the virtual layout for double page view.
+        Spreads take a full slot. Non-spreads are paired (Right, Left) for RTL.
+        Orphans are paired with "placeholder".
+        """
+        self._layout_pairs = []
+        self._page_to_layout_index = {}
         
-        if right_to_left:
-            for i, val in enumerate(new_images):
-                if i % 2 == 0:  # even
-                    new_index = i + 1
-                else:             # odd
-                    new_index = i - 1
-                
-                if 0 <= new_index < len(new_images):  # avoid out-of-range
-                    result[new_index] = val
-                else:
-                    result[i] = val
-
-        return result
-
-    def load_image(self):
-        if not self.images or not (0 <= self.current_index < len(self.images)):
+        if not self.images:
             return
 
-        images = self.images
-        if self.view_mode == ViewMode.DOUBLE:
-            images = self._get_double_view_images()
+        buffer = [] # Holds single pages ((index, page)) waiting for a pair
+        
+        for i, page in enumerate(self.images):
+            if page.is_spread:
+                if buffer:
+                    # Flush orphan (Preceding) -> Right side (First slot)
+                    # Pair with Placeholder on Left
+                    # Pair: ("placeholder", OrphanPage) [Left, Right] logic? 
+                    # Existing ReaderView: item2 (Right) is loaded from pair[1]?
+                    # Let's check ReaderModel._load_double_images usage later. 
+                    # Usually RTL: [Left=Next, Right=Curr]. 
+                    # If orphan is 'Right' (First), then Left is 'Placeholder'.
+                    orphan_idx, orphan_page = buffer.pop(0)
+                    pair = ("placeholder", orphan_page)
+                    self._layout_pairs.append(pair)
+                    self._page_to_layout_index[orphan_idx] = len(self._layout_pairs) - 1
+                
+                # Add Spread (Spread, None)
+                pair = (page, None)
+                self._layout_pairs.append(pair)
+                self._page_to_layout_index[i] = len(self._layout_pairs) - 1
+                
+            else:
+                if buffer:
+                    # We have a partner.
+                    # Current (i) is logically AFTER Preceding.
+                    # RTL: [Left=Current, Right=Preceding]
+                    pre_idx, pre_page = buffer.pop(0)
+                    pair = (page, pre_page)
+                    self._layout_pairs.append(pair)
+                    self._page_to_layout_index[i] = len(self._layout_pairs) - 1
+                    self._page_to_layout_index[pre_idx] = len(self._layout_pairs) - 1
+                else:
+                    buffer.append((i, page))
+                    
+        if buffer:
+            # Trailing orphan -> Right side?
+            # If [P1, P2, P3]. P3 is alone. P3 is Right. Left is Ph.
+            orphan_idx, orphan_page = buffer.pop(0)
+            pair = ("placeholder", orphan_page)
+            self._layout_pairs.append(pair)
+            self._page_to_layout_index[orphan_idx] = len(self._layout_pairs) - 1
+
+    def _get_current_layout_index(self) -> int:
+        if not self._layout_pairs: return -1
+        return self._page_to_layout_index.get(self.current_index, 0)
+
+    def load_image(self):
+        if not self.images:
+            return
+
+        # Ensure index range
+        if not (0 <= self.current_index < len(self.images)):
+             self.current_index = max(0, min(self.current_index, len(self.images) - 1))
 
         if self.view_mode == ViewMode.SINGLE:
-            page = images[self.current_index]
+            page = self.images[self.current_index]
             self.image_loaded.emit(page.path)
             
         elif self.view_mode == ViewMode.DOUBLE:
-            page1 = images[self.current_index]
-            page2 = images[self.current_index + 1] if self.current_index + 1 < len(images) else None
+            layout_idx = self._get_current_layout_index()
+            if layout_idx == -1 or layout_idx >= len(self._layout_pairs): 
+                # Fallback
+                self.view_mode = ViewMode.SINGLE
+                self.load_image()
+                return
+                
+            left_item, right_item = self._layout_pairs[layout_idx]
             
-            p1_path = page1.path if page1 else None
-            p2_path = page2.path if page2 else None
-            self.double_image_loaded.emit(p1_path, p2_path)
+            # Handling Spreads (Spread, None)
+            if isinstance(left_item, Page) and left_item.is_spread: 
+                # Reuse Single View logic for Spreads to center them
+                self.image_loaded.emit(left_item.path)
+                return
+
+            # Normal Pair or Placeholder
+            l_path = "placeholder"
+            if isinstance(left_item, Page):
+                l_path = left_item.path
+            
+            r_path = "placeholder"
+            if isinstance(right_item, Page):
+                r_path = right_item.path
+                
+            self.double_image_loaded.emit(l_path, r_path)
 
     def auto_detect_spreads(self):
         """
@@ -214,15 +281,71 @@ class ReaderModel(QObject):
              AltManager.save_spread_states(str(self.series['path']), chapter_name, updates)
              self.refresh()
 
-
+    def navigate(self, direction: int) -> bool:
+        """
+        Smart navigation respecting view modes and layouts.
+        Returns True if navigation succeeded within chapter, False if boundary reached.
+        """
+        if self.view_mode == ViewMode.SINGLE or self.view_mode == ViewMode.STRIP:
+             new_index = self.current_index + direction
+             if 0 <= new_index < len(self.images):
+                 self.current_index = new_index
+                 self.load_image()
+                 return True
+             else:
+                 return False # Boundary
+        
+        elif self.view_mode == ViewMode.DOUBLE:
+             current_layout = self._get_current_layout_index()
+             new_layout = current_layout + direction
+             
+             if 0 <= new_layout < len(self._layout_pairs):
+                 left, right = self._layout_pairs[new_layout]
+                 
+                 candidate = None
+                 # Prefer Right (First logical) page.
+                 if right and isinstance(right, Page):
+                      candidate = right
+                 elif left and isinstance(left, Page):
+                      candidate = left
+                      
+                 if candidate:
+                      try:
+                          idx = self.images.index(candidate)
+                          self.current_index = idx
+                          self.load_image()
+                          return True
+                      except ValueError:
+                          pass 
+                          
+             return False # Boundary
+ 
     def change_variant(self, page_index: int, variant_index: int):
         if 0 <= page_index < len(self.images):
             self.images[page_index].set_variant(variant_index)
             self.page_updated.emit(page_index) # Notify valid update
             
             # If the changed page is the current one, reload
-            if page_index == self.current_index or \
-               (self.view_mode == ViewMode.DOUBLE and abs(page_index - self.current_index) <= 1):
+            # In double mode, we check logic.
+            # Ideally we check if page_index is in current layout pair.
+            # Checking abs diff is 'okay' approximation but let's be safe.
+            should_reload = False
+            if page_index == self.current_index:
+                should_reload = True
+            elif self.view_mode == ViewMode.DOUBLE:
+                # Check if visible
+                layout_idx = self._get_current_layout_index()
+                if 0 <= layout_idx < len(self._layout_pairs):
+                    pair = self._layout_pairs[layout_idx]
+                    # Check if page is in pair
+                    # pair is (Item, Item). Item is Page or None or "placeholder"
+                    # We need to compare PAGE INSTANCES or indices.
+                    # We only have Page Instance reference in pair.
+                    target_page = self.images[page_index]
+                    if pair[0] == target_page or pair[1] == target_page:
+                         should_reload = True
+            
+            if should_reload:
                 self.load_image()
 
     def cycle_variant(self, page_index: int):
@@ -233,9 +356,6 @@ class ReaderModel(QObject):
                 self.change_variant(page_index, next_variant)
 
     def change_page(self, page:int):
-        if self.view_mode == ViewMode.DOUBLE and page % 2 == 0:
-            page -=1
-
         index = page - 1            
         self.current_index = index
         self.load_image()

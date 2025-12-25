@@ -33,6 +33,7 @@ class PagePanel(CollapsiblePanel):
         self.edit_selected_indices: Set[int] = set()
 
         self.edit_selected_indices: Set[int] = set()
+        self.click_map = [] # Map thumbnail index -> real page index
         
         self.BATCH_SIZE = 10
         self.image_paths_to_load = []
@@ -103,12 +104,53 @@ class PagePanel(CollapsiblePanel):
                 
         self.page_thumbnail_widgets.clear()
         self.edit_selected_indices.clear()
+        self.click_map.clear()
 
-        images = model.images
         if model.view_mode == ViewMode.DOUBLE:
-            images = model._get_double_view_images()
+            # Reconstruct visual list from layout pairs
+            # Layout Pair: (Left, Right)
+            # Visual Strip (assuming standard reading dir? Or just LTR strip?)
+            # If RTL reading: Pair is [LeftPage, RightPage].
+            # Previous logic showed [RightMap, LeftMap].
+            # So we add Right, then Left.
+            
+            display_items = []
+            
+            # _layout_pairs is [(LeftItem, RightItem), ...]
+            for pair in model._layout_pairs:
+                left, right = pair
+                
+                # Add Right then Left (RTL visual order)
+                # Filter out None (Spread empty slot)
+                
+                # Pairs to process in order
+                items = [right, left]
+                
+                for item in items:
+                    if item is None: continue
+                    
+                    display_items.append(item)
+                    
+                    # Calculate Target Index using O(1) lookup
+                    target_idx = -1
+                    if isinstance(item, str) and item == "placeholder":
+                        # Map to partner
+                        partner = left if item is right else right
+                        if partner and hasattr(partner, 'path'): # Is Page
+                             target_idx = model.get_page_index(partner.path)
+                    elif hasattr(item, 'path'): # Is Page
+                        target_idx = model.get_page_index(item.path)
+                        
+                    self.click_map.append(target_idx)
+            
+            self.image_paths_to_load = display_items
 
-        self.image_paths_to_load = images
+        else:
+            self.image_paths_to_load = model.images
+            # 1-to-1 map
+            self.click_map = list(range(len(model.images)))
+
+
         self.current_batch_index = 0
         
         if self.image_paths_to_load:
@@ -125,8 +167,14 @@ class PagePanel(CollapsiblePanel):
                 page_obj = self.image_paths_to_load[i]
                 
                 thumb_label = str(i + 1)
+                # If we want label to match REAL page number?
+                if i < len(self.click_map) and self.click_map[i] != -1:
+                    thumb_label = str(self.click_map[i] + 1)
+                elif page_obj == "placeholder":
+                    thumb_label = ""
+                
                 alt_count = 0
-                if page_obj and page_obj != "placeholder":
+                if hasattr(page_obj, 'images'):
                     alt_count = len(page_obj.images)
                 
                 widget = PageThumbnail(i, thumb_label, alt_count=alt_count)
@@ -151,8 +199,11 @@ class PagePanel(CollapsiblePanel):
         if self.current_batch_index < len(self.image_paths_to_load):
             self.batch_timer.start(50) # Schedule the next batch
 
-        should_snap = (start_index <= self.model.current_index < end_index)
-        self._update_page_selection(self.model.current_index, snap=should_snap)
+        # Initial selection update - needs mapping from real current_index to thumbnail index
+        # We can find thumbnail index that maps to current_index
+        if self.model:
+            self._update_page_selection(self.model.current_index, snap=True)
+
 
     def _on_page_thumbnail_loaded(self, index, pixmap):
         if index < len(self.page_thumbnail_widgets):
@@ -163,27 +214,62 @@ class PagePanel(CollapsiblePanel):
             thumbnail.set_selected(False)
         self.current_page_thumbnails.clear()
 
-        if index >= len(self.page_thumbnail_widgets):
-            return
+        # Find all thumbnails that map to 'index' or 'index+1' (if double)??
+        # The logic is: highlight the thumbnail(s) corresponding to currently visible pages.
+        # In ReaderView Double, visible items are from _layout_pairs[current_layout].
+        # We need to find which THUMBNAILS correspond to the visible pages.
+        
+        # Simpler: Find all i where click_map[i] == index?
+        # Yes.
+        
+        indices_to_select = []
+        
+        # If double view, ReaderView might display index AND index+1 (if pair).
+        # Actually ReaderView current_index is enough to define state.
+        # But we need to know what pages are actually visible.
+        # ReaderModel _get_current_layout_index -> Layout Pair.
+        # Pair contains Pages.
+        # We find thumbnails matching those Pages.
+        
+        visible_pages = []
+        if self.model and self.model.images:
+             if hasattr(self.model, 'view_mode') and self.model.view_mode == ViewMode.DOUBLE:
+                  layout_idx = self.model._get_current_layout_index()
+                  if layout_idx != -1 and layout_idx < len(self.model._layout_pairs):
+                       l, r = self.model._layout_pairs[layout_idx]
+                       if l and hasattr(l, 'path'): visible_pages.append(l)
+                       if r and hasattr(r, 'path'): visible_pages.append(r)
+                       # Also include placeholders if they map to visible pages?
+                       # Or just select visible page thumbnails.
+             else:
+                  if 0 <= index < len(self.model.images):
+                      visible_pages.append(self.model.images[index])
+        
+        # Find partial matches in image_paths_to_load
+        for i, obj in enumerate(self.image_paths_to_load):
+            if obj in visible_pages:
+                indices_to_select.append(i)
+            elif obj == "placeholder":
+                # If placeholder logic: select it if its partner is visible?
+                # or if it maps to visible page?
+                if i < len(self.click_map):
+                    mapped_idx = self.click_map[i]
+                    # If mapped_idx corresponds to a visible page
+                    # Mapping is index -> RealIdx.
+                    # visible_pages contains Page objects.
+                    # Convert to RealIndices
+                    visible_indices = [self.model.images.index(p) for p in visible_pages]
+                    if mapped_idx in visible_indices:
+                        indices_to_select.append(i)
 
-        # Select new thumbnail(s)
-        if self.model.view_mode == ViewMode.DOUBLE:
-            current_thumb = self.page_thumbnail_widgets[index]
-            current_thumb.set_selected(True)
-            self.current_page_thumbnails.append(current_thumb)
-            if snap:
-                self.content_area.scrollToWidget(current_thumb)
+        for i in indices_to_select:
+             if i < len(self.page_thumbnail_widgets):
+                 w = self.page_thumbnail_widgets[i]
+                 w.set_selected(True)
+                 self.current_page_thumbnails.append(w)
+                 if snap and i == indices_to_select[0]: # Snap to first
+                     self.content_area.scrollToWidget(w)
 
-            if index + 1 < len(self.page_thumbnail_widgets):
-                next_thumb = self.page_thumbnail_widgets[index + 1]
-                next_thumb.set_selected(True)
-                self.current_page_thumbnails.append(next_thumb)
-        else:
-            current_thumb = self.page_thumbnail_widgets[index]
-            current_thumb.set_selected(True)
-            self.current_page_thumbnails.append(current_thumb)
-            if snap:
-                self.content_area.scrollToWidget(current_thumb)
 
     def _on_thumbnail_clicked(self, index: int):
         modifiers = QApplication.keyboardModifiers()
@@ -194,7 +280,12 @@ class PagePanel(CollapsiblePanel):
         else:
             if self.edit_selected_indices:
                 self._clear_edit_selection()
-            self.on_page_changed(index + 1)
+            
+            # Use Click Map
+            if index < len(self.click_map):
+                real_idx = self.click_map[index]
+                if real_idx != -1:
+                    self.on_page_changed(real_idx + 1)
 
     def _on_thumbnail_right_clicked(self, index: int):
         if index not in self.edit_selected_indices:

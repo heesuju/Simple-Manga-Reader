@@ -269,6 +269,13 @@ class AsyncLoaderWorker(QRunnable):
         for path in self.paths:
             if not path: continue
             
+            if path == "placeholder":
+                # Create a small black image, will be resized by consumer
+                img = QImage(1, 1, QImage.Format.Format_RGB32)
+                img.fill(Qt.GlobalColor.black)
+                results[path] = img
+                continue
+            
             try:
                 image_data = None
                 path_str = path

@@ -108,10 +108,24 @@ class ImageViewer(BaseViewer):
         elif len(loaded_keys) >= 2:
             imgs = list(results.values())
             paths = list(results.keys())
-            pix1 = QPixmap.fromImage(imgs[0])
-            pix2 = QPixmap.fromImage(imgs[1])
             
-            self._setup_double_view(pix1, pix2, paths[0], paths[1])
+            img1 = imgs[0]
+            img2 = imgs[1]
+            path1 = paths[0]
+            path2 = paths[1]
+            
+            # Handle placeholder sizing (match the other page)
+            if path1 == "placeholder" and path2 != "placeholder":
+                img1 = QImage(img2.width(), img2.height(), QImage.Format.Format_RGB32)
+                img1.fill(Qt.GlobalColor.black)
+            elif path2 == "placeholder" and path1 != "placeholder":
+                img2 = QImage(img1.width(), img1.height(), QImage.Format.Format_RGB32)
+                img2.fill(Qt.GlobalColor.black)
+
+            pix1 = QPixmap.fromImage(img1)
+            pix2 = QPixmap.fromImage(img2)
+            
+            self._setup_double_view(pix1, pix2, path1, path2)
             self._trigger_hq_rescale()
 
         self.reader_view.view.reset_zoom_state()
