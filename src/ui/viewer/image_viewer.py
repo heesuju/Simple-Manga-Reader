@@ -132,32 +132,28 @@ class ImageViewer(BaseViewer):
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
 
     def _setup_double_view(self, pix1, pix2, path1, path2):
-        item1 = QGraphicsPixmapItem(pix1)
-        item1.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-        item1.setPos(0, 0)
-        item1.setData(0, path1)
-        self.reader_view.scene.addItem(item1)
-
-        item2 = QGraphicsPixmapItem(pix2)
-        item2.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-        item2.setPos(pix1.width(), 0)
-        item2.setData(0, path2)
-        self.reader_view.scene.addItem(item2)
-
         total_width = pix1.width() + pix2.width()
         total_height = max(pix1.height(), pix2.height())
         
-        self.reader_view.scene.setSceneRect(0, 0, total_width, total_height)
-        self.pixmap_item = item1
-        
-        # Combine for HQ scaling support
+        # Combine images immediately to prevent rendering gaps
         combined = QPixmap(total_width, total_height)
         combined.fill(Qt.GlobalColor.transparent)
         p = QPainter(combined)
         p.drawPixmap(0, 0, pix1)
         p.drawPixmap(pix1.width(), 0, pix2)
         p.end()
+        
         self.original_pixmap = combined
+        
+        item = QGraphicsPixmapItem(combined)
+        item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        item.setPos(0, 0)
+        item.setData(0, path1) 
+        
+        self.reader_view.scene.addItem(item)
+        self.reader_view.scene.setSceneRect(0, 0, total_width, total_height)
+        self.pixmap_item = item
+        self.scaled_pixmap_item = False
 
     def _stop_movie(self):
         if self.movie:
