@@ -12,7 +12,7 @@ class ImageView(QGraphicsView):
     def __init__(self, manga_reader=None):
         super().__init__()
         self.setFrameStyle(QFrame.Shape.NoFrame)
-        self.setStyleSheet("background: transparent; border: none; padding: 0px; margin: 0px;")
+        self.setStyleSheet("QGraphicsView { background: transparent; border: none; padding: 0px; margin: 0px; outline: none; }")
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.manga_reader = manga_reader
