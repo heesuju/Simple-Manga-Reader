@@ -295,8 +295,8 @@ class StripViewer(BaseViewer):
         if getattr(self, 'is_fit_width', True):
             return int(available_w)
         else:
-            # Scale relative to original image size
-            return int(pixmap.width() * self._strip_zoom_factor)
+            # Scale relative to WINDOW WIDTH
+            return int(available_w * self._strip_zoom_factor)
 
     def _resize_single_label(self, label: QLabel, orig_pix: QPixmap, index: int):
         target_w = self._get_target_width(orig_pix)
@@ -540,27 +540,8 @@ class StripViewer(BaseViewer):
                 factor = 1.25 if angle > 0 else 0.8
                 
                 if getattr(self, 'is_fit_width', True):
-                     # Transition from Fit Width to Explicit Zoom
-                     # Calculate effective zoom of the current center image
-                     center_y = self.reader_view.scroll_area.viewport().height() / 2 + self.reader_view.scroll_area.verticalScrollBar().value()
-                     
-                     # Find image at center
-                     center_img_index = -1
-                     for i, lbl in enumerate(self.page_labels):
-                         if lbl.y() <= center_y <= lbl.y() + lbl.height():
-                             center_img_index = i
-                             break
-                     
-                     current_scale = 1.0
-                     if center_img_index != -1 and center_img_index in self.page_pixmaps:
-                         pix = self.page_pixmaps[center_img_index]
-                         if pix.width() > 0:
-                             viewport_w = self.reader_view.scroll_area.viewport().width()
-                             margins = self.reader_view.vbox.contentsMargins()
-                             available_w = viewport_w - (margins.left() + margins.right())
-                             current_scale = available_w / pix.width()
-                    
-                     self._strip_zoom_factor = current_scale * factor
+                     # Transition from Fit Width (1.0 relative to window)
+                     self._strip_zoom_factor = 1.0 * factor
                      self.is_fit_width = False
                 else:
                      self._strip_zoom_factor *= factor
