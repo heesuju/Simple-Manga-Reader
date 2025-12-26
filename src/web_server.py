@@ -193,9 +193,8 @@ class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     daemon_threads = True
 
 
-if __name__ == "__main__":
+def run_server():
     import socket
-
     # Get LAN IP (works even with VPNs/adapters present)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -210,12 +209,5 @@ if __name__ == "__main__":
         print(f"Serving at http://{ip_address}:{PORT}")
         httpd.serve_forever()
 
-# if __name__ == "__main__":
-#     import socket
-#     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-#     s.connect(("8.8.8.8", 80))
-#     ip_address = s.getsockname()[0]
-#     s.close()
-#     with socketserver.TCPServer(("0.0.0.0", PORT), MangaHandler) as httpd:
-#         print(f"Serving at http://{ip_address}:{PORT}")
-#         httpd.serve_forever()
+if __name__ == "__main__":
+    run_server()

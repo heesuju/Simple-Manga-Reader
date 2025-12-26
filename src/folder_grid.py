@@ -31,10 +31,7 @@ from src.ui.components.chapter_selection_dialog import ChapterSelectionDialog
 from src.utils.resource_utils import resource_path
 
 
-def run_server(script_path, root_dir):
-    import subprocess
-    import sys
-    subprocess.run([sys.executable, script_path, root_dir])
+
 
 class StatusButton(QPushButton):
     def __init__(self, parent=None):
@@ -667,17 +664,15 @@ class FolderGrid(QWidget):
         QApplication.instance().quit()
 
     def toggle_web_access(self):
-        if self.web_server_process and self.web_server_process.poll() is None:
+        if self.web_server_process and self.web_server_process.is_alive():
             self.stop_web_access()
         else:
             self.start_web_access()
 
     def start_web_access(self):
-        server_script_path = os.path.abspath("server.py")
-        # The web server needs to be updated to work with the new library structure
-        # For now, we will not pass any arguments
-        command = [sys.executable, server_script_path]
-        self.web_server_process = subprocess.Popen(command)
+        from src.web_server import run_server
+        self.web_server_process = multiprocessing.Process(target=run_server, daemon=True)
+        self.web_server_process.start()
         self.web_access_btn.setText("Stop Web Access")
 
         try:
@@ -710,7 +705,7 @@ class FolderGrid(QWidget):
         dialog.exec()
 
     def stop_web_access(self):
-        if self.web_server_process and self.web_server_process.poll() is None:
+        if self.web_server_process and self.web_server_process.is_alive():
             self.web_server_process.terminate()
         self.web_server_process = None
         self.web_access_btn.setText("Start Web Access")

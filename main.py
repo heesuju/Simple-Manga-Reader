@@ -140,6 +140,9 @@ class MainWindow(QMainWindow):
             self.showFullScreen()
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
+
     app = QApplication(sys.argv)
     qdarktheme.setup_theme("dark")
     
