@@ -132,13 +132,25 @@ class ImageViewer(BaseViewer):
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
 
     def _setup_double_view(self, pix1, pix2, path1, path2):
+        h1 = pix1.height()
+        h2 = pix2.height()
+        target_h = max(h1, h2)
+
+        if h1 < target_h and h1 > 0:
+            pix1 = pix1.scaledToHeight(target_h, Qt.TransformationMode.SmoothTransformation)
+        
+        if h2 < target_h and h2 > 0:
+            pix2 = pix2.scaledToHeight(target_h, Qt.TransformationMode.SmoothTransformation)
+
         total_width = pix1.width() + pix2.width()
-        total_height = max(pix1.height(), pix2.height())
+        total_height = target_h
         
         # Combine images immediately to prevent rendering gaps
         combined = QPixmap(total_width, total_height)
         combined.fill(Qt.GlobalColor.transparent)
         p = QPainter(combined)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.drawPixmap(0, 0, pix1)
         p.drawPixmap(pix1.width(), 0, pix2)
         p.end()
