@@ -76,11 +76,14 @@ class FlowLayout(QLayout):
             # Standard min size for flow/grid? usually assumes wrapping is allowed so min is largest item
             pass 
 
-        size += QSize(2 * self.contentsMargins().top(), 2 * self.contentsMargins().top())
+        m = self.contentsMargins()
+        size += QSize(m.left() + m.right(), m.top() + m.bottom())
         return size
 
     def doLayout(self, rect, testOnly):
-        x, y, lineHeight = rect.x(), rect.y(), 0
+        m = self.contentsMargins()
+        effective_rect = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y, lineHeight = effective_rect.x(), effective_rect.y(), 0
         spacing = self.spacing()
 
         for item in self.itemList:
@@ -90,11 +93,10 @@ class FlowLayout(QLayout):
             nextX = x + size.width() + spacing
             
             # WRAP LOGIC
-            # Only wrap if NOT single_row AND space is insufficient
-            should_wrap = (not self._single_row) and (nextX - spacing > rect.right() and lineHeight > 0)
+            should_wrap = (not self._single_row) and (nextX - spacing > effective_rect.right() and lineHeight > 0)
             
             if should_wrap:
-                x = rect.x()
+                x = effective_rect.x()
                 y += lineHeight + spacing
                 nextX = x + size.width() + spacing
                 lineHeight = 0
@@ -105,4 +107,89 @@ class FlowLayout(QLayout):
             x = nextX
             lineHeight = max(lineHeight, size.height())
 
-        return y + lineHeight - rect.y()
+        return y + lineHeight - rect.y() + m.bottom()
+
+class VerticalFastLayout(QLayout):
+    """A layout that strictly stacks items vertically, forcing full width."""
+    def __init__(self, parent=None, margin=0, spacing=10):
+        super().__init__(parent)
+        self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+        self.itemList = []
+
+    def addItem(self, item):
+        self.itemList.append(item)
+
+    def count(self):
+        return len(self.itemList)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.itemList):
+            return self.itemList.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self.doLayout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self.doLayout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        if not self.itemList:
+             return size
+        
+        total_h = 0
+        max_w = 0
+        spacing = self.spacing()
+        margins = self.contentsMargins()
+        
+        for item in self.itemList:
+            s = item.minimumSize()
+            total_h += s.height() + spacing
+            max_w = max(max_w, s.width())
+            
+        if self.itemList: total_h -= spacing
+        
+        total_h += margins.top() + margins.bottom()
+        max_w += margins.left() + margins.right()
+        
+        return QSize(max_w, total_h)
+
+    def doLayout(self, rect, testOnly):
+        m = self.contentsMargins()
+        x = rect.x() + m.left()
+        y = rect.y() + m.top()
+        width = rect.width() - m.left() - m.right()
+        spacing = self.spacing()
+        
+        for item in self.itemList:
+            if item.hasHeightForWidth():
+                height = item.heightForWidth(width)
+            else:
+                height = item.sizeHint().height()
+            
+            if not testOnly:
+                item.setGeometry(QRect(x, y, width, height))
+            
+            y += height + spacing
+            
+        if self.itemList:
+            y -= spacing
+            
+        return y - rect.y() + m.bottom()

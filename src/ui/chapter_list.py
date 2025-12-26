@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF, QObject, QRunnable
 
 from src.core.item_loader import ItemLoader
 from src.ui.clickable_label import ClickableLabel
-from src.ui.components.flow_layout import FlowLayout
+from src.ui.components.flow_layout import FlowLayout, VerticalFastLayout
 from src.ui.reader_view import ReaderView
 from src.utils.img_utils import crop_pixmap
 from pathlib import Path
@@ -239,9 +239,7 @@ class ChapterListView(QWidget):
         self.scroll_area.setWidget(self.scroll_content)
         self.scroll_content.setStyleSheet("background: transparent;")
 
-        self.content_layout = QVBoxLayout(self.scroll_content)
-        self.content_layout.setContentsMargins(10, 10, 10, 10)
-        self.content_layout.setSpacing(5)
+        self.content_layout = VerticalFastLayout(self.scroll_content, margin=10, spacing=5)
 
         self.top_spacer = QWidget()
         self.content_layout.addWidget(self.top_spacer)
@@ -343,7 +341,10 @@ class ChapterListView(QWidget):
             continue_reading_btn = QPushButton(f"Continue: {last_read_chapter_name}")
             continue_reading_btn.clicked.connect(self.continue_reading)
             button_layout.addWidget(continue_reading_btn)
-        self.content_layout.addLayout(button_layout)
+            
+        button_container = QWidget()
+        button_container.setLayout(button_layout)
+        self.content_layout.addWidget(button_container)
 
         series_name_label = QLabel(self.series['name'])
         series_name_label.setWordWrap(True)
@@ -414,12 +415,6 @@ class ChapterListView(QWidget):
 
             if chapter['path'] == last_read_chapter:
                 item_widget.set_highlight(True)
-
-            if i < len(self.display_chapters) - 1:
-                line = QFrame()
-                line.setFrameShape(QFrame.Shape.HLine)
-                line.setFrameShadow(QFrame.Shadow.Sunken)
-                self.content_layout.addWidget(line)
 
         self.current_batch_index = end
 
