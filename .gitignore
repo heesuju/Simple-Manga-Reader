@@ -8,3 +8,5 @@ test.py
 build/
 dist/
 llama.cpp/
+models/
+llm_config.json
