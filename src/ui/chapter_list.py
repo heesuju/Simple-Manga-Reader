@@ -331,16 +331,43 @@ class ChapterListView(QWidget):
     def load_chapters_and_info(self):
         # --- Info and Buttons (in scroll area) ---
         button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        btn_style = """
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.3);
+                color: white;
+                border: none;
+                border-radius: 15px;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 240px;
+                max-width: 240px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 0.3);
+            }
+        """
+
         start_reading_btn = QPushButton("Start Reading")
+        start_reading_btn.setStyleSheet(btn_style)
         start_reading_btn.clicked.connect(self.start_reading)
         button_layout.addWidget(start_reading_btn)
 
         last_read_chapter_path = self.series.get('last_read_chapter')
         if last_read_chapter_path:
+            button_layout.addSpacing(20)
             last_read_chapter_name = Path(last_read_chapter_path).name
             continue_reading_btn = QPushButton(f"Continue: {last_read_chapter_name}")
+            continue_reading_btn.setStyleSheet(btn_style)
             continue_reading_btn.clicked.connect(self.continue_reading)
             button_layout.addWidget(continue_reading_btn)
+
+        button_layout.addStretch()
             
         button_container = QWidget()
         button_container.setLayout(button_layout)
