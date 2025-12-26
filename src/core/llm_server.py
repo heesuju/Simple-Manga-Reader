@@ -30,10 +30,10 @@ class LLMServerManager(QObject):
         self.config_path = self.project_root / "llm_config.json"
         self.repo_id = "Menlo/Jan-nano-gguf"
         self.model_name = "jan-nano-4b-Q4_K_M.gguf"
-        
+        self.port = 8080
+
         self.load_config()
 
-        self.port = 8080
         self.process = None
 
         # Executable name depends on OS
