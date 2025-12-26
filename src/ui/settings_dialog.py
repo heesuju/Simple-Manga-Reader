@@ -124,8 +124,21 @@ class SettingsDialog(QDialog):
              QMessageBox.warning(self, "Invalid Config", "Port must be a number.")
              return
 
+        was_running = self.manager.is_running()
         self.manager.save_config(repo_id, model_name, port)
-        QMessageBox.information(self, "Saved", "Configuration saved. Status updated.")
+        
+        if was_running:
+            if self.manager.is_model_present():
+                # Restart to apply new port/model
+                self.restart_server()
+                QMessageBox.information(self, "Saved", "Configuration saved. Server triggering restart...")
+            else:
+                # Stop because new model is missing, can't restart yet
+                self.manager.stop()
+                QMessageBox.warning(self, "Server Stopped", "Configuration saved, but new model is missing.\nPlease download the model to restart.")
+        else:
+             QMessageBox.information(self, "Saved", "Configuration saved.")
+             
         self.check_status()
 
     def check_status(self):
