@@ -57,8 +57,8 @@ class StatusButton(QPushButton):
                 "error_install": "❌",
                 "error_model": "⚠️",
                 "downloading": "⬇️",
-                "running": "✅",
-                "stopped": "⭕"
+                "running": "🟢",
+                "stopped": "🔴"
             }
             
             icon_text = emoji_map.get(self.status_key)
@@ -158,11 +158,12 @@ class FolderGrid(QWidget):
         self.add_btn.setFixedSize(QSize(32, 32))
         self.add_btn.clicked.connect(self.show_add_menu)
 
-        self.web_access_btn = QPushButton()
+        self.web_access_btn = StatusButton()
+        self.web_access_btn.set_status("stopped")
         self.web_access_btn.setIcon(self.qr_icon)
-        self.web_access_btn.setIconSize(QSize(32, 32))
-        self.web_access_btn.setFixedSize(QSize(32, 32))
-        self.web_access_btn.clicked.connect(self.toggle_web_access)
+        self.web_access_btn.setIconSize(QSize(24, 24))
+        # self.web_access_btn.setFixedSize(QSize(32, 32)) # StatusButton sets this
+        self.web_access_btn.clicked.connect(self.handle_web_access_click)
         
         self.llm_config_btn = StatusButton()
         self.llm_config_btn.setIcon(QIcon(resource_path("assets/icons/lang.png")))
@@ -663,26 +664,25 @@ class FolderGrid(QWidget):
     def exit_program(self):
         QApplication.instance().quit()
 
-    def toggle_web_access(self):
-        if self.web_server_process and self.web_server_process.is_alive():
-            self.stop_web_access()
-        else:
-            self.start_web_access()
+    def handle_web_access_click(self):
+        # Ensure server is running
+        if not self.web_server_process or not self.web_server_process.is_alive():
+            from src.web_server import run_server
+            self.web_server_process = multiprocessing.Process(target=run_server, daemon=True)
+            self.web_server_process.start()
+            self.web_access_btn.set_status("running")
+        
+        # Show QR Dialog
+        self.show_web_qr_dialog()
 
-    def start_web_access(self):
-        from src.web_server import run_server
-        self.web_server_process = multiprocessing.Process(target=run_server, daemon=True)
-        self.web_server_process.start()
-        self.web_access_btn.setText("Stop Web Access")
-
+    def show_web_qr_dialog(self):
         try:
-            # Connect to a public DNS server to get the best local IP (doesn't actually send data)
+            # Connect to a public DNS server to get the best local IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip_address = s.getsockname()[0]
             s.close()
         except:
-            # Fallback
             hostname = socket.gethostname()
             ip_address = socket.gethostbyname(hostname)
         url = f"http://{ip_address}:8000"
@@ -696,11 +696,22 @@ class FolderGrid(QWidget):
 
         # Display QR code in a dialog
         dialog = QDialog(self)
-        dialog.setWindowTitle("Web Access QR Code")
+        dialog.setWindowTitle("Web Access")
         layout = QVBoxLayout()
+        
         label = QLabel()
         label.setPixmap(pixmap)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(label)
+        
+        info_label = QLabel(f"Scan specific to connect\nURL: {url}")
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(info_label)
+
+        stop_btn = QPushButton("Stop Web Server")
+        stop_btn.clicked.connect(lambda: [self.stop_web_access(), dialog.close()])
+        layout.addWidget(stop_btn)
+
         dialog.setLayout(layout)
         dialog.exec()
 
@@ -708,7 +719,7 @@ class FolderGrid(QWidget):
         if self.web_server_process and self.web_server_process.is_alive():
             self.web_server_process.terminate()
         self.web_server_process = None
-        self.web_access_btn.setText("Start Web Access")
+        self.web_access_btn.set_status("stopped")
 
     def show_add_menu(self):
         menu = QMenu(self)
