@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const layoutBtn = document.getElementById('layout-btn');
     const stripView = document.getElementById('strip-view');
     const chapterTitle = document.getElementById('chapter-title');
+    const readerHeader = document.getElementById('reader-header');
+    const prevChapterBtn = document.getElementById('prev-chapter-btn');
+    const nextChapterBtn = document.getElementById('next-chapter-btn');
 
     let currentPath = '';
     let currentManga = null;
@@ -28,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (layoutMode === 'strip') {
             document.getElementById('reader-controls').classList.toggle('visible');
             closeReaderBtn.classList.toggle('visible');
-            chapterTitle.classList.toggle('visible');
+            readerHeader.classList.toggle('visible');
             return;
         }
 
@@ -40,9 +43,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (x >= middleStart && x <= middleEnd) {
             document.getElementById('reader-controls').classList.toggle('visible');
             closeReaderBtn.classList.toggle('visible');
-            chapterTitle.classList.toggle('visible');
+            readerHeader.classList.toggle('visible');
         }
     }
+
+    // Nav Button Logic
+    prevChapterBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (currentChapterIndex > 0) {
+            openReader(currentSeriesData, chapterList[currentChapterIndex - 1]);
+        }
+    });
+
+    nextChapterBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (currentChapterIndex < chapterList.length - 1) {
+            openReader(currentSeriesData, chapterList[currentChapterIndex + 1]);
+        }
+    });
 
     readerImageContainer.addEventListener('click', toggleControls);
     stripView.addEventListener('click', toggleControls);
@@ -50,10 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function toggleLayout() {
         layoutMode = layoutMode === 'single' ? 'strip' : 'single';
         if (layoutMode === 'strip') {
+            readerView.classList.add('strip-mode');
             renderStripView();
             document.getElementById('reader-image-container').style.display = 'none';
             stripView.style.display = 'block';
         } else {
+            readerView.classList.remove('strip-mode');
             const images = stripView.getElementsByTagName('img');
             let topVisibleImage = 0;
             for (let i = 0; i < images.length; i++) {
@@ -214,9 +234,20 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('controls').classList.add('hidden');
         readerView.classList.add('visible');
 
-        layoutMode = 'single';
-        stripView.style.display = 'none';
-        document.getElementById('reader-image-container').style.display = 'flex';
+        // Apply View Logic Helper
+        const applyView = () => {
+            if (layoutMode === 'strip') {
+                readerView.classList.add('strip-mode');
+                document.getElementById('reader-image-container').style.display = 'none';
+                stripView.style.display = 'block';
+                renderStripView();
+            } else {
+                readerView.classList.remove('strip-mode');
+                document.getElementById('reader-image-container').style.display = 'flex';
+                stripView.style.display = 'none';
+                displayPage();
+            }
+        };
 
         if (chapter) {
             chapterTitle.innerText = chapter.name;
@@ -225,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
             imageList = chapter.images;
             pageSlider.max = imageList.length - 1;
             currentPage = startPage === 'last' ? imageList.length - 1 : 0;
-            displayPage();
+            applyView();
         } else { // Series with no chapters
             chapterTitle.innerText = seriesData.name;
             chapterList = [];
@@ -236,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     imageList = images;
                     pageSlider.max = imageList.length - 1;
                     currentPage = 0;
-                    displayPage();
+                    applyView();
                 });
         }
     }

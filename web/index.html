@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manga Reader</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div id="controls">
         <button id="back-btn">Back</button>
@@ -17,7 +19,11 @@
         <!-- Chapters will be displayed here -->
     </div>
     <div id="reader-view">
-        <div id="chapter-title"></div>
+        <div id="reader-header">
+            <button id="prev-chapter-btn" class="header-nav-btn">&lt;</button>
+            <div id="chapter-title"></div>
+            <button id="next-chapter-btn" class="header-nav-btn">&gt;</button>
+        </div>
         <div id="reader-image-container">
             <div id="prev-area" class="nav-area"></div>
             <img id="reader-image" src="" alt="Manga Page">
@@ -32,4 +38,5 @@
     </div>
     <script src="script.js"></script>
 </body>
+
 </html>
