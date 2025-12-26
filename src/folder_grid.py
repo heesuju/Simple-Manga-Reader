@@ -680,8 +680,16 @@ class FolderGrid(QWidget):
         self.web_server_process = subprocess.Popen(command)
         self.web_access_btn.setText("Stop Web Access")
 
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
+        try:
+            # Connect to a public DNS server to get the best local IP (doesn't actually send data)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip_address = s.getsockname()[0]
+            s.close()
+        except:
+            # Fallback
+            hostname = socket.gethostname()
+            ip_address = socket.gethostbyname(hostname)
         url = f"http://{ip_address}:8000"
 
         # Generate QR code

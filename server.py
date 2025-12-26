@@ -197,8 +197,14 @@ if __name__ == "__main__":
     import socket
 
     # Get LAN IP (works even with VPNs/adapters present)
-    hostname = socket.gethostname()
-    ip_address = socket.gethostbyname(hostname)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip_address = s.getsockname()[0]
+        s.close()
+    except:
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
 
     with ThreadingTCPServer(("0.0.0.0", PORT), MangaHandler) as httpd:
         print(f"Serving at http://{ip_address}:{PORT}")
