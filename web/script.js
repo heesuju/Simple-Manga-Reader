@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         imageList.forEach(imagePath => {
             const img = document.createElement('img');
-            img.dataset.src = `/images/${imagePath}`;
+            img.dataset.src = `/images/${encodeURIComponent(imagePath)}`;
             stripView.appendChild(img);
             observer.observe(img);
         });
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const gridItem = document.createElement('div');
                     gridItem.classList.add('grid-item');
                     gridItem.innerHTML = `
-                        <img src="/images/${item.cover_image}?width=150&quality=50" alt="${item.name}">
+                        <img src="/images/${encodeURIComponent(item.cover_image)}?width=150&quality=50" alt="${item.name}">
                         <p>${item.name}</p>
                     `;
                     gridItem.addEventListener('click', () => {
@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     seriesData.chapters.forEach(chapter => {
                         const chapterItem = document.createElement('li');
                         chapterItem.classList.add('chapter-item');
-                        chapterItem.innerHTML = `<img src="/images/${chapter.thumbnail}?width=150&quality=50" alt="${chapter.name}"><span>${chapter.name}</span>`;
+                        chapterItem.innerHTML = `<img src="/images/${encodeURIComponent(chapter.thumbnail)}?width=150&quality=50" alt="${chapter.name}"><span>${chapter.name}</span>`;
                         chapterItem.addEventListener('click', () => {
                             openReader(seriesData, chapter);
                         });
@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function displayPage() {
         if (currentPage >= 0 && currentPage < imageList.length) {
-            readerImage.src = `/images/${imageList[currentPage]}`;
+            readerImage.src = `/images/${encodeURIComponent(imageList[currentPage])}`;
             pageSlider.value = currentPage;
         }
     }
