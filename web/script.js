@@ -110,12 +110,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    const backToGridBtn = document.getElementById('back-to-grid-btn');
+    backBtn.addEventListener('click', () => {
+        if (chapterListView.style.display === 'block') {
+            chapterListView.style.display = 'none';
+            gridView.style.display = 'grid';
+            loadGrid(currentPath);
+            return;
+        }
 
-    backToGridBtn.addEventListener('click', () => {
-        chapterListView.style.display = 'none';
-        gridView.style.display = 'grid';
-        loadGrid(''); // Reload the grid
+        if (currentPath) {
+            const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+            loadGrid(parentPath);
+        }
     });
 
     function showChapterList(series) {
@@ -156,15 +162,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial load
     loadGrid('');
 
-    backBtn.addEventListener('click', () => {
-        const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
-        loadGrid(parentPath);
-    });
+
 
     function openReader(seriesData, chapter, startPage = 'first') {
         currentManga = seriesData.path;
         currentSeriesData = seriesData;
-        
+
         gridView.style.display = 'none';
         chapterListView.style.display = 'none';
         document.getElementById('controls').classList.add('hidden');
@@ -242,6 +245,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             gridView.style.display = 'grid';
         }
+
+        document.getElementById('controls').classList.remove('hidden');
 
         // Reset reader-specific state
         currentManga = null;
