@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, QSizePolicy,
     QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter
 )
-from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon, QCursor
+from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon, QCursor, QPainter, QBrush, QColor
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent, QSize
 
 from src.ui.reader_view import ReaderView
@@ -36,6 +36,47 @@ def run_server(script_path, root_dir):
     import sys
     subprocess.run([sys.executable, script_path, root_dir])
 
+class StatusButton(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.status_key = None
+        self.setFixedSize(32, 32)
+        # Font settings for emoji
+        self.emoji_font = self.font()
+        self.emoji_font.setPointSize(10)
+
+    def set_status(self, status):
+        self.status_key = status
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.status_key:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # Map status to emoji
+            emoji_map = {
+                "error_install": "❌",
+                "error_model": "⚠️",
+                "downloading": "⬇️",
+                "running": "✅",
+                "stopped": "⭕"
+            }
+            
+            icon_text = emoji_map.get(self.status_key)
+            
+            if icon_text:
+                painter.setFont(self.emoji_font)
+                painter.setPen(Qt.GlobalColor.white)
+                # Draw text in bottom right corner
+                rect = self.rect()
+                # Adjust rect to bottom right quadrant
+                target_rect = rect.adjusted(12, 12, 0, 0)
+                painter.drawText(target_rect, Qt.AlignmentFlag.AlignCenter, icon_text)
+                
+from src.core.llm_server import LLMServerManager
+
 class FolderGrid(QWidget):
     """Shows a grid of folders and images."""
     series_selected = pyqtSignal(object)
@@ -45,6 +86,9 @@ class FolderGrid(QWidget):
         super().__init__(parent)
         
         self.library_manager = library_manager
+        self.llm_manager = LLMServerManager.instance()
+        self.llm_manager.status_changed.connect(self.on_llm_status_changed)
+        
         self.loading_generation = 0
         self.recent_loading_generation = 0
         self.loader = None
@@ -67,6 +111,13 @@ class FolderGrid(QWidget):
         self.init_ui()
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.exit_program)
         self.showFullScreen()
+        
+        # Initial status check
+        QTimer.singleShot(100, self.llm_manager.emit_status)
+
+    def on_llm_status_changed(self, status):
+        if hasattr(self, 'llm_config_btn'):
+            self.llm_config_btn.set_status(status)
 
     def init_ui(self):
         self.setWindowTitle("Manga Browser")
@@ -115,10 +166,16 @@ class FolderGrid(QWidget):
         self.web_access_btn.setIconSize(QSize(32, 32))
         self.web_access_btn.setFixedSize(QSize(32, 32))
         self.web_access_btn.clicked.connect(self.toggle_web_access)
+        
+        self.llm_config_btn = StatusButton()
+        self.llm_config_btn.setIcon(QIcon(resource_path("assets/icons/lang.png")))
+        self.llm_config_btn.setIconSize(QSize(24, 24))
+        self.llm_config_btn.clicked.connect(self.show_llm_config)
 
         top_layout.addWidget(self.web_access_btn)
+        top_layout.addWidget(self.llm_config_btn)
         main_layout.addLayout(top_layout)
-
+        
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setStyleSheet("border: none;")
@@ -661,6 +718,11 @@ class FolderGrid(QWidget):
             self.add_single_series()
         elif action == add_multiple_action:
             self.add_multiple_series()
+
+    def show_llm_config(self):
+        from src.ui.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(self)
+        dialog.exec()
 
     def show_more_options_menu(self):
         menu = QMenu(self)

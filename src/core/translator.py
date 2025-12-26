@@ -4,6 +4,7 @@ import requests
 import json
 from dotenv import load_dotenv
 from src.enums import Language
+from src.core.llm_server import LLMServerManager
 
 # Load params from .env (e.g. LLAMA_API_URL)
 load_dotenv()
@@ -35,7 +36,13 @@ class Translator:
     }
 
     def __init__(self):
-        self.api_url = os.getenv("LLAMA_API_URL", "http://localhost:8080/completion")
+        # Dynamically get port from LLMServerManager
+        try:
+            manager = LLMServerManager.instance()
+            port = manager.port
+            self.api_url = f"http://localhost:{port}/completion"
+        except Exception:
+            self.api_url = os.getenv("LLAMA_API_URL", "http://localhost:8080/completion")
 
     def _perform_translation(self, prompt: str, stop_tokens: list, retries: int = 3) -> str:
         data = {

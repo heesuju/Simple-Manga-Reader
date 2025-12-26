@@ -145,7 +145,7 @@ if __name__ == "__main__":
     
     # Start LLM Server
     from src.core.llm_server import LLMServerManager
-    llm_manager = LLMServerManager()
+    llm_manager = LLMServerManager.instance()
     llm_manager.start()
 
     library_manager = LibraryManager()
