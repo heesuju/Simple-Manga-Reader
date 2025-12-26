@@ -95,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderStripView() {
         stripView.innerHTML = ''; // Clear the strip view
+        stripView.scrollTop = 0; // Reset scroll position
 
         const observer = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {
