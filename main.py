@@ -142,7 +142,19 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     qdarktheme.setup_theme("dark")
+    
+    # Start LLM Server
+    from src.core.llm_server import LLMServerManager
+    llm_manager = LLMServerManager()
+    llm_manager.start()
+
     library_manager = LibraryManager()
     main_win = MainWindow(library_manager)
     main_win.show()
-    sys.exit(app.exec())
+    
+    exit_code = app.exec()
+    
+    # Clean up
+    llm_manager.stop()
+    
+    sys.exit(exit_code)
