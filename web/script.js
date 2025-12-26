@@ -25,6 +25,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const readerImageContainer = document.getElementById('reader-image-container');
 
     function toggleControls(event) {
+        if (layoutMode === 'strip') {
+            document.getElementById('reader-controls').classList.toggle('visible');
+            closeReaderBtn.classList.toggle('visible');
+            chapterTitle.classList.toggle('visible');
+            return;
+        }
+
         const rect = readerImageContainer.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const middleStart = rect.width * 0.2;
@@ -38,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     readerImageContainer.addEventListener('click', toggleControls);
+    stripView.addEventListener('click', toggleControls);
 
     function toggleLayout() {
         layoutMode = layoutMode === 'single' ? 'strip' : 'single';
@@ -73,14 +81,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (entry.isIntersecting) {
                     const img = entry.target;
                     img.src = img.dataset.src;
+                    img.onload = () => {
+                        img.style.minHeight = 'auto'; // Reset min-height after load
+                        img.classList.add('loaded');
+                    };
                     observer.unobserve(img);
                 }
             });
+        }, {
+            rootMargin: "200% 0px" // Pre-load images 2 screens away
         });
 
         imageList.forEach(imagePath => {
             const img = document.createElement('img');
             img.dataset.src = `/images/${encodeURIComponent(imagePath)}`;
+            // Add min-height to prevent layout jumping and ensure observer catches them
+            img.style.minHeight = '600px';
+            img.style.backgroundColor = '#222'; // Visual placeholder
+            img.classList.add('lazy-thumb'); // Use existing fade-in class
             stripView.appendChild(img);
             observer.observe(img);
         });

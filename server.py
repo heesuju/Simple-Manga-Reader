@@ -75,7 +75,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                         images = []
                         thumbnail = None
                         try:
-                            for item in sorted(os.scandir(full_chapter_path), key=lambda e: e.name):
+                            for item in sorted(os.scandir(full_chapter_path), key=lambda e: get_chapter_number(e.path)):
                                 if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
                                     images.append(item.path)
                                     if not thumbnail:
@@ -89,7 +89,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                 if not series.get('chapters'):
                     series_images = []
                     try:
-                        for item in sorted(os.scandir(series['path']), key=lambda e: e.name):
+                        for item in sorted(os.scandir(series['path']), key=lambda e: get_chapter_number(e.path)):
                             if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
                                 series_images.append(item.path)
                     except FileNotFoundError:
@@ -107,7 +107,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
 
             if os.path.isdir(path_param):
                 images = []
-                for item in sorted(os.scandir(path_param), key=lambda e: e.name):
+                for item in sorted(os.scandir(path_param), key=lambda e: get_chapter_number(e.path)):
                     if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
                         images.append(item.path)
                 self.send_json(images)
