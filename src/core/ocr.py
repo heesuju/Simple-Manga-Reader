@@ -2,8 +2,6 @@
 from manga_ocr import MangaOcr
 from PIL import Image
 
-import torch
-
 class OCR:
     _model_cache = None
 
