@@ -83,6 +83,15 @@ body {
     margin-right: 20px;
 }
 
+.lazy-thumb {
+    opacity: 0;
+    transition: opacity 0.3s ease-in;
+}
+
+.lazy-thumb.loaded {
+    opacity: 1;
+}
+
 #reader-view {
     display: none; /* Hidden by default */
     position: fixed;

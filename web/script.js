@@ -143,14 +143,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const chapterList = document.createElement('ul');
                     chapterList.id = 'chapter-list';
+
+                    // Lazy loading observer for chapters
+                    const chapterObserver = new IntersectionObserver((entries, observer) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const img = entry.target;
+                                img.src = img.dataset.src;
+                                img.classList.add('loaded'); // Optional: for fade-in effects
+                                observer.unobserve(img);
+                            }
+                        });
+                    });
+
                     seriesData.chapters.forEach(chapter => {
                         const chapterItem = document.createElement('li');
                         chapterItem.classList.add('chapter-item');
-                        chapterItem.innerHTML = `<img src="/images/${encodeURIComponent(chapter.thumbnail)}?width=150&quality=50" alt="${chapter.name}"><span>${chapter.name}</span>`;
+
+                        // Use data-src for lazy loading
+                        // Added loading='lazy' as standard attribute fallback, though JS observer is primary here
+                        chapterItem.innerHTML = `<img data-src="/images/${encodeURIComponent(chapter.thumbnail)}?width=150&quality=50" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="lazy-thumb" alt="${chapter.name}"><span>${chapter.name}</span>`;
+
                         chapterItem.addEventListener('click', () => {
+                            // Disconnect observer to stop pending loads when switching view
+                            chapterObserver.disconnect();
                             openReader(seriesData, chapter);
                         });
                         chapterList.appendChild(chapterItem);
+
+                        // Start observing the image
+                        const img = chapterItem.querySelector('img');
+                        chapterObserver.observe(img);
                     });
                     chapterListView.appendChild(chapterList);
                 } else {
