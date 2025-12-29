@@ -40,6 +40,10 @@ class MainWindow(QMainWindow):
         self.escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self.escape_shortcut.activated.connect(self._handle_escape_key)
 
+        # Global Alt+Enter shortcut for fullscreen toggle
+        self.fullscreen_shortcut = QShortcut(QKeySequence("Alt+Return"), self)
+        self.fullscreen_shortcut.activated.connect(self.toggle_fullscreen)
+
     def _handle_escape_key(self):
         if self.isFullScreen():
             self.showNormal()
