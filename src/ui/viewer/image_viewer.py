@@ -103,7 +103,7 @@ class ImageViewer(BaseViewer):
             pixmap = QPixmap.fromImage(q_img)
             self.original_pixmap = pixmap
             self._set_pixmap(pixmap, path)
-            self._trigger_hq_rescale() # Attempt to load HQ version immediately
+            self.resize_timer.start() # Attempt to load HQ version after UI stabilizes
             
         elif len(loaded_keys) >= 2:
             imgs = list(results.values())
@@ -126,7 +126,7 @@ class ImageViewer(BaseViewer):
             pix2 = QPixmap.fromImage(img2)
             
             self._setup_double_view(pix1, pix2, path1, path2)
-            self._trigger_hq_rescale()
+            self.resize_timer.start()
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
@@ -210,7 +210,7 @@ class ImageViewer(BaseViewer):
              # Standard sync load (fallback or specific use)
              self.original_pixmap = self._load_pixmap(path)
              self._set_pixmap(self.original_pixmap, path)
-             self._trigger_hq_rescale()
+             self.resize_timer.start()
 
         self.reader_view.view.reset_zoom_state()
         QTimer.singleShot(0, self.reader_view.apply_last_zoom)
@@ -383,6 +383,9 @@ class ImageViewer(BaseViewer):
              worker.signals.finished.connect(self._on_hq_scale_finished)
              self.reader_view.thread_pool.start(worker)
         else:
+             # Invalidate any pending HQ generation since we want original
+             self.hq_generation_id += 1
+             
              if self.scaled_pixmap_item:
                  self._restore_original_pixmap()
 
