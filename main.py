@@ -45,10 +45,12 @@ class MainWindow(QMainWindow):
         self.fullscreen_shortcut.activated.connect(self.toggle_fullscreen)
 
     def _handle_escape_key(self):
-        if self.isFullScreen():
-            self.showNormal()
-        elif self.reader_view and self.stacked_widget.currentWidget() == self.reader_view:
-            self.handle_reader_back()
+        current_widget = self.stacked_widget.currentWidget()
+        
+        if hasattr(self, 'reader_view') and current_widget == self.reader_view:
+            self.reader_view.back_to_grid()
+        elif hasattr(self, 'chapter_list') and current_widget == self.chapter_list:
+            self.chapter_list.go_back()
 
     def show_chapter_list(self, series):
         self.current_series = series
