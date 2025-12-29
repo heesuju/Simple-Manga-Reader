@@ -126,10 +126,10 @@ class ImageViewer(BaseViewer):
             pix2 = QPixmap.fromImage(img2)
             
             self._setup_double_view(pix1, pix2, path1, path2)
-            self.resize_timer.start()
 
         self.reader_view.view.reset_zoom_state()
-        QTimer.singleShot(0, self.reader_view.apply_last_zoom)
+        self.reader_view.apply_last_zoom()
+        self._trigger_hq_rescale()
 
     def _setup_double_view(self, pix1, pix2, path1, path2):
         h1 = pix1.height()
@@ -210,10 +210,9 @@ class ImageViewer(BaseViewer):
              # Standard sync load (fallback or specific use)
              self.original_pixmap = self._load_pixmap(path)
              self._set_pixmap(self.original_pixmap, path)
-             self.resize_timer.start()
-
         self.reader_view.view.reset_zoom_state()
-        QTimer.singleShot(0, self.reader_view.apply_last_zoom)
+        self.reader_view.apply_last_zoom()
+        self._trigger_hq_rescale()
 
     def _on_movie_frame_changed(self, frame_number):
         if self.movie and self.pixmap_item:
