@@ -154,7 +154,7 @@ if __name__ == "__main__":
 
     library_manager = LibraryManager()
     main_win = MainWindow(library_manager)
-    main_win.show()
+    main_win.showMaximized()
     
     exit_code = app.exec()
     
