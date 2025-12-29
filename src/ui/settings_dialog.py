@@ -1,6 +1,6 @@
 
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, 
-                             QHBoxLayout, QFrame, QWidget, QMessageBox, QProgressBar, QFormLayout, QLineEdit)
+                             QHBoxLayout, QFrame, QWidget, QMessageBox, QProgressBar, QFormLayout, QLineEdit, QCheckBox)
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from src.core.llm_server import LLMServerManager
 
@@ -49,6 +49,10 @@ class SettingsDialog(QDialog):
         self.path_label.setWordWrap(True)
         status_layout.addWidget(self.path_label)
 
+        # Action Buttons Layout
+        action_layout = QHBoxLayout()
+        action_layout.setContentsMargins(0, 5, 0, 0)
+        
         self.action_btn = QPushButton("Action")
         self.action_btn.setStyleSheet("""
             QPushButton {
@@ -65,7 +69,27 @@ class SettingsDialog(QDialog):
         """)
         self.action_btn.clicked.connect(self.on_action_clicked)
         self.action_btn.hide()
-        status_layout.addWidget(self.action_btn)
+        action_layout.addWidget(self.action_btn)
+        
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5252; 
+                color: white; 
+                border: none; 
+                padding: 5px 10px; 
+                border-radius: 3px; 
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #ff8a80;
+            }
+        """)
+        self.stop_btn.clicked.connect(self.stop_server)
+        self.stop_btn.hide()
+        action_layout.addWidget(self.stop_btn)
+        
+        status_layout.addLayout(action_layout)
         
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0) # Infinite loading
@@ -91,9 +115,13 @@ class SettingsDialog(QDialog):
         self.port_input.setPlaceholderText("Port (e.g. 8080)")
         self.port_input.setStyleSheet("background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 5px;")
 
+        self.auto_start_check = QCheckBox("Automatically start server on startup")
+        self.auto_start_check.setChecked(getattr(self.manager, 'auto_start', False))
+        
         config_layout.addRow("Repo ID:", self.repo_input)
         config_layout.addRow("Filename:", self.model_input)
         config_layout.addRow("Port:", self.port_input)
+        config_layout.addRow(self.auto_start_check)
         
         save_layout = QHBoxLayout()
         save_layout.addStretch()
@@ -115,6 +143,7 @@ class SettingsDialog(QDialog):
         repo_id = self.repo_input.text().strip()
         model_name = self.model_input.text().strip()
         port = self.port_input.text().strip()
+        auto_start = self.auto_start_check.isChecked()
         
         if not repo_id or not model_name or not port:
             QMessageBox.warning(self, "Invalid Config", "Please enter Repo ID, Model Name, and Port.")
@@ -125,7 +154,7 @@ class SettingsDialog(QDialog):
              return
 
         was_running = self.manager.is_running()
-        self.manager.save_config(repo_id, model_name, port)
+        self.manager.save_config(repo_id, model_name, port, auto_start)
         
         if was_running:
             if self.manager.is_model_present():
@@ -143,6 +172,7 @@ class SettingsDialog(QDialog):
 
     def check_status(self):
         self.action_btn.hide()
+        self.stop_btn.hide()
         self.progress_bar.hide()
         
         if not self.manager.is_installed():
@@ -163,10 +193,12 @@ class SettingsDialog(QDialog):
         if self.manager.is_running():
             self.status_label.setText("✅ Server is Running")
             self.status_label.setStyleSheet("color: #6bff6b; font-size: 14px; font-weight: bold;")
-            self.action_btn.setText("Restart Server")
+            self.action_btn.setText("Restart")
             self.action_btn.show()
             self.action_btn.clicked.disconnect()
             self.action_btn.clicked.connect(self.restart_server)
+            
+            self.stop_btn.show()
         else:
             self.status_label.setText("⭕ Server Stopped")
             self.status_label.setStyleSheet("color: #aaa; font-size: 14px; font-weight: bold;")
@@ -177,6 +209,7 @@ class SettingsDialog(QDialog):
 
     def download_model(self):
         self.action_btn.hide()
+        self.stop_btn.hide()
         self.progress_bar.show()
         self.status_label.setText("Downloading model...")
         
@@ -198,6 +231,10 @@ class SettingsDialog(QDialog):
     def start_server(self):
         self.manager.start()
         # Give it a moment to start/fail
+        QTimer.singleShot(500, self.check_status)
+
+    def stop_server(self):
+        self.manager.stop()
         QTimer.singleShot(500, self.check_status)
 
     def restart_server(self):

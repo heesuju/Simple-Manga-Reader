@@ -31,6 +31,7 @@ class LLMServerManager(QObject):
         self.repo_id = "Menlo/Jan-nano-gguf"
         self.model_name = "jan-nano-4b-Q4_K_M.gguf"
         self.port = 8080
+        self.auto_start = False
 
         self.load_config()
 
@@ -56,17 +57,20 @@ class LLMServerManager(QObject):
                     self.repo_id = config.get('repo_id', self.repo_id)
                     self.model_name = config.get('model_name', self.model_name)
                     self.port = config.get('port', self.port)
+                    self.auto_start = config.get('auto_start', False)
             except Exception as e:
                 print(f"Failed to load config: {e}")
 
-    def save_config(self, repo_id, model_name, port):
+    def save_config(self, repo_id, model_name, port, auto_start=True):
         self.repo_id = repo_id
         self.model_name = model_name
         self.port = int(port)
+        self.auto_start = auto_start
         config = {
             'repo_id': self.repo_id,
             'model_name': self.model_name,
-            'port': self.port
+            'port': self.port,
+            'auto_start': self.auto_start
         }
         try:
             with open(self.config_path, 'w') as f:
