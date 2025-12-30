@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let chapterList = [];
     let currentChapterIndex = -1;
     let layoutMode = 'single';
+    let storedVolume = 1.0; // Default volume
+    let storedMuted = false;
+
     const VIDEO_EXTENSIONS = ['.mp4', '.avi', '.mkv', '.webm', '.mov'];
 
     function isVideo(filename) {
@@ -70,6 +73,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     readerImageContainer.addEventListener('click', toggleControls);
     stripView.addEventListener('click', toggleControls);
+
+    // Volume Persistence
+    readerVideo.addEventListener('volumechange', () => {
+        storedVolume = readerVideo.volume;
+        storedMuted = readerVideo.muted;
+    });
 
     function toggleLayout() {
         layoutMode = layoutMode === 'single' ? 'strip' : 'single';
@@ -301,6 +310,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 readerImage.style.display = 'none';
                 readerVideo.style.display = 'block';
                 readerVideo.src = `/images/${encodeURIComponent(currentFile)}`;
+
+                // Restore volume settings
+                readerVideo.volume = storedVolume;
+                readerVideo.muted = storedMuted;
+
                 layoutBtn.style.display = 'none'; // Disable strip mode for video
             } else {
                 readerVideo.pause();

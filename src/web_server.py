@@ -192,6 +192,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                             
                             self.send_response(206)
                             self.send_header('Content-type', content_type)
+                            self.send_header('Accept-Ranges', 'bytes')
                             self.send_header('Content-Range', f'bytes {start}-{end}/{file_size}')
                             self.send_header('Content-Length', str(length))
                             self.end_headers()
@@ -208,6 +209,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                     with open(image_path, 'rb') as f:
                         self.send_response(200)
                         self.send_header('Content-type', content_type)
+                        self.send_header('Accept-Ranges', 'bytes')
                         self.send_header('Content-Length', str(file_size))
                         self.end_headers()
                         self.wfile.write(f.read())
