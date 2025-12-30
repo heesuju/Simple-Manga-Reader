@@ -15,20 +15,20 @@ from src.core.library_manager import LibraryManager
 
 library_manager = LibraryManager()
 
-def find_number(text: str) -> int:
-    numbers = re.findall(r'\d+', text)
-    return int(numbers[0]) if numbers else float('inf')
+def find_number(text: str) -> float:
+    numbers = re.findall(r'\d+(?:\.\d+)?', text)
+    return float(numbers[0]) if numbers else float('inf')
 
 def get_chapter_number(path):
-    """Extract the chapter number as integer from the folder or file name."""
+    """Extract the chapter number as integer or float from the folder or file name."""
     if isinstance(path, str) and '|' in path:
         name = Path(path.split('|')[1]).name
     else:
         name = Path(path).name
 
-    match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
+    match = re.search(r'Ch\.\s*(\d+(?:\.\d+)?)', name, re.IGNORECASE)
     if match:
-        return int(match.group(1))
+        return float(match.group(1))
     else:
         return find_number(name)
 
@@ -69,21 +69,29 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
 
             if series:
                 # Fill chapters with thumbnails/images
+                valid_chapters = []
                 for chapter in series.get('chapters', []):
                     full_chapter_path = series['path'] if not chapter['path'] else chapter['path']
                     if os.path.isdir(full_chapter_path):
                         images = []
                         thumbnail = None
                         try:
+                            # Filter out cover images from being pages
                             for item in sorted(os.scandir(full_chapter_path), key=lambda e: get_chapter_number(e.path)):
                                 if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
-                                    images.append(item.path)
-                                    if not thumbnail:
-                                        thumbnail = item.path
+                                    if item.name.lower() not in ['cover.jpg', 'cover.png']:
+                                        images.append(item.path)
+                                        if not thumbnail:
+                                            thumbnail = item.path
                         except FileNotFoundError:
                             pass
-                        chapter['thumbnail'] = thumbnail
-                        chapter['images'] = images
+                        
+                        if images:
+                            chapter['thumbnail'] = thumbnail
+                            chapter['images'] = images
+                            valid_chapters.append(chapter)
+                
+                series['chapters'] = valid_chapters
 
                 # For series without chapters → treat image files in series folder
                 if not series.get('chapters'):
@@ -171,6 +179,43 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                         content_type = 'video/quicktime'
                     elif image_path.lower().endswith('.mkv'):
                         content_type = 'video/x-matroska'
+
+                    if image_path.lower().endswith(('.avi', '.mkv')):
+                        # Transcode on the fly to WebM
+                        self.send_response(200)
+                        self.send_header('Content-type', 'video/webm')
+                        self.end_headers()
+
+                        import subprocess
+                        # ffmpeg command to transcode to WebM (VP8/Vorbis for compatibility and speed)
+                        # -f webm: force format
+                        # -c:v libvpx -b:v 1M -crf 23: video settings (balance speed/quality)
+                        # -c:a libvorbis: audio settings
+                        # -deadline realtime -cpu-used 4: speed up encoding
+                        cmd = [
+                            'ffmpeg',
+                            '-i', image_path,
+                            '-f', 'webm',
+                            '-c:v', 'libvpx',
+                            '-b:v', '1M',
+                            '-crf', '30',
+                            '-c:a', 'libvorbis',
+                            '-deadline', 'realtime',
+                            '-cpu-used', '4',
+                            '-'
+                        ]
+                        
+                        try:
+                            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**6)
+                            while True:
+                                chunk = process.stdout.read(4096)
+                                if not chunk:
+                                    break
+                                self.wfile.write(chunk)
+                            process.wait()
+                        except Exception as e:
+                            print(f"Transcoding error: {e}")
+                        return
 
                     range_header = self.headers.get('Range')
                     

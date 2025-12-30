@@ -299,15 +299,17 @@ def get_chapter_number(path):
         name = Path(path).name
     
     # Try explicit "Ch." or "Chapter"
-    match = re.search(r'(?:ch|chapter|c)\.?\s*(\d+)', name, re.IGNORECASE)
+    match = re.search(r'(?:ch|chapter|c)\.?\s*(\d+(?:\.\d+)?)', name, re.IGNORECASE)
     if match:
-        return int(match.group(1))
+        return float(match.group(1))
     
     # Fallback to finding the first number, but be careful of "Vol 1 Ch 2"
     # If there are multiple numbers, simple find_number might get the volume.
     # But usually manga naming is "Series - Ch X" or "Series 01".
     
-    return find_number(name)
+    # Inline float finding logic to avoid dependency on int-only find_number
+    numbers = re.findall(r'\d+(?:\.\d+)?', name)
+    return float(numbers[0]) if numbers else float('inf')
 
 def extract_page_number(filename: str) -> int:
     """Extract the page number from a filename."""

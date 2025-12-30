@@ -129,14 +129,17 @@ body {
 }
 
 #reader-controls,
-#close-reader {
+/* #close-reader styles removed from here */
+#reader-header {
+    /* Logic suggests header visibility is controlled similarly */
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
 #reader-controls.visible,
-#close-reader.visible {
+#reader-header.visible {
+    /* Removed #close-reader.visible as it is now inside header */
     opacity: 1;
     visibility: visible;
     z-index: 30;
@@ -181,15 +184,43 @@ body {
     display: none;
 }
 
-#close-reader {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    font-size: 24px;
+/* New Close Button Style (in header) */
+.header-back-btn {
     background: none;
     border: none;
     color: white;
+    font-size: 24px;
     cursor: pointer;
+    margin-right: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+}
+
+.header-back-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.control-nav-btn {
+    background: none;
+    border: 1px solid white;
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 5px;
+}
+
+.control-nav-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
 .nav-area {
@@ -259,16 +290,7 @@ body {
     background-color: rgba(255, 255, 255, 0.2);
 }
 
-/* Hide navigation buttons by default (Single Page Mode) */
-.header-nav-btn {
-    display: none;
-}
-
-/* Strip Mode Overrides */
-.strip-mode .header-nav-btn {
-    display: flex;
-}
-
+/* Remove old specific strip mode overrides for buttons that don't exist there anymore */
 .strip-mode #page-slider {
     display: none;
 }

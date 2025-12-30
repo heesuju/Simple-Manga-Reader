@@ -7,20 +7,20 @@ IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'}
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
 ALL_MEDIA_EXTS = IMAGE_EXTS.union(VIDEO_EXTS)
 
-def find_number(text:str)->int:
-    numbers = re.findall(r'\d+', text)
-    return int(numbers[0]) if numbers else float('inf')
+def find_number(text:str)->float:
+    numbers = re.findall(r'\d+(?:\.\d+)?', text)
+    return float(numbers[0]) if numbers else float('inf')
 
 def get_chapter_number(path):
-    """Extract the chapter number as integer from the folder or file name."""
+    """Extract the chapter number as integer or float from the folder or file name."""
     if isinstance(path, str) and '|' in path:
         name = Path(path.split('|')[1]).name
     else:
         name = Path(path).name
 
-    match = re.search(r'Ch\.\s*(\d+)', name, re.IGNORECASE)
+    match = re.search(r'Ch\.\s*(\d+(?:\.\d+)?)', name, re.IGNORECASE)
     if match:
-        return int(match.group(1))
+        return float(match.group(1))
     else:
         return find_number(name)
 
@@ -37,13 +37,25 @@ class LibraryScanner:
         """Return True only for actual image file extensions (used for cover selection)."""
         return path.is_file() and path.suffix.lower() in IMAGE_EXTS
 
+    def has_valid_chapter_content(self, chapter_path: Path):
+        """Check if chapter folder has media files other than cover.jpg/png."""
+        for item in chapter_path.iterdir():
+            if self.is_media_file(item):
+                if item.name.lower() not in ['cover.jpg', 'cover.png']:
+                    return True
+        return False
+
     def scan_series(self, series_path):
         item = Path(series_path)
         if not item.is_dir():
             return None
 
         sub_items = list(item.iterdir())
-        chapter_folders = [p for p in sub_items if p.is_dir()]
+        chapter_folders = []
+        for p in sub_items:
+            if p.is_dir() and self.has_valid_chapter_content(p):
+                chapter_folders.append(p)
+                
         image_files = [p for p in sub_items if self.is_media_file(p)]
 
         if chapter_folders:

@@ -14,8 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const stripView = document.getElementById('strip-view');
     const chapterTitle = document.getElementById('chapter-title');
     const readerHeader = document.getElementById('reader-header');
-    const prevChapterBtn = document.getElementById('prev-chapter-btn');
-    const nextChapterBtn = document.getElementById('next-chapter-btn');
+    const readerPrevBtn = document.getElementById('reader-prev-btn');
+    const readerNextBtn = document.getElementById('reader-next-btn');
 
     let currentPath = '';
     let currentManga = null;
@@ -37,37 +37,41 @@ document.addEventListener('DOMContentLoaded', () => {
     const readerImageContainer = document.getElementById('reader-image-container');
 
     function toggleControls(event) {
-        if (layoutMode === 'strip') {
-            document.getElementById('reader-controls').classList.toggle('visible');
-            closeReaderBtn.classList.toggle('visible');
-            readerHeader.classList.toggle('visible');
-            return;
-        }
+        // Toggle visibility of header (with close button) and footer controls
+        const controls = document.getElementById('reader-controls');
+        const header = document.getElementById('reader-header');
 
-        const rect = readerImageContainer.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const middleStart = rect.width * 0.2;
-        const middleEnd = rect.width * 0.8;
+        const isVisible = controls.classList.contains('visible');
 
-        if (x >= middleStart && x <= middleEnd) {
-            document.getElementById('reader-controls').classList.toggle('visible');
-            closeReaderBtn.classList.toggle('visible');
-            readerHeader.classList.toggle('visible');
+        if (isVisible) {
+            controls.classList.remove('visible');
+            header.classList.remove('visible');
+        } else {
+            controls.classList.add('visible');
+            header.classList.add('visible');
         }
     }
 
     // Nav Button Logic
-    prevChapterBtn.addEventListener('click', (e) => {
+    readerPrevBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (currentChapterIndex > 0) {
-            openReader(currentSeriesData, chapterList[currentChapterIndex - 1]);
+        if (layoutMode === 'strip') {
+            if (currentChapterIndex > 0) {
+                openReader(currentSeriesData, chapterList[currentChapterIndex - 1]);
+            }
+        } else {
+            showPrevPage();
         }
     });
 
-    nextChapterBtn.addEventListener('click', (e) => {
+    readerNextBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (currentChapterIndex < chapterList.length - 1) {
-            openReader(currentSeriesData, chapterList[currentChapterIndex + 1]);
+        if (layoutMode === 'strip') {
+            if (currentChapterIndex < chapterList.length - 1) {
+                openReader(currentSeriesData, chapterList[currentChapterIndex + 1]);
+            }
+        } else {
+            showNextPage();
         }
     });
 
@@ -358,8 +362,14 @@ document.addEventListener('DOMContentLoaded', () => {
         displayPage();
     });
 
-    nextArea.addEventListener('click', showNextPage);
-    prevArea.addEventListener('click', showPrevPage);
+    nextArea.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showNextPage();
+    });
+    prevArea.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showPrevPage();
+    });
 
     closeReaderBtn.addEventListener('click', () => {
         readerView.classList.remove('visible');
