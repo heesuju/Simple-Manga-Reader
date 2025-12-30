@@ -138,6 +138,8 @@ body {
 #close-reader.visible {
     opacity: 1;
     visibility: visible;
+    z-index: 30;
+    /* Ensure above nav-area (z-index 20) */
 }
 
 #reader-controls {
@@ -195,6 +197,11 @@ body {
     height: 100%;
     width: 20%;
     cursor: pointer;
+    z-index: 20;
+}
+
+.video-active .nav-area {
+    height: 85%;
 }
 
 #prev-area {
@@ -224,6 +231,8 @@ body {
 #reader-header.visible {
     opacity: 1;
     visibility: visible;
+    z-index: 30;
+    /* Ensure above nav-area */
 }
 
 #chapter-title {

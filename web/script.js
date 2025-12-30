@@ -309,6 +309,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isVideo(currentFile)) {
                 readerImage.style.display = 'none';
                 readerVideo.style.display = 'block';
+                readerImageContainer.classList.add('video-active');
+
                 readerVideo.src = `/images/${encodeURIComponent(currentFile)}`;
 
                 // Restore volume settings
@@ -319,6 +321,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 readerVideo.pause();
                 readerVideo.style.display = 'none';
+                readerImageContainer.classList.remove('video-active');
+
                 readerImage.style.display = 'block';
                 readerImage.src = `/images/${encodeURIComponent(currentFile)}`;
                 layoutBtn.style.display = 'inline-block';
