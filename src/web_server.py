@@ -76,7 +76,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                         thumbnail = None
                         try:
                             for item in sorted(os.scandir(full_chapter_path), key=lambda e: get_chapter_number(e.path)):
-                                if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                                if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
                                     images.append(item.path)
                                     if not thumbnail:
                                         thumbnail = item.path
@@ -90,7 +90,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                     series_images = []
                     try:
                         for item in sorted(os.scandir(series['path']), key=lambda e: get_chapter_number(e.path)):
-                            if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                            if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
                                 series_images.append(item.path)
                     except FileNotFoundError:
                         pass
@@ -108,7 +108,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
             if os.path.isdir(path_param):
                 images = []
                 for item in sorted(os.scandir(path_param), key=lambda e: get_chapter_number(e.path)):
-                    if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                    if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
                         images.append(item.path)
                 self.send_json(images)
             else:
@@ -150,17 +150,65 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                             self.wfile.write(f.read())
                         return
 
-                    # If no resizing → serve original
+                    # If no resizing → serve original with Range support
+                    file_size = os.path.getsize(image_path)
+                    
+                    # Determine Content-Type
+                    content_type = 'image/jpeg'
+                    if image_path.lower().endswith('.png'):
+                        content_type = 'image/png'
+                    elif image_path.lower().endswith('.gif'):
+                        content_type = 'image/gif'
+                    elif image_path.lower().endswith('.webp'):
+                        content_type = 'image/webp'
+                    elif image_path.lower().endswith('.mp4'):
+                        content_type = 'video/mp4'
+                    elif image_path.lower().endswith('.avi'):
+                        content_type = 'video/x-msvideo'
+                    elif image_path.lower().endswith('.webm'):
+                        content_type = 'video/webm'
+                    elif image_path.lower().endswith('.mov'):
+                        content_type = 'video/quicktime'
+                    elif image_path.lower().endswith('.mkv'):
+                        content_type = 'video/x-matroska'
+
+                    range_header = self.headers.get('Range')
+                    
+                    if range_header:
+                        try:
+                            # Parse Range header (bytes=start-end)
+                            byte_range = range_header.strip().split('=')[1]
+                            start_str, end_str = byte_range.split('-')
+                            start = int(start_str)
+                            end = int(end_str) if end_str else file_size - 1
+                            
+                            if start >= file_size:
+                                self.send_error(416, 'Requested Range Not Satisfiable')
+                                self.send_header('Content-Range', f'bytes */{file_size}')
+                                self.end_headers()
+                                return
+
+                            length = end - start + 1
+                            
+                            self.send_response(206)
+                            self.send_header('Content-type', content_type)
+                            self.send_header('Content-Range', f'bytes {start}-{end}/{file_size}')
+                            self.send_header('Content-Length', str(length))
+                            self.end_headers()
+
+                            with open(image_path, 'rb') as f:
+                                f.seek(start)
+                                self.wfile.write(f.read(length))
+                            return
+
+                        except ValueError:
+                            pass # Fallback to 200
+
+                    # Standard 200 OK response
                     with open(image_path, 'rb') as f:
                         self.send_response(200)
-                        content_type = 'image/jpeg'
-                        if image_path.lower().endswith('.png'):
-                            content_type = 'image/png'
-                        elif image_path.lower().endswith('.gif'):
-                            content_type = 'image/gif'
-                        elif image_path.lower().endswith('.webp'):
-                            content_type = 'image/webp'
                         self.send_header('Content-type', content_type)
+                        self.send_header('Content-Length', str(file_size))
                         self.end_headers()
                         self.wfile.write(f.read())
 

@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const gridView = document.getElementById('grid-view');
     const readerView = document.getElementById('reader-view');
     const readerImage = document.getElementById('reader-image');
+    const readerVideo = document.getElementById('reader-video');
     const prevPageBtn = document.getElementById('prev-page');
     const nextPageBtn = document.getElementById('next-page');
     const closeReaderBtn = document.getElementById('close-reader');
@@ -24,6 +25,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let chapterList = [];
     let currentChapterIndex = -1;
     let layoutMode = 'single';
+    const VIDEO_EXTENSIONS = ['.mp4', '.avi', '.mkv', '.webm', '.mov'];
+
+    function isVideo(filename) {
+        return VIDEO_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext));
+    }
 
     const readerImageContainer = document.getElementById('reader-image-container');
 
@@ -114,6 +120,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         imageList.forEach(imagePath => {
+            if (isVideo(imagePath)) {
+                // Skip videos in strip view as per requirement "no strip layout mode"
+                // Or render a placeholder
+                const placeholder = document.createElement('div');
+                placeholder.classList.add('strip-placeholder');
+                placeholder.style.height = '200px';
+                placeholder.style.display = 'flex';
+                placeholder.style.alignItems = 'center';
+                placeholder.style.justifyContent = 'center';
+                placeholder.style.color = '#fff';
+                placeholder.style.backgroundColor = '#333';
+                placeholder.innerText = 'Video File (View in Single Mode)';
+                stripView.appendChild(placeholder);
+                return;
+            }
             const img = document.createElement('img');
             img.dataset.src = `/images/${encodeURIComponent(imagePath)}`;
             // Add min-height to prevent layout jumping and ensure observer catches them
@@ -275,7 +296,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function displayPage() {
         if (currentPage >= 0 && currentPage < imageList.length) {
-            readerImage.src = `/images/${encodeURIComponent(imageList[currentPage])}`;
+            const currentFile = imageList[currentPage];
+            if (isVideo(currentFile)) {
+                readerImage.style.display = 'none';
+                readerVideo.style.display = 'block';
+                readerVideo.src = `/images/${encodeURIComponent(currentFile)}`;
+                layoutBtn.style.display = 'none'; // Disable strip mode for video
+            } else {
+                readerVideo.pause();
+                readerVideo.style.display = 'none';
+                readerImage.style.display = 'block';
+                readerImage.src = `/images/${encodeURIComponent(currentFile)}`;
+                layoutBtn.style.display = 'inline-block';
+            }
             pageSlider.value = currentPage;
         }
     }
@@ -318,6 +351,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             gridView.style.display = 'grid';
         }
+
+        readerVideo.pause();
+        readerVideo.src = "";
+        layoutBtn.style.display = 'inline-block'; // Reset layout button visibility
 
         document.getElementById('controls').classList.remove('hidden');
 
