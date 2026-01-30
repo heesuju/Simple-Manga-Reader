@@ -270,11 +270,24 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
         return None
 
 def get_image_data_from_zip(virtual_path):
+    zip_path_str, image_name = virtual_path.split('|', 1)
+    
+    ext = Path(zip_path_str).suffix.lower()
+    if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
+        from src.utils.archive_utils import SevenZipHandler
+        if SevenZipHandler.is_available():
+            return SevenZipHandler.read_file(zip_path_str, image_name)
+    
+    # Standard Zip support
     try:
-        zip_path, image_name = virtual_path.split('|', 1)
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            with zf.open(image_name) as f:
-                return f.read()
+        with zipfile.ZipFile(zip_path_str, 'r') as zf:
+            try:
+                with zf.open(image_name) as f:
+                    return f.read()
+            except KeyError:
+                image_name_fixed = image_name.replace('\\', '/')
+                with zf.open(image_name_fixed) as f:
+                    return f.read()
     except (zipfile.BadZipFile, KeyError):
         return None
 
