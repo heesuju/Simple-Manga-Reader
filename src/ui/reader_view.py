@@ -90,7 +90,7 @@ class ReaderView(QWidget):
         
         TranslationService.instance().task_status_changed.connect(self._on_translation_status_changed_global)
 
-        self._load_chapter_async(start_from_end=self.model.start_file is None and len(self.model.images) == 0)
+        self._load_chapter_async(start_from_end=False)
 
 
     def _on_translation_status_changed_global(self, image_path: str, lang_code: str, status: str):
@@ -821,6 +821,12 @@ class ReaderView(QWidget):
             
         if not (0 <= self.model.current_index < len(self.model.images)):
             self.top_panel.update_translate_button('TRANSLATE')
+            return
+
+        # Check if reading from archive - disable translation
+        if str(self.model.series['path']).lower().endswith(('.zip', '.cbz')) or \
+           str(self.model.manga_dir).lower().endswith(('.zip', '.cbz')):
+            self.top_panel.update_translate_button('DISABLED')
             return
 
         page = self.model.images[self.model.current_index]

@@ -142,7 +142,7 @@ class ChapterLoaderWorker(QRunnable):
         if not self.manga_dir:
             return []
         manga_path = Path(self.manga_dir)
-        if self.manga_dir.endswith('.zip'):
+        if self.manga_dir.lower().endswith(('.zip', '.cbz')):
             try:
                 with zipfile.ZipFile(self.manga_dir, 'r') as zf:
                     # include image and video extensions

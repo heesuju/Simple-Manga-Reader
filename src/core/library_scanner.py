@@ -25,6 +25,9 @@ def get_chapter_number(path):
         return find_number(name)
 
 class LibraryScanner:
+    def is_archive(self, path: Path):
+        return path.suffix.lower() in {'.zip', '.cbz'}
+
     def is_chapter_folder(self, path: Path):
         name = path.name.lower()
         return 'ch' in name or 'chapter' in name or any(char.isdigit() for char in name)
@@ -47,6 +50,25 @@ class LibraryScanner:
 
     def scan_series(self, series_path):
         item = Path(series_path)
+        
+        # Case 1: Series is a single archive file (e.g. oneshot.zip)
+        if item.is_file():
+            if self.is_archive(item):
+                series_name = item.stem
+                chapters = [{
+                    "name": series_name,
+                    "path": str(item)
+                }]
+                return {
+                    "name": series_name,
+                    "path": str(item),
+                    "cover_image": str(item),
+                    "chapters": chapters,
+                    "root_dir": str(item.parent)
+                }
+            return None
+
+        # Case 2: Series is a folder
         if not item.is_dir():
             return None
 
@@ -54,6 +76,8 @@ class LibraryScanner:
         chapter_folders = []
         for p in sub_items:
             if p.is_dir() and self.has_valid_chapter_content(p):
+                chapter_folders.append(p)
+            elif p.is_file() and self.is_archive(p):
                 chapter_folders.append(p)
                 
         image_files = [p for p in sub_items if self.is_media_file(p)]
@@ -86,12 +110,13 @@ class LibraryScanner:
             }
         return None
 
-    def get_chapters(self, chapter_folders):
+    def get_chapters(self, chapter_items):
         chapters = []
-        for chapter_folder in chapter_folders:
+        for item in chapter_items:
+            name = item.stem if item.is_file() else item.name
             chapters.append({
-                "name": chapter_folder.name,
-                "path": str(chapter_folder)
+                "name": name,
+                "path": str(item)
             })
         return sorted(chapters, key=lambda x: get_chapter_number(x['name']))
 
@@ -104,14 +129,17 @@ class LibraryScanner:
         # If no explicit cover, prefer first image (not video) of first chapter
         if chapters:
             first_chapter_path = Path(chapters[0]['path'])
-            # iterate sorted to keep consistent order
-            for item in sorted(first_chapter_path.iterdir()):
-                if self.is_image_file(item):
-                    return item
-            # if no images in chapter, fall back to any media (including video)
-            for item in sorted(first_chapter_path.iterdir()):
-                if self.is_media_file(item):
-                    return item
+            
+            if first_chapter_path.is_dir():
+                for item in sorted(first_chapter_path.iterdir()):
+                    if self.is_image_file(item):
+                        return item
+                for item in sorted(first_chapter_path.iterdir()):
+                    if self.is_media_file(item):
+                        return item
+            
+            elif first_chapter_path.is_file():
+                 return first_chapter_path
 
         # If no chapters, use first image in series folder (prefer images)
         for item in sorted(series_path.iterdir()):

@@ -152,13 +152,21 @@ class ChapterListItemWidget(QWidget):
             return
 
         menu = QMenu(self)
-        group_action = QAction("Group Pages (Auto-Alt)", self)
-        group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter, self))
-        menu.addAction(group_action)
         
-        trans_action = QAction("Edit Translations", self)
-        trans_action.triggered.connect(lambda: self.add_translation_requested.emit(self.chapter, self))
-        menu.addAction(trans_action)
+        # Check if read-only (archive)
+        is_read_only = False
+        if str(self.series['path']).lower().endswith(('.zip', '.cbz')) or \
+           str(self.chapter['path']).lower().endswith(('.zip', '.cbz')):
+            is_read_only = True
+
+        if not is_read_only:
+            group_action = QAction("Group Pages (Auto-Alt)", self)
+            group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter, self))
+            menu.addAction(group_action)
+            
+            trans_action = QAction("Edit Translations", self)
+            trans_action.triggered.connect(lambda: self.add_translation_requested.emit(self.chapter, self))
+            menu.addAction(trans_action)
 
         menu.exec(event.globalPos())
 

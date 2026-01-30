@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor, QLinearGradient, QBrush
 from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup, QPointF, pyqtProperty
-from src.utils.img_utils import crop_pixmap, get_chapter_number
+from src.utils.img_utils import crop_pixmap, get_chapter_number, load_thumbnail_from_zip
 from src.ui.info_dialog import InfoDialog
 import os
 import sys
@@ -229,9 +229,14 @@ class ThumbnailWidget(QWidget):
             self._update_text()
             
             # Reload cover image
-            if self.series.get('cover_image') and os.path.exists(self.series['cover_image']):
-                pixmap = QPixmap(self.series['cover_image'])
-                if not pixmap.isNull():
+            cover_path = self.series.get('cover_image')
+            if cover_path and os.path.exists(cover_path):
+                if cover_path.lower().endswith(('.zip', '.cbz')):
+                    pixmap = load_thumbnail_from_zip(cover_path)
+                else:
+                    pixmap = QPixmap(cover_path)
+                    
+                if pixmap and not pixmap.isNull():
                     self.set_pixmap(pixmap)
 
     def _update_text(self):

@@ -28,7 +28,7 @@ class ItemLoader(QRunnable):
         """Checks if a folder contains images or subfolders with images (1 level deep)."""
         try:
             # Check for images in the folder itself
-            if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} for f in folder_path.iterdir()):
+            if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov', '.zip', '.cbz'} for f in folder_path.iterdir()):
                 return True
 
             # Check subfolders for images
@@ -54,39 +54,45 @@ class ItemLoader(QRunnable):
                 item_type = 'series'
                 cover_image = item.get('cover_image')
                 if cover_image:
-                    pix = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
+                    if cover_image.lower().endswith(('.zip', '.cbz')):
+                        pix = load_thumbnail_from_zip(cover_image, self.thumb_width, self.thumb_height)
+                    else:
+                        pix = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
                 chapter_path = item['path']
-                thumbnail_path = item.get('cover_path')
-
-                if thumbnail_path and Path(thumbnail_path).exists():
-                    pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                if str(chapter_path).lower().endswith(('.zip', '.cbz')):
+                    pix = load_thumbnail_from_zip(chapter_path, self.thumb_width, self.thumb_height)
                 else:
-                    thumbnail_path = None
+                    thumbnail_path = item.get('cover_path')
 
-                    for ext in ['jpg', 'png', 'webp']:
-                        cover_path = Path(chapter_path) / f'cover.{ext}'
-                        if cover_path.exists():
-                            thumbnail_path = str(cover_path)
-                            break
-                    
-                    if not thumbnail_path:
-                        try:
-                            image_files = sorted([f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'}])
-                            for image_file in image_files:
-                                if not is_image_monotone(str(image_file)):
-                                    thumbnail_path = str(image_file)
-                                    break
-                        except (StopIteration, PermissionError):
-                            pass
-                    
-                    if thumbnail_path:
+                    if thumbnail_path and Path(thumbnail_path).exists():
                         pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                    else:
+                        thumbnail_path = None
+
+                        for ext in ['jpg', 'png', 'webp']:
+                            cover_path = Path(chapter_path) / f'cover.{ext}'
+                            if cover_path.exists():
+                                thumbnail_path = str(cover_path)
+                                break
                         
-                        if self.library_manager and 'id' in item:
-                            self.library_manager.set_chapter_cover_path(item['id'], thumbnail_path)
-                        item['cover_path'] = thumbnail_path
+                        if not thumbnail_path:
+                            try:
+                                image_files = sorted([f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'}])
+                                for image_file in image_files:
+                                    if not is_image_monotone(str(image_file)):
+                                        thumbnail_path = str(image_file)
+                                        break
+                            except (StopIteration, PermissionError, FileNotFoundError, OSError):
+                                pass
+                        
+                        if thumbnail_path:
+                            pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                            
+                            if self.library_manager and 'id' in item:
+                                self.library_manager.set_chapter_cover_path(item['id'], thumbnail_path)
+                            item['cover_path'] = thumbnail_path
             else:
                 path_str = str(item_path)
                 crop = None

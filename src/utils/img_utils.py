@@ -27,7 +27,7 @@ def get_virtual_path_cache_key(virtual_path: str, width: int, height: int, crop:
     settings = f"{width}x{height}{'_' + crop if crop else ''}"
     return hashlib.md5(f"{virtual_path}{mod_time}{settings}".encode()).hexdigest()
 
-IMG_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'}
+IMG_EXTS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp')
 
 def is_image_folder(folder: Union[Path, str]) -> bool:
     if isinstance(folder, str):
@@ -324,7 +324,7 @@ def _get_first_image_path(chapter_dir):
     if not chapter_dir:
         return None
     chapter_path = Path(chapter_dir)
-    if isinstance(chapter_dir, str) and chapter_dir.endswith('.zip'):
+    if isinstance(chapter_dir, str) and (chapter_dir.lower().endswith('.zip') or chapter_dir.lower().endswith('.cbz')):
         try:
             with zipfile.ZipFile(chapter_dir, 'r') as zf:
                 image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])

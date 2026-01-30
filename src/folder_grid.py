@@ -473,7 +473,10 @@ class FolderGrid(QWidget):
         widget = ThumbnailWidget(series, self.library_manager, show_chapter_number=len(series["chapters"]) > 0)
         
         series_path = Path(series['path'])
-        if not series_path.exists() or not series_path.is_dir():
+        if not series_path.exists():
+            widget.set_as_missing()
+            widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
+        elif series_path.is_file() and not series_path.suffix.lower() in {'.zip', '.cbz'}:
             widget.set_as_missing()
             widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
         else:
@@ -569,7 +572,10 @@ class FolderGrid(QWidget):
                 widget = ThumbnailWidget(series, self.library_manager)
 
                 series_path = Path(series['path'])
-                if not series_path.exists() or not series_path.is_dir():
+                if not series_path.exists():
+                    widget.set_as_missing()
+                    widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
+                elif series_path.is_file() and not series_path.suffix.lower() in {'.zip', '.cbz'}:
                     widget.set_as_missing()
                     widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
                 else:
@@ -723,13 +729,16 @@ class FolderGrid(QWidget):
 
     def show_add_menu(self):
         menu = QMenu(self)
-        add_single_action = menu.addAction("Add Single")
-        add_multiple_action = menu.addAction("Add Multiple")
+        add_single_action = menu.addAction("Add Folder")
+        add_archive_action = menu.addAction("Add Archive")
+        add_multiple_action = menu.addAction("Add Multiple Folders")
         
         action = menu.exec(self.add_btn.mapToGlobal(self.add_btn.rect().bottomLeft()))
         
         if action == add_single_action:
             self.add_single_series()
+        elif action == add_archive_action:
+            self.add_archive_series()
         elif action == add_multiple_action:
             self.add_multiple_series()
 
@@ -787,13 +796,39 @@ class FolderGrid(QWidget):
             self.load_recent_items()
             self.load_items()
 
+    def add_archive_series(self):
+        file, _ = QFileDialog.getOpenFileName(self, "Select Archive", filter="Archives (*.zip *.cbz)")
+        if file:
+            normalized_path = str(Path(file))
+            scanner = LibraryScanner()
+            series_data = scanner.scan_series(normalized_path)
+            
+            if not series_data:
+                QMessageBox.warning(self, "Invalid Archive", "Could not process the selected archive.")
+                return
+
+            self.library_manager.add_series_from_data(series_data)
+            
+            new_series = self.library_manager.get_series_by_path(file)
+            if new_series:
+                info_dialog = InfoDialog(new_series, self.library_manager, self)
+                info_dialog.exec()
+            
+            self.load_recent_items()
+            self.load_items()
+
     def add_multiple_series(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder with Manga Series")
         if folder:
             dialog = BatchMetadataDialog(self.library_manager, self)
             if dialog.exec():
                 metadata = dialog.get_metadata()
-                subfolders = [f.path for f in os.scandir(folder) if f.is_dir()]
+                subfolders = []
+                for f in os.scandir(folder):
+                    if f.is_dir():
+                        subfolders.append(f.path)
+                    elif f.is_file() and f.name.lower().endswith(('.zip', '.cbz')):
+                        subfolders.append(f.path)
                 self.library_manager.add_series_batch(subfolders, metadata)
                 self.load_recent_items()
                 self.load_items()

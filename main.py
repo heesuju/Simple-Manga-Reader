@@ -109,15 +109,27 @@ class MainWindow(QMainWindow):
 
             # Get all images in the chapter
             full_chapter_path = Path(chapter['path'])
-            images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
-            images = sorted(images, key=get_chapter_number)
+            if full_chapter_path.is_file() and full_chapter_path.suffix.lower() in {'.zip', '.cbz'}:
+                images = []
+            else:
+                try:
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
+                    images = sorted(images, key=get_chapter_number)
+                except (NotADirectoryError, FileNotFoundError):
+                    images = []
         else: # No chapters, it's a series of images
             chapter_files = []
             chapter_index = 0
             start_file = None
             full_series_path = Path(series['path'])
-            images = [str(p) for p in full_series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
-            images = sorted(images, key=get_chapter_number)
+            if full_series_path.is_file() and full_series_path.suffix.lower() in {'.zip', '.cbz'}:
+                images = []
+            else:
+                try:
+                    images = [str(p) for p in full_series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
+                    images = sorted(images, key=get_chapter_number)
+                except (NotADirectoryError, FileNotFoundError):
+                    images = []
 
         self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images)
         self.reader_view.back_pressed.connect(self.handle_reader_back)
