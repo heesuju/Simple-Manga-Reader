@@ -108,14 +108,18 @@ class MainWindow(QMainWindow):
             start_file = None # Start from the beginning of the chapter
 
             # Get all images in the chapter
-            full_chapter_path = Path(chapter['path'])
-            if full_chapter_path.is_file() and full_chapter_path.suffix.lower() in {'.zip', '.cbz'}:
+            full_chapter_path_str = chapter['path']
+            is_virtual = '|' in full_chapter_path_str
+            
+            full_chapter_path = Path(full_chapter_path_str)
+            
+            if is_virtual or (full_chapter_path.is_file() and full_chapter_path.suffix.lower() in {'.zip', '.cbz'}):
                 images = []
             else:
                 try:
                     images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
                     images = sorted(images, key=get_chapter_number)
-                except (NotADirectoryError, FileNotFoundError):
+                except (NotADirectoryError, FileNotFoundError, OSError):
                     images = []
         else: # No chapters, it's a series of images
             chapter_files = []
