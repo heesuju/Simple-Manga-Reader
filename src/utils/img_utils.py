@@ -71,6 +71,13 @@ def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
     y = (scaled_pixmap.height() - height) // 2
     return scaled_pixmap.copy(x, y, width, height)
 
+def create_thumbnail(image: QImage, width: int, height: int) -> QPixmap:
+    if image.isNull():
+        return empty_placeholder(width, height)
+         
+    pixmap = QPixmap.fromImage(image)
+    return crop_pixmap(pixmap, width, height)
+
 def empty_placeholder(width:int=150, height:int=200):
     pixmap = QPixmap(width, height)
     pixmap.fill(QColor("black"))
@@ -207,6 +214,7 @@ def load_thumbnail_from_zip(path, width=150, height=200):
         return None
 
 def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=None):
+    from src.utils.archive_utils import SevenZipHandler
     try:
         cache_key = get_virtual_path_cache_key(virtual_path, width, height, crop)
         cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
@@ -219,36 +227,46 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
         return None # Original zip file not found
 
     try:
-        zip_path, image_name = virtual_path.split('|', 1)
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            with zf.open(image_name) as f:
-                image_data = f.read()
+        zip_path_str, image_name = virtual_path.split('|', 1)
+        zip_path = Path(zip_path_str)
+        
+        image_data = None
+        
+        ext = zip_path.suffix.lower()
+        if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
+            if SevenZipHandler.is_available():
+                image_data = SevenZipHandler.read_file(str(zip_path), image_name)
+        else:
+            # Fallback to standard zip
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                image_name_fixed = image_name.replace('\\', '/')
+                try:
+                    with zf.open(image_name) as f:
+                        image_data = f.read()
+                except KeyError:
+                    with zf.open(image_name_fixed) as f:
+                        image_data = f.read()
+
+        if image_data:
+            byte_array = QByteArray(image_data)
+            buffer = QBuffer(byte_array)
+            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+
+            reader = QImageReader(buffer, QByteArray())
+            reader.setAutoTransform(True)
+            original_image = reader.read()
+
+            if not original_image.isNull():
+                thumb_pixmap = create_thumbnail(original_image, width, height)
+                # Save to cache
+                if not CACHE_DIR.exists():
+                    CACHE_DIR.mkdir(parents=True)
+                thumb_pixmap.save(str(cached_thumb_path), "PNG")
+                return thumb_pixmap
                 
-                byte_array = QByteArray(image_data)
-                buffer = QBuffer(byte_array)
-                buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-
-                reader = QImageReader(buffer, QByteArray())
-                original_size = reader.size()
-                effective_size = original_size
-
-                if crop:
-                    if original_size.width() > original_size.height():
-                        if crop == 'left':
-                            effective_size = QSize(original_size.width() // 2, original_size.height())
-                            reader.setClipRect(QRect(0, 0, original_size.width() // 2, original_size.height()))
-                        elif crop == 'right':
-                            effective_size = QSize(original_size.width() // 2, original_size.height())
-                            reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
-
-                pixmap = load_thumbnail(reader, width, height, source_size=effective_size)
-
-                if pixmap and not pixmap.isNull():
-                    pixmap.save(str(cached_thumb_path), "PNG")
-
-                return pixmap
-            
-    except (zipfile.BadZipFile, KeyError):
+        return None
+    except Exception as e:
+        print(f"Error loading virtual thumbnail {virtual_path}: {e}")
         return None
 
 def get_image_data_from_zip(virtual_path):

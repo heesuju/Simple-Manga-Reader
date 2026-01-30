@@ -797,7 +797,7 @@ class FolderGrid(QWidget):
             self.load_items()
 
     def add_archive_series(self):
-        file, _ = QFileDialog.getOpenFileName(self, "Select Archive", filter="Archives (*.zip *.cbz)")
+        file, _ = QFileDialog.getOpenFileName(self, "Select Archive", filter="Archives (*.zip *.cbz *.7z *.rar *.cbr *.cb7)")
         if file:
             normalized_path = str(Path(file))
             scanner = LibraryScanner()
@@ -827,7 +827,7 @@ class FolderGrid(QWidget):
                 for f in os.scandir(folder):
                     if f.is_dir():
                         subfolders.append(f.path)
-                    elif f.is_file() and f.name.lower().endswith(('.zip', '.cbz')):
+                    elif f.is_file() and f.name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')):
                         subfolders.append(f.path)
                 self.library_manager.add_series_batch(subfolders, metadata)
                 self.load_recent_items()
@@ -842,13 +842,13 @@ class FolderGrid(QWidget):
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            if any(Path(url.toLocalFile()).is_dir() or url.toLocalFile().lower().endswith('.zip') for url in urls):
+            if any(Path(url.toLocalFile()).is_dir() or url.toLocalFile().lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')) for url in urls):
                 event.acceptProposedAction()
 
     def dropEvent(self, event):
         urls = event.mimeData().urls()
         paths = [Path(url.toLocalFile()) for url in urls]
-        valid_paths = [str(p) for p in paths if p.is_dir() or p.suffix.lower() == '.zip']
+        valid_paths = [str(p) for p in paths if p.is_dir() or p.suffix.lower() in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}]
 
         if not valid_paths:
             return

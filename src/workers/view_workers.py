@@ -153,31 +153,53 @@ class ChapterLoaderWorker(QRunnable):
             if not internal_prefix.endswith('/'):
                 internal_prefix += '/'
             
-            try:
-                with zipfile.ZipFile(zip_path, 'r') as zf:
-                    image_files = sorted([
-                        f for f in zf.namelist() 
-                        if f.startswith(internal_prefix) and 
-                            f.lower().endswith(valid_exts) and 
-                            not f.startswith('__MACOSX') and 
-                            Path(f).stem.lower() != 'cover'
-                    ])
-                    # Return full virtual paths: zip_path|entry
-                    return [f"{zip_path}|{name}" for name in image_files]
-            except Exception:
-                return []
+            files = []
+            
+            # Check extension
+            ext = Path(zip_path).suffix.lower()
+            if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
+                from src.utils.archive_utils import SevenZipHandler
+                if SevenZipHandler.is_available():
+                    all_files = SevenZipHandler.list_files(zip_path)
+                    files = [f for f in all_files if f.replace('\\', '/').startswith(internal_prefix)]
+            else:
+                try:
+                    with zipfile.ZipFile(zip_path, 'r') as zf:
+                        files = [f for f in zf.namelist() if f.replace('\\', '/').startswith(internal_prefix)]
+                except Exception:
+                    files = []
+
+            image_files = sorted([
+                f for f in files
+                if f.lower().endswith(valid_exts) and 
+                   not f.startswith('__MACOSX') and 
+                   Path(f).stem.lower() != 'cover' and
+                   '/' not in f.replace('\\', '/')[len(internal_prefix):]
+            ])
+            # Return full virtual paths: zip_path|entry
+            return [f"{zip_path}|{name}" for name in image_files]
 
         # Case 1: Full ZIP/CBZ file as chapter
-        if path_str.lower().endswith(('.zip', '.cbz')):
-            try:
-                with zipfile.ZipFile(path_str, 'r') as zf:
-                    image_files = sorted([
-                        f for f in zf.namelist()
-                        if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX') and Path(f).stem.lower() != 'cover'
-                    ])
-                    return [f"{path_str}|{name}" for name in image_files]
-            except zipfile.BadZipFile:
-                return []
+        if path_str.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')):
+            files = []
+            ext = Path(path_str).suffix.lower()
+            
+            if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
+                from src.utils.archive_utils import SevenZipHandler
+                if SevenZipHandler.is_available():
+                    files = SevenZipHandler.list_files(path_str)
+            else:
+                try:
+                    with zipfile.ZipFile(path_str, 'r') as zf:
+                        files = zf.namelist()
+                except zipfile.BadZipFile:
+                    files = []
+
+            image_files = sorted([
+                f for f in files
+                if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX') and Path(f).stem.lower() != 'cover'
+            ])
+            return [f"{path_str}|{name}" for name in image_files]
         
         # Case 2: Directory chapter
         manga_path = Path(path_str)

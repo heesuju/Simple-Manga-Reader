@@ -26,7 +26,7 @@ def get_chapter_number(path):
 
 class LibraryScanner:
     def is_archive(self, path: Path):
-        return path.suffix.lower() in {'.zip', '.cbz'}
+        return path.suffix.lower() in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}
 
     def is_chapter_folder(self, path: Path):
         name = path.name.lower()
@@ -109,55 +109,76 @@ class LibraryScanner:
         If the archive is 'flat' (images at root with no folder structure of interest), returns [].
         """
         import zipfile
+        from src.utils.archive_utils import SevenZipHandler
+        
+        file_list = []
+        is_seven_zip = False
+        
+        ext = archive_path.suffix.lower()
+        if ext in {'.7z', '.rar', '.cbr', '.cb7'} and SevenZipHandler.is_available():
+            file_list = SevenZipHandler.list_files(archive_path)
+            is_seven_zip = True
+        
+        # Standard Zip
+        if not file_list and not is_seven_zip:
+            try:
+                with zipfile.ZipFile(archive_path, 'r') as zf:
+                    file_list = zf.namelist()
+            except Exception:
+                if SevenZipHandler.is_available() and not is_seven_zip:
+                    file_list = SevenZipHandler.list_files(archive_path)
+        
+        if not file_list:
+            return []
+
         try:
-            with zipfile.ZipFile(archive_path, 'r') as zf:
-                # Build a simple tree
-                # Node: {'files': bool, 'children': {name: Node}}
-                root = {'has_images': False, 'children': {}}
+            # Build a simple tree
+            # Node: {'files': bool, 'children': {name: Node}}
+            root = {'has_images': False, 'children': {}}
+            
+            for name in file_list:
+                if name.startswith('__MACOSX'): continue
                 
-                for name in zf.namelist():
-                    if name.startswith('__MACOSX'): continue
-                    
-                    # Normalize path separators
-                    name = name.replace('\\', '/')
-                    
-                    parts = name.strip('/').split('/')
-                    if not parts or parts == ['']: continue
-                    
-                    # Check if file is image
-                    is_img = False
-                    if not name.endswith('/'):
-                        path_obj = Path(name)
-                        if path_obj.suffix.lower() in ALL_MEDIA_EXTS and path_obj.stem.lower() != 'cover':
-                            is_img = True
-                    
-                    # Navigate/Build Tree
-                    current = root
-                    
-                    if len(parts) == 1 and not name.endswith('/'):
-                        if is_img:
-                            root['has_images'] = True
-                        continue
-                        
-                    # Directories
-                    dir_parts = parts[:-1] if not name.endswith('/') else parts
-                    
-                    for part in dir_parts:
-                        if part not in current['children']:
-                            current['children'][part] = {'has_images': False, 'children': {}}
-                        current = current['children'][part]
-                    
-                    if is_img and not name.endswith('/'):
-                        current['has_images'] = True
+                # Normalize path separators
+                name = name.replace('\\', '/')
                 
-                chapters = []
-                self._traverse_zip_tree(root, "", archive_path, chapters)
+                parts = name.strip('/').split('/')
+                if not parts or parts == ['']: continue
                 
-                if len(chapters) == 1 and chapters[0]['path'] == f"{archive_path}|":
-                    return []
+                # Check if file is image
+                is_img = False
+                if not name.endswith('/'):
+                     path_obj = Path(name)
+                     if path_obj.suffix.lower() in ALL_MEDIA_EXTS and path_obj.stem.lower() != 'cover':
+                         is_img = True
+                
+                # Navigate/Build Tree
+                current = root
+                
+                if len(parts) == 1 and not name.endswith('/'):
+                    if is_img:
+                        root['has_images'] = True
+                    continue
                     
-                return chapters
+                # Directories
+                dir_parts = parts[:-1] if not name.endswith('/') else parts
                 
+                for part in dir_parts:
+                    if part not in current['children']:
+                        current['children'][part] = {'has_images': False, 'children': {}}
+                    current = current['children'][part]
+                
+                if is_img and not name.endswith('/'):
+                    current['has_images'] = True
+            
+            chapters = []
+            self._traverse_zip_tree(root, "", archive_path, chapters)
+            
+            if len(chapters) == 1 and chapters[0]['path'] == f"{archive_path}|":
+                return []
+                
+            return chapters
+            
         except Exception as e:
             print(f"Error scanning archive {archive_path}: {e}")
             return []
