@@ -163,14 +163,13 @@ class LibraryScanner:
             return []
 
     def _traverse_zip_tree(self, node, current_path, archive_path, chapters):
-        # If this node has direct images, it's a chapter. Stop recursing.
+        # If this node has direct images, it's a chapter.
         if node['has_images']:
             name = Path(current_path).name if current_path else archive_path.stem
             chapters.append({
                 "name": name,
                 "path": f"{archive_path}|{current_path}"
             })
-            return
 
         # Recurse
         for child_name, child_node in node['children'].items():
@@ -181,6 +180,8 @@ class LibraryScanner:
     def _scan_chapters_recursive(self, folder: Path, depth: int, max_depth: int) -> list:
         if depth > max_depth:
             return []
+
+        chapters = []
 
         # 1. Check if this folder ITSELF is a chapter (has images)
         has_content = False
@@ -194,14 +195,12 @@ class LibraryScanner:
             pass
 
         if has_content:
-            return [{
+            chapters.append({
                 "name": folder.name,
                 "path": str(folder)
-            }]
+            })
 
-        # 2. If no content images, look for archives (chapters) and subfolders
-        chapters = []
-        
+        # 2. Look for archives (chapters) and subfolders
         try:
             for item in folder.iterdir():
                 if self.is_archive(item):
