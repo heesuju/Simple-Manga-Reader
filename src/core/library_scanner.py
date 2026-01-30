@@ -55,10 +55,15 @@ class LibraryScanner:
         if item.is_file():
             if self.is_archive(item):
                 series_name = item.stem
-                chapters = [{
-                    "name": series_name,
-                    "path": str(item)
-                }]
+                
+                chapters = self.scan_archive(item)
+                
+                if not chapters:
+                    chapters = [{
+                        "name": series_name,
+                        "path": str(item)
+                    }]
+                
                 return {
                     "name": series_name,
                     "path": str(item),
@@ -72,43 +77,153 @@ class LibraryScanner:
         if not item.is_dir():
             return None
 
-        sub_items = list(item.iterdir())
-        chapter_folders = []
-        for p in sub_items:
-            if p.is_dir() and self.has_valid_chapter_content(p):
-                chapter_folders.append(p)
-            elif p.is_file() and self.is_archive(p):
-                chapter_folders.append(p)
-                
-        image_files = [p for p in sub_items if self.is_media_file(p)]
+        # Recursive scan for chapters
+        chapters = self._scan_chapters_recursive(item, depth=0, max_depth=3)
+        
+        is_simple_series = False
+        if len(chapters) == 1 and chapters[0]['path'] == str(item):
+            is_simple_series = True
+        
+        if not chapters and not is_simple_series:
+            return None
 
-        if chapter_folders:
-            series_name = item.name
-            chapters = self.get_chapters(chapter_folders)
-            cover_image = self.find_cover(item, chapters)
-            return {
-                "name": series_name,
-                "path": str(item),
-                "cover_image": str(cover_image) if cover_image else None,
-                "chapters": chapters,
-                "root_dir": str(item.parent)
-            }
-        elif image_files:  # It's a series with no chapters but contains media
-            series_name = item.name
-            cover_image = self.find_cover(item, [])
-            # This series has no chapter folders, so treat the series folder as a single chapter
-            chapters = [{
-                "name": series_name,
-                "path": str(item)
+        series_name = item.name
+        
+        # Sort chapters
+        sorted_chapters = sorted(chapters, key=lambda x: get_chapter_number(x['name']))
+        
+        cover_image = self.find_cover(item, sorted_chapters)
+
+        return {
+            "name": series_name,
+            "path": str(item),
+            "cover_image": str(cover_image) if cover_image else None,
+            "chapters": sorted_chapters,
+            "root_dir": str(item.parent)
+        }
+    
+    def scan_archive(self, archive_path: Path) -> list:
+        """
+        Scan an archive for chapters (subfolders with images).
+        Returns a list of dicts: {'name': ..., 'path': 'archive.zip|internal/path'}
+        If the archive is 'flat' (images at root with no folder structure of interest), returns [].
+        """
+        import zipfile
+        try:
+            with zipfile.ZipFile(archive_path, 'r') as zf:
+                # Build a simple tree
+                # Node: {'files': bool, 'children': {name: Node}}
+                root = {'has_images': False, 'children': {}}
+                
+                for name in zf.namelist():
+                    if name.startswith('__MACOSX'): continue
+                    
+                    # Normalize path separators
+                    name = name.replace('\\', '/')
+                    
+                    parts = name.strip('/').split('/')
+                    if not parts or parts == ['']: continue
+                    
+                    # Check if file is image
+                    is_img = False
+                    if not name.endswith('/'):
+                        path_obj = Path(name)
+                        if path_obj.suffix.lower() in ALL_MEDIA_EXTS and path_obj.stem.lower() != 'cover':
+                            is_img = True
+                    
+                    # Navigate/Build Tree
+                    current = root
+                    
+                    if len(parts) == 1 and not name.endswith('/'):
+                        if is_img:
+                            root['has_images'] = True
+                        continue
+                        
+                    # Directories
+                    dir_parts = parts[:-1] if not name.endswith('/') else parts
+                    
+                    for part in dir_parts:
+                        if part not in current['children']:
+                            current['children'][part] = {'has_images': False, 'children': {}}
+                        current = current['children'][part]
+                    
+                    if is_img and not name.endswith('/'):
+                        current['has_images'] = True
+                
+                chapters = []
+                self._traverse_zip_tree(root, "", archive_path, chapters)
+                
+                if len(chapters) == 1 and chapters[0]['path'] == f"{archive_path}|":
+                    return []
+                    
+                return chapters
+                
+        except Exception as e:
+            print(f"Error scanning archive {archive_path}: {e}")
+            return []
+
+    def _traverse_zip_tree(self, node, current_path, archive_path, chapters):
+        # If this node has direct images, it's a chapter. Stop recursing.
+        if node['has_images']:
+            name = Path(current_path).name if current_path else archive_path.stem
+            chapters.append({
+                "name": name,
+                "path": f"{archive_path}|{current_path}"
+            })
+            return
+
+        # Recurse
+        for child_name, child_node in node['children'].items():
+            new_path = f"{current_path}/{child_name}" if current_path else child_name
+            self._traverse_zip_tree(child_node, new_path, archive_path, chapters)
+
+
+    def _scan_chapters_recursive(self, folder: Path, depth: int, max_depth: int) -> list:
+        if depth > max_depth:
+            return []
+
+        # 1. Check if this folder ITSELF is a chapter (has images)
+        has_content = False
+        try:
+            for f in folder.iterdir():
+                if self.is_media_file(f):
+                    if f.name.lower() not in ['cover.jpg', 'cover.png']: 
+                        has_content = True
+                        break
+        except (PermissionError, OSError):
+            pass
+
+        if has_content:
+            return [{
+                "name": folder.name,
+                "path": str(folder)
             }]
-            return {
-                "name": series_name,
-                "path": str(item),
-                "cover_image": str(cover_image) if cover_image else None,
-                "chapters": chapters,
-                "root_dir": str(item.parent)
-            }
-        return None
+
+        # 2. If no content images, look for archives (chapters) and subfolders
+        chapters = []
+        
+        try:
+            for item in folder.iterdir():
+                if self.is_archive(item):
+                    # Check inside archive for structure
+                    archive_chapters = self.scan_archive(item)
+                    if archive_chapters:
+                        chapters.extend(archive_chapters)
+                    else:
+                        # Fallback to whole archive as one chapter
+                        chapters.append({
+                            "name": item.stem,
+                            "path": str(item)
+                        })
+                        
+                elif item.is_dir():
+                    # Recurse
+                    sub_chapters = self._scan_chapters_recursive(item, depth + 1, max_depth)
+                    chapters.extend(sub_chapters)
+        except (PermissionError, OSError):
+            pass
+            
+        return chapters
 
     def get_chapters(self, chapter_items):
         chapters = []

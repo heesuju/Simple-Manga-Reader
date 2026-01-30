@@ -141,28 +141,52 @@ class ChapterLoaderWorker(QRunnable):
         """
         if not self.manga_dir:
             return []
-        manga_path = Path(self.manga_dir)
-        if self.manga_dir.lower().endswith(('.zip', '.cbz')):
+            
+        path_str = str(self.manga_dir)
+        valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS))
+
+        # Case 0: Virtual path (zip|subfolder)
+        if '|' in path_str:
+            zip_path, internal_prefix = path_str.split('|', 1)
+            # Normalize internal prefix
+            internal_prefix = internal_prefix.replace('\\', '/')
+            if not internal_prefix.endswith('/'):
+                internal_prefix += '/'
+            
             try:
-                with zipfile.ZipFile(self.manga_dir, 'r') as zf:
-                    # include image and video extensions
-                    valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS))
-                    image_files = sorted([f for f in zf.namelist()
-                                          if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX') and Path(f).stem.lower() != 'cover'])
-                    return [f"{self.manga_dir}|{name}" for name in image_files]
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    image_files = sorted([
+                        f for f in zf.namelist() 
+                        if f.startswith(internal_prefix) and 
+                            f.lower().endswith(valid_exts) and 
+                            not f.startswith('__MACOSX') and 
+                            Path(f).stem.lower() != 'cover'
+                    ])
+                    # Return full virtual paths: zip_path|entry
+                    return [f"{zip_path}|{name}" for name in image_files]
+            except Exception:
+                return []
+
+        # Case 1: Full ZIP/CBZ file as chapter
+        if path_str.lower().endswith(('.zip', '.cbz')):
+            try:
+                with zipfile.ZipFile(path_str, 'r') as zf:
+                    image_files = sorted([
+                        f for f in zf.namelist()
+                        if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX') and Path(f).stem.lower() != 'cover'
+                    ])
+                    return [f"{path_str}|{name}" for name in image_files]
             except zipfile.BadZipFile:
                 return []
-        elif manga_path.is_dir():
-            exts = IMAGE_EXTS.union(VIDEO_EXTS)
+        
+        # Case 2: Directory chapter
+        manga_path = Path(path_str)
+        if manga_path.is_dir():
             files = []
-            
-            # 1. Scan root
             files.extend([str(p) for p in manga_path.iterdir() 
-                          if p.suffix.lower() in exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
-            
-            # Subfolders (alts/translations) are handled by AltManager resolution and should not be added to the main list
-                
+                          if p.suffix.lower() in valid_exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
             return sorted(files)
+            
         return []
 
 class WorkerSignals(QObject):
