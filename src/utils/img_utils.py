@@ -123,9 +123,13 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
         return None # Original file not found
         
     video_extensions = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
+    archive_extensions = {".zip", ".cbz", ".7z", ".rar", ".cbr", ".cb7"}
     file_ext = Path(path_str).suffix.lower()
 
     pixmap = None
+
+    if file_ext in archive_extensions:
+        return load_thumbnail_from_zip(path, width, height)
 
     if file_ext in video_extensions:
         try:
@@ -190,6 +194,38 @@ def load_thumbnail_from_zip(path, width=150, height=200):
         return None # Original file not found
 
     try:
+        from src.utils.archive_utils import SevenZipHandler
+        
+        path_obj = Path(path_str)
+        ext = path_obj.suffix.lower()
+        
+        # 7z/RAR support
+        if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
+            if SevenZipHandler.is_available():
+                files = SevenZipHandler.list_files(path_str)
+                image_files = sorted([f for f in files if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
+                
+                if not image_files:
+                    return None
+                    
+                first_image_name = image_files[0]
+                image_data = SevenZipHandler.read_file(path_str, first_image_name)
+                
+                if image_data:
+                    byte_array = QByteArray(image_data)
+                    buffer = QBuffer(byte_array)
+                    buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+
+                    reader = QImageReader(buffer, QByteArray())
+                    pixmap = load_thumbnail(reader, width, height)
+
+                    if pixmap and not pixmap.isNull():
+                        pixmap.save(str(cached_thumb_path), "PNG")
+                    
+                    return pixmap
+            return None
+
+        # Standard Zip
         with zipfile.ZipFile(path, 'r') as zf:
             image_files = sorted([f for f in zf.namelist() if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
             if not image_files:
@@ -212,7 +248,7 @@ def load_thumbnail_from_zip(path, width=150, height=200):
                 return pixmap
     except zipfile.BadZipFile:
         return None
-
+        
 def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=None):
     from src.utils.archive_utils import SevenZipHandler
     try:

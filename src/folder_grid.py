@@ -575,7 +575,7 @@ class FolderGrid(QWidget):
                 if not series_path.exists():
                     widget.set_as_missing()
                     widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
-                elif series_path.is_file() and not series_path.suffix.lower() in {'.zip', '.cbz'}:
+                elif series_path.is_file() and not series_path.suffix.lower() in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}:
                     widget.set_as_missing()
                     widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
                 else:
