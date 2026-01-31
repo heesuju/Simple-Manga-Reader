@@ -522,10 +522,32 @@ class ReaderView(QWidget):
 
         return super().eventFilter(obj, event)
 
+    def resolve_path(self, path: str) -> str:
+        """Resolves a virtual archive path to a real local file path if it exists in cache."""
+        if not path or '|' not in path:
+            return path
+            
+        archive_path, internal = path.split('|', 1)
+        ext = os.path.splitext(archive_path)[1].lower()
+        
+        if ext in {'.7z', '.rar', '.cbr', '.cb7', '.zip', '.cbz'}:
+            from src.utils.archive_utils import SevenZipHandler
+            extract_dir = SevenZipHandler.get_extract_dir(archive_path)
+            target = extract_dir / internal.replace('/', os.sep).replace('\\', os.sep)
+            
+            if target.exists():
+                return str(target)
+            
+            SevenZipHandler.read_file(archive_path, internal)
+            if target.exists():
+                return str(target)
+                
+        return path
+
     def _load_image(self, path: str):
-        # Determine viewer type
         ext = os.path.splitext(path)[1].lower()
         is_video = ext in VIDEO_EXTS
+        resolved_path = self.resolve_path(path)
         
         target_viewer = self.video_viewer if is_video else self.image_viewer
         
@@ -539,7 +561,7 @@ class ReaderView(QWidget):
              # Refresh current index just in case, though on_page_updated handles specific updates
              self.strip_viewer.refresh(self.model.current_index)
         else:
-             self.current_viewer.load(path)
+             self.current_viewer.load(resolved_path)
 
         self.page_panel._update_page_selection(self.model.current_index)
         
@@ -746,12 +768,12 @@ class ReaderView(QWidget):
 
         if self.model.manga_dir:
             path_str = str(self.model.manga_dir)
-            if path_str.lower().endswith(('.7z', '.rar', '.cbr', '.cb7')):
+            if path_str.lower().endswith(('.7z', '.rar', '.cbr', '.cb7', '.zip', '.cbz')):
                 extract_worker = ArchiveExtractionWorker(path_str)
                 self.thread_pool.start(extract_worker)
             elif '|' in path_str:
                 zip_path, _ = path_str.split('|', 1)
-                if zip_path.lower().endswith(('.7z', '.rar', '.cbr', '.cb7')):
+                if zip_path.lower().endswith(('.7z', '.rar', '.cbr', '.cb7', '.zip', '.cbz')):
                     extract_worker = ArchiveExtractionWorker(zip_path)
                     self.thread_pool.start(extract_worker)
 
