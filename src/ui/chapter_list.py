@@ -258,18 +258,50 @@ class ChapterListView(QWidget):
         self.top_spacer = QWidget()
         self.content_layout.addWidget(self.top_spacer)
 
-        # Back button is an overlay, everything else scrolls
+        self.top_bar_overlay = QWidget(self)
+        self.top_bar_overlay.setStyleSheet("background-color: transparent;")
+        self.top_bar_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        
+        self.top_bar_layout = QHBoxLayout(self.top_bar_overlay)
+        self.top_bar_layout.setContentsMargins(10, 5, 10, 5)
+        self.top_bar_layout.setSpacing(10)
+        self.top_bar_layout.addSpacing(32) 
+
+        self.top_bar_label = QLabel(self.series['name'])
+        self.top_bar_label.setStyleSheet("color: white; background: transparent; padding-left: 10px;")
+        self.top_bar_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.top_bar_label.hide()
+        self.top_bar_layout.addWidget(self.top_bar_label, 1) 
+        
         self.back_btn = QPushButton(self)
         self.back_btn.setIcon(QIcon(resource_path("assets/icons/back.svg")))
         self.back_btn.setIconSize(QSize(24, 24))
         self.back_btn.setFixedSize(32, 32)
         self.back_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.back_btn.clicked.connect(self.go_back)
-        self.back_btn.clicked.connect(self.go_back)
+
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.gradient_overlay.set_scroll_offset)
+        self.scroll_area.verticalScrollBar().valueChanged.connect(self.update_top_bar)
 
         self.display_chapters = []
         self.load_chapters_and_info()
+
+    def update_top_bar(self, value=0):
+        if not hasattr(self, 'series_name_label'):
+            return
+        label_pos = self.series_name_label.mapTo(self.scroll_area.viewport(), self.series_name_label.contentsRect().bottomLeft())
+        top_bar_height = self.top_bar_overlay.height()
+
+        if label_pos.y() < top_bar_height:
+            self.top_bar_overlay.setStyleSheet("background-color: rgba(0, 0, 0, 170);")
+            self.top_bar_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+            if self.top_bar_label.isHidden():
+                self.top_bar_label.show()
+        else:
+            self.top_bar_overlay.setStyleSheet("background-color: transparent;")
+            self.top_bar_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            if not self.top_bar_label.isHidden():
+                self.top_bar_label.hide()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.BackButton:
@@ -288,8 +320,18 @@ class ChapterListView(QWidget):
         
         self.gradient_overlay.setGeometry(self.rect())
         self.scroll_area.setGeometry(self.rect())
+        
+        header_height = self.top_bar_overlay.sizeHint().height()
+        if header_height < 42: header_height = 42
+        self.top_bar_overlay.setGeometry(0, 0, self.width(), header_height)
+        self.top_bar_overlay.raise_()
+        
+        self.back_btn.move(10, 5)
+        self.back_btn.raise_()
+        
         self.top_spacer.setFixedHeight(self.height() // 2)
-        self.back_btn.move(10, 10)
+        
+        self.update_top_bar(self.scroll_area.verticalScrollBar().value())
 
     def _on_tag_clicked(self, tag_type, tag_value):
         self.tag_clicked.emit(tag_type, tag_value)
@@ -374,15 +416,15 @@ class ChapterListView(QWidget):
         button_container.setLayout(button_layout)
         self.content_layout.addWidget(button_container)
 
-        series_name_label = QLabel(self.series['name'])
-        series_name_label.setWordWrap(True)
-        series_name_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
+        self.series_name_label = QLabel(self.series['name'])
+        self.series_name_label.setWordWrap(True)
+        self.series_name_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
         shadow_effect = QGraphicsDropShadowEffect()
         shadow_effect.setBlurRadius(5)
         shadow_effect.setColor(QColor(0, 0, 0, 180))
         shadow_effect.setOffset(2, 2)
-        series_name_label.setGraphicsEffect(shadow_effect)
-        self.content_layout.addWidget(series_name_label)
+        self.series_name_label.setGraphicsEffect(shadow_effect)
+        self.content_layout.addWidget(self.series_name_label)
 
         description = self.series.get('description')
         if description:
