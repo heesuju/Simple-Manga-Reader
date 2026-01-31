@@ -6,10 +6,66 @@ from pathlib import Path
 from PyQt6.QtGui import QPixmap, QImageReader, QColor, QImage
 from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray, QRect
 import zipfile
+import threading
+from collections import OrderedDict
 from src.utils.str_utils import find_number
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+class ZipCache:
+    """Thread-safe LRU cache for open ZipFile objects."""
+    def __init__(self, max_size: int = 5):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+        self.lock = threading.Lock()
+
+    def get_zip(self, path: str) -> zipfile.ZipFile:
+        with self.lock:
+            if path in self.cache:
+                zf = self.cache[path]
+                try:
+                    # Quick check if the zip is still usable
+                    if zf.fp is not None:
+                        self.cache.move_to_end(path)
+                        return zf
+                except Exception:
+                    pass
+                
+                # If we reach here, the zip is closed or broken
+                try:
+                    zf.close()
+                except Exception:
+                    pass
+                del self.cache[path]
+            
+            # Create new ZipFile
+            try:
+                zf = zipfile.ZipFile(path, 'r')
+                self.cache[path] = zf
+                
+                # Evict oldest if full
+                if len(self.cache) > self.max_size:
+                    _, zip_to_close = self.cache.popitem(last=False)
+                    try:
+                        zip_to_close.close()
+                    except Exception:
+                        pass
+                
+                return zf
+            except Exception:
+                return None
+
+    def clear(self):
+        with self.lock:
+            for zf in self.cache.values():
+                try:
+                    zf.close()
+                except Exception:
+                    pass
+            self.cache.clear()
+
+ZIP_CACHE = ZipCache(max_size=5)
 
 CACHE_DIR = Path('.cache/thumbnails')
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -314,18 +370,24 @@ def get_image_data_from_zip(virtual_path):
         if SevenZipHandler.is_available():
             return SevenZipHandler.read_file(zip_path_str, image_name)
     
-    # Standard Zip support
+    # Standard Zip support (cached)
     try:
-        with zipfile.ZipFile(zip_path_str, 'r') as zf:
+        zf = ZIP_CACHE.get_zip(zip_path_str)
+        if zf:
             try:
                 with zf.open(image_name) as f:
                     return f.read()
-            except KeyError:
+            except (KeyError, ValueError, RuntimeError):
+                # Retry once if it failed (e.g., if zip was closed from another thread)
                 image_name_fixed = image_name.replace('\\', '/')
-                with zf.open(image_name_fixed) as f:
-                    return f.read()
-    except (zipfile.BadZipFile, KeyError):
+                try:
+                    with zf.open(image_name_fixed) as f:
+                        return f.read()
+                except (KeyError, ValueError, RuntimeError):
+                    return None
+    except Exception:
         return None
+    return None
 
 def load_pixmap_for_thumbnailing(path: str, target_width: int = 0) -> QPixmap | None:
     reader = None

@@ -180,7 +180,15 @@ if __name__ == "__main__":
     
     exit_code = app.exec()
     
-    # Clean up
     llm_manager.stop()
+    try:
+        import shutil
+        from src.utils.img_utils import ZIP_CACHE
+        from src.utils.archive_utils import ARCHIVE_CACHE_DIR
+        ZIP_CACHE.clear()
+        if ARCHIVE_CACHE_DIR.exists():
+            shutil.rmtree(ARCHIVE_CACHE_DIR, ignore_errors=True)
+    except Exception:
+        pass
     
     sys.exit(exit_code)

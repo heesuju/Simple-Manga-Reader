@@ -25,7 +25,7 @@ from src.enums import Language
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, ArchiveExtractionWorker
 from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
 
@@ -743,6 +743,17 @@ class ReaderView(QWidget):
         )
         worker.signals.finished.connect(self._on_chapter_loaded)
         self.thread_pool.start(worker)
+
+        if self.model.manga_dir:
+            path_str = str(self.model.manga_dir)
+            if path_str.lower().endswith(('.7z', '.rar', '.cbr', '.cb7')):
+                extract_worker = ArchiveExtractionWorker(path_str)
+                self.thread_pool.start(extract_worker)
+            elif '|' in path_str:
+                zip_path, _ = path_str.split('|', 1)
+                if zip_path.lower().endswith(('.7z', '.rar', '.cbr', '.cb7')):
+                    extract_worker = ArchiveExtractionWorker(zip_path)
+                    self.thread_pool.start(extract_worker)
 
     def _on_chapter_loaded(self, result: dict):
         if result["manga_dir"] != self.model.manga_dir:

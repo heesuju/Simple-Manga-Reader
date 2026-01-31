@@ -10,9 +10,23 @@ from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
 from src.core.alt_manager import AltManager
 
-# New: list of video extensions we want to treat as media
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}
+
+class ArchiveExtractionSignals(QObject):
+    finished = pyqtSignal(str, bool) # archive_path, success
+
+class ArchiveExtractionWorker(QRunnable):
+    def __init__(self, archive_path: str):
+        super().__init__()
+        self.archive_path = archive_path
+        self.signals = ArchiveExtractionSignals()
+
+    @pyqtSlot()
+    def run(self):
+        from src.utils.archive_utils import SevenZipHandler
+        success = SevenZipHandler.extract_all(self.archive_path)
+        self.signals.finished.emit(self.archive_path, success)
 
 class AnimationFrameLoaderSignals(QObject):
     finished = pyqtSignal(dict)
@@ -93,17 +107,13 @@ class ChapterLoaderWorker(QRunnable):
             })
             return
 
-        # Perform blocking I/O and processing here
+        # Perform I/O and grouping in the worker thread
         image_list = self._get_image_list()
         image_list = sorted(image_list, key=get_chapter_number)
 
-        # Group images here in the worker thread
-        # 1. Load alt config
         alt_config = AltManager.load_alts(self.series_path)
-        # 2. Extract chapter specific config
         chapter_name = Path(self.manga_dir).name
         chapter_alts = alt_config.get(chapter_name, {})
-        # 3. Group
         grouped_pages = AltManager.group_images(image_list, chapter_alts)
 
         initial_index = 0
@@ -113,11 +123,9 @@ class ChapterLoaderWorker(QRunnable):
         initial_pixmap = None
         if grouped_pages:
             if 0 <= initial_index < len(grouped_pages):
-                # only try to load a pixmap if the initial item is an image (not a video)
                 # Use the first variant of the page
                 page = grouped_pages[initial_index]
                 candidate = page.images[0]
-                # candidate may be "zip|name" or a file path
                 suffix = Path(candidate.split('|')[-1]).suffix.lower()
                 if suffix in IMAGE_EXTS:
                     initial_pixmap = self.load_pixmap(candidate)
