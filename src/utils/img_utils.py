@@ -19,6 +19,7 @@ class ZipCache:
         self.cache = OrderedDict()
         self.max_size = max_size
         self.lock = threading.Lock()
+        self.read_lock = threading.Lock() # Lock for actual file I/O operations
 
     def get_zip(self, path: str) -> zipfile.ZipFile:
         with self.lock:
@@ -282,26 +283,34 @@ def load_thumbnail_from_zip(path, width=150, height=200):
             return None
 
         # Standard Zip
-        with zipfile.ZipFile(path, 'r') as zf:
-            image_files = sorted([f for f in zf.namelist() if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
-            if not image_files:
-                return None
+        from src.utils.img_utils import ZIP_CACHE
+        zf = ZIP_CACHE.get_zip(path)
+        if not zf:
+            return None
+            
+        try:
+            with ZIP_CACHE.read_lock:
+                image_files = sorted([f for f in zf.namelist() if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
+                if not image_files:
+                    return None
 
-            first_image_name = image_files[0]
-            with zf.open(first_image_name) as f:
-                image_data = f.read()
+                first_image_name = image_files[0]
+                with zf.open(first_image_name) as f:
+                    image_data = f.read()
                 
-                byte_array = QByteArray(image_data)
-                buffer = QBuffer(byte_array)
-                buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+            byte_array = QByteArray(image_data)
+            buffer = QBuffer(byte_array)
+            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 
-                reader = QImageReader(buffer, QByteArray())
-                pixmap = load_thumbnail(reader, width, height)
+            reader = QImageReader(buffer, QByteArray())
+            pixmap = load_thumbnail(reader, width, height)
 
-                if pixmap and not pixmap.isNull():
-                    pixmap.save(str(cached_thumb_path), "PNG")
+            if pixmap and not pixmap.isNull():
+                pixmap.save(str(cached_thumb_path), "PNG")
 
-                return pixmap
+            return pixmap
+        except (zipfile.BadZipFile, KeyError, RuntimeError):
+            return None
     except zipfile.BadZipFile:
         return None
         
@@ -330,14 +339,22 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
                 image_data = SevenZipHandler.read_file(str(zip_path), image_name)
         else:
             # Fallback to standard zip
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                image_name_fixed = image_name.replace('\\', '/')
-                try:
-                    with zf.open(image_name) as f:
-                        image_data = f.read()
-                except KeyError:
-                    with zf.open(image_name_fixed) as f:
-                        image_data = f.read()
+            from src.utils.img_utils import ZIP_CACHE
+            zf = ZIP_CACHE.get_zip(str(zip_path))
+            if not zf:
+                return None
+                
+            image_name_fixed = image_name.replace('\\', '/')
+            try:
+                with ZIP_CACHE.read_lock:
+                    try:
+                        with zf.open(image_name) as f:
+                            image_data = f.read()
+                    except (KeyError, ValueError, RuntimeError):
+                        with zf.open(image_name_fixed) as f:
+                            image_data = f.read()
+            except (KeyError, ValueError, RuntimeError):
+                return None
 
         if image_data:
             byte_array = QByteArray(image_data)
@@ -374,17 +391,18 @@ def get_image_data_from_zip(virtual_path):
     try:
         zf = ZIP_CACHE.get_zip(zip_path_str)
         if zf:
-            try:
-                with zf.open(image_name) as f:
-                    return f.read()
-            except (KeyError, ValueError, RuntimeError):
-                # Retry once if it failed (e.g., if zip was closed from another thread)
-                image_name_fixed = image_name.replace('\\', '/')
+            with ZIP_CACHE.read_lock:
                 try:
-                    with zf.open(image_name_fixed) as f:
+                    with zf.open(image_name) as f:
                         return f.read()
                 except (KeyError, ValueError, RuntimeError):
-                    return None
+                    # Retry once if it failed (e.g., if zip was closed from another thread)
+                    image_name_fixed = image_name.replace('\\', '/')
+                    try:
+                        with zf.open(image_name_fixed) as f:
+                            return f.read()
+                    except (KeyError, ValueError, RuntimeError):
+                        return None
     except Exception:
         return None
     return None

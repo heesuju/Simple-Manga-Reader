@@ -128,19 +128,113 @@ class ChapterLoaderWorker(QRunnable):
                 candidate = page.images[0]
                 suffix = Path(candidate.split('|')[-1]).suffix.lower()
                 if suffix in IMAGE_EXTS:
-                    initial_pixmap = self.load_pixmap(candidate)
+                    # Resolve path for extraction cache if needed
+                    resolved = self._resolve_path(candidate)
+                    initial_pixmap = self.load_pixmap(resolved)
                 else:
                     initial_pixmap = None
 
+        # Background Spread Detection
+        self._detect_spreads_in_background(grouped_pages)
+
         result = {
             "manga_dir": self.manga_dir,
-            "images": grouped_pages, # Now passing Page objects
-            "initial_index": initial_index,
+            "images": grouped_pages,
             "initial_index": initial_index,
             "initial_pixmap": initial_pixmap,
             "start_from_end": self.start_from_end
         }
         self.signals.finished.emit(result)
+
+    def _resolve_path(self, path: str) -> str:
+        """Helper to resolve virtual paths to extraction cache for background processing."""
+        if not path or '|' not in path:
+            return path
+            
+        archive_path, internal = path.split('|', 1)
+        from src.utils.archive_utils import SevenZipHandler
+        extract_dir = SevenZipHandler.get_extract_dir(archive_path)
+        target = extract_dir / internal.replace('/', os.sep).replace('\\', os.sep)
+        
+        if target.exists():
+            return str(target)
+            
+        return path
+
+    def _detect_spreads_in_background(self, pages):
+        """Perform spread detection using extracted files or ZipFile data."""
+        if not pages:
+            return
+
+        import os
+        from PyQt6.QtGui import QImageReader
+        import zipfile
+        from src.utils.img_utils import ZIP_CACHE
+
+        # 1. Samples
+        ratios = []
+        sample_indices = []
+        if len(pages) > 0:
+            indices = list(range(len(pages)))
+            import random
+            sample_indices = random.sample(indices, min(5, len(indices)))
+            
+        for i in sample_indices:
+            page = pages[i]
+            path = page.path
+            resolved = self._resolve_path(path)
+            
+            if '|' not in resolved:
+                reader = QImageReader(resolved)
+                size = reader.size()
+                if size.isValid() and size.height() > 0:
+                    ratios.append(size.width() / size.height())
+            else:
+                zip_path, internal = path.split('|', 1)
+                zf = ZIP_CACHE.get_zip(zip_path)
+                if zf:
+                    try:
+                        with zf.open(internal) as f:
+                            data = f.read()
+                            buffer = QBuffer()
+                            buffer.setData(data)
+                            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+                            reader = QImageReader(buffer)
+                            size = reader.size()
+                            if size.isValid() and size.height() > 0:
+                                ratios.append(size.width() / size.height())
+                    except Exception:
+                        pass
+
+        if not ratios:
+            return
+
+        median_ratio = sorted(ratios)[len(ratios) // 2]
+        if median_ratio == 0: return
+        is_consistent = all(abs(r - median_ratio) / median_ratio < 0.1 for r in ratios)
+        if not is_consistent: return
+
+        spread_threshold = median_ratio * 1.5
+        
+        # 2. All pages
+        for page in pages:
+            if getattr(page, 'is_spread_explicit', False):
+                continue
+                
+            path = page.path
+            resolved = self._resolve_path(path)
+            is_spread = False
+            
+            if '|' not in resolved:
+                reader = QImageReader(resolved)
+                size = reader.size()
+                if size.isValid() and size.height() > 0:
+                    is_spread = (size.width() / size.height()) > spread_threshold
+            else:
+                pass
+            
+            if is_spread != page.is_spread:
+                page.is_spread = is_spread
 
     def _get_image_list(self):
         """

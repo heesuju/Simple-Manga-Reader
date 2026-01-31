@@ -220,20 +220,22 @@ class ReaderModel(QObject):
         # Sample random 5 pages from middle 50%
         valid_indices = range(len(self.images))
         if len(self.images) > 10:
-             start = len(self.images) // 4
-             end = len(self.images) * 3 // 4
-             valid_indices = range(start, end)
+            start = len(self.images) // 4
+            end = len(self.images) * 3 // 4
+            valid_indices = range(start, end)
         
         # Taking up to 5 samples
         sample_indices = random.sample(valid_indices, min(5, len(valid_indices)))
         ratios = []
         
         for i in sample_indices:
-             path = self.images[i].path
-             reader = QImageReader(path)
-             size = reader.size()
-             if size.isValid() and size.height() > 0:
-                 ratios.append(size.width() / size.height())
+            path = self.images[i].path
+            if '|' in path:
+                continue
+            reader = QImageReader(path)
+            size = reader.size()
+            if size.isValid() and size.height() > 0:
+                ratios.append(size.width() / size.height())
         
         if not ratios:
             return
@@ -262,6 +264,9 @@ class ReaderModel(QObject):
                 continue
                 
             path = page.path
+            if '|' in path:
+                continue
+
             reader = QImageReader(path)
             size = reader.size()
             

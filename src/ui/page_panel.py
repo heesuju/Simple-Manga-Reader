@@ -78,11 +78,27 @@ class PagePanel(CollapsiblePanel):
              # Defer the snap slightly to ensure layout is ready
             QTimer.singleShot(50, lambda: self._update_page_selection(self.model.current_index))
 
+    def _resolve_path(self, path: str) -> str:
+        """Helper to resolve virtual paths to extraction cache for faster thumbnail loading."""
+        if not path or '|' not in path:
+            return path
+            
+        archive_path, internal = path.split('|', 1)
+        from src.utils.archive_utils import SevenZipHandler
+        extract_dir = SevenZipHandler.get_extract_dir(archive_path)
+        target = extract_dir / internal.replace('/', os.sep).replace('\\', os.sep)
+        
+        if target.exists():
+            return str(target)
+        return path
+
     def _load_thumbnail(self, path: str):
-        if '|' in path:
-            return load_thumbnail_from_virtual_path(path, 150, 200)
+        # Resolve to cache if possible for much faster local loading
+        resolved = self._resolve_path(path)
+        if '|' in resolved:
+            return load_thumbnail_from_virtual_path(resolved, 150, 200)
         else:
-            return load_thumbnail_from_path(path, 150, 200)
+            return load_thumbnail_from_path(resolved, 150, 200)
 
     def stop_loading_thumbnails(self):
         self.batch_timer.stop()
