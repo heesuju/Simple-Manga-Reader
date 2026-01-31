@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon
 from src.utils.resource_utils import resource_path
 from src.enums import Language
+from src.ui.styles import FLAT_BUTTON_STYLE
 
 class TopPanel(QWidget):
     """A simple panel at the top of the reader view."""
@@ -29,32 +30,34 @@ class TopPanel(QWidget):
         self.series_label.setStyleSheet("background-color: transparent;")
 
         # Icons
-        self.play_icon = QIcon(resource_path("assets/icons/play.png"))
-        self.pause_icon = QIcon(resource_path("assets/icons/pause.png"))
-        self.repeat_on_icon = QIcon(resource_path("assets/icons/repeat_on.png"))
-        self.repeat_off_icon = QIcon(resource_path("assets/icons/repeat_off.png"))
+        self.play_icon = QIcon(resource_path("assets/icons/slideshow_play.svg"))
+        self.pause_icon = QIcon(resource_path("assets/icons/slideshow_pause.svg"))
+        self.repeat_on_icon = QIcon(resource_path("assets/icons/repeat_on.svg"))
+        self.repeat_off_icon = QIcon(resource_path("assets/icons/repeat_off.svg"))
 
         button_size = QSize(32, 32)
         
         # Slideshow controls
         self.slideshow_button = QPushButton()
         self.slideshow_button.setIcon(self.play_icon)
-        self.slideshow_button.setIconSize(QSize(16, 16))
+        self.slideshow_button.setIconSize(QSize(24, 24))
         self.slideshow_button.setFixedSize(button_size)
+        self.slideshow_button.setStyleSheet(FLAT_BUTTON_STYLE)
         self.slideshow_button.setToolTip("Toggle Slideshow")
         self.slideshow_button.clicked.connect(self.slideshow_clicked.emit)
 
         self.speed_button = QPushButton("1x")
-        self.speed_button.setStyleSheet("font-weight: bold; background-color: rgba(255, 255, 255, 30); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px;")
         self.speed_button.setFixedSize(button_size)
+        self.speed_button.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; }")
         self.speed_button.setToolTip("Change Speed")
         self.speed_button.clicked.connect(self.speed_changed.emit)
 
         self.repeat_button = QPushButton()
         self.repeat_button.setIcon(self.repeat_off_icon)
-        self.repeat_button.setIconSize(QSize(16, 16))
+        self.repeat_button.setIconSize(QSize(24, 24))
         self.repeat_button.setFixedSize(button_size)
         self.repeat_button.setCheckable(True)
+        self.repeat_button.setStyleSheet(FLAT_BUTTON_STYLE)
         self.repeat_button.setToolTip("Toggle Repeat")
         self.repeat_button.toggled.connect(self._on_repeat_toggled)
 
@@ -71,7 +74,7 @@ class TopPanel(QWidget):
         
         self.translate_btn = QPushButton("Translate")
         self.translate_btn.setFixedSize(80, 32)
-        self.translate_btn.setStyleSheet("font-weight: bold; background-color: rgba(0, 120, 215, 150); border: 1px solid rgba(255, 255, 255, 50); border-radius: 3px; color: white;")
+        self.translate_btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; background-color: rgba(0, 120, 215, 150); }")
         self.translate_btn.clicked.connect(self._on_translate_clicked)
 
         self.translate_layout.addWidget(self.lang_combo)

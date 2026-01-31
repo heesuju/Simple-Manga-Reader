@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, pyqtSignal, QSize, QUrl, QRectF, QSizeF
 from src.utils.resource_utils import resource_path
+from src.ui.styles import FLAT_BUTTON_STYLE
 
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
@@ -142,7 +143,10 @@ class ReaderView(QWidget):
         self.loading_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; font-size: 24px;")
         self.loading_label.hide()
 
-        self.back_icon = QIcon(resource_path("assets/icons/back.png"))
+        self.back_icon = QIcon(resource_path("assets/icons/back.svg"))
+        self.layout_single_icon = QIcon(resource_path("assets/icons/layout_single.svg"))
+        self.layout_double_icon = QIcon(resource_path("assets/icons/layout_double.svg"))
+        self.layout_strip_icon = QIcon(resource_path("assets/icons/layout_strip.svg"))
 
         # Scene/view
         self.scene = QGraphicsScene()
@@ -163,12 +167,16 @@ class ReaderView(QWidget):
 
         self.back_btn = QPushButton()
         self.back_btn.setIcon(self.back_icon)
-        self.back_btn.setIconSize(QSize(32, 32))
+        self.back_btn.setIconSize(QSize(24, 24))
         self.back_btn.setFixedSize(QSize(32, 32))
-        self.back_btn.setStyleSheet("border: none; background: transparent;")
+        self.back_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.back_btn.clicked.connect(self.back_to_grid)
 
-        self.layout_btn = QPushButton("Double")
+        self.layout_btn = QPushButton()
+        self.layout_btn.setIcon(self.layout_single_icon)
+        self.layout_btn.setIconSize(QSize(24, 24))
+        self.layout_btn.setFixedSize(QSize(32, 32))
+        self.layout_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.layout_btn.clicked.connect(self.toggle_layout)
 
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, activated=self.show_prev)
@@ -399,12 +407,16 @@ class ReaderView(QWidget):
             self.current_viewer = new_viewer
             self.current_viewer.set_active(True)
             
+        self.layout_btn.setText("")
         if self.model.view_mode == ViewMode.SINGLE:
-            self.layout_btn.setText("Single")
+            self.layout_btn.setIcon(self.layout_single_icon)
+            self.layout_btn.setToolTip("Single Page")
         elif self.model.view_mode == ViewMode.DOUBLE:
-            self.layout_btn.setText("Double")
+            self.layout_btn.setIcon(self.layout_double_icon)
+            self.layout_btn.setToolTip("Double Page")
         else:
-            self.layout_btn.setText("Strip")
+            self.layout_btn.setIcon(self.layout_strip_icon)
+            self.layout_btn.setToolTip("Long Strip")
 
         # Reload content
         if self.model.view_mode == ViewMode.STRIP:

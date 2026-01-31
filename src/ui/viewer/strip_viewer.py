@@ -52,7 +52,6 @@ class StripViewer(BaseViewer):
                 pass
             self.reader_view.scroll_area.verticalScrollBar().valueChanged.connect(self._update_visible_images)
             
-            self.reader_view.layout_btn.setText("Strip")
             self.reader_view.layout_btn.show()
 
         else:

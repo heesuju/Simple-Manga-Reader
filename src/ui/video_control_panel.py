@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
-from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, pyqtSignal
-
 from src.ui.components.volume_control import VolumeControl
 from src.utils.resource_utils import resource_path
+from src.ui.styles import FLAT_BUTTON_STYLE
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
 
 
 
@@ -25,20 +25,22 @@ class VideoControlPanel(QWidget):
         self.is_auto_play = False # NEW state
 
     def init_ui(self):
-        self.play_icon = QIcon(resource_path("assets/icons/play.png"))
-        self.pause_icon = QIcon(resource_path("assets/icons/pause.png"))
-        self.repeat_on_icon = QIcon(resource_path("assets/icons/repeat_on.png"))
-        self.repeat_off_icon = QIcon(resource_path("assets/icons/repeat_off.png"))
+        self.play_icon = QIcon(resource_path("assets/icons/play.svg"))
+        self.pause_icon = QIcon(resource_path("assets/icons/pause.svg"))
+        self.repeat_on_icon = QIcon(resource_path("assets/icons/repeat_on.svg"))
+        self.repeat_off_icon = QIcon(resource_path("assets/icons/repeat_off.svg"))
         # Reuse repeat icon or use text for now since we might not have a dedicated icon
-        self.auto_play_icon = QIcon(resource_path("assets/icons/auto_play.png")) # Assuming exists or use fallback
+        self.auto_play_icon = QIcon(resource_path("assets/icons/slideshow.svg")) # Assuming exists or use fallback
         
         layout = QHBoxLayout()
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(10)
 
         self.play_pause_btn = QPushButton(self.play_icon, "")
+        self.play_pause_btn.setIconSize(QSize(24, 24))
+        self.play_pause_btn.setFixedSize(32, 32)
+        self.play_pause_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.play_pause_btn.clicked.connect(self.play_pause_clicked.emit)
-        self.play_pause_btn.setFlat(True)
         layout.addWidget(self.play_pause_btn)
         
         self.current_time_label = QLabel("00:00")
@@ -58,25 +60,28 @@ class VideoControlPanel(QWidget):
         layout.addWidget(self.volume_control)
 
         self.speed_btn = QPushButton("1.0x")
-        self.speed_btn.setFlat(True)
+        self.speed_btn.setFixedSize(48, 32)
+        self.speed_btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; }")
         self.speed_btn.clicked.connect(self.speed_clicked.emit)
         layout.addWidget(self.speed_btn)
         
         self.repeat_btn = QPushButton(self.repeat_on_icon, "")
         self.repeat_btn.setCheckable(True)
         self.repeat_btn.setChecked(True)
+        self.repeat_btn.setIconSize(QSize(24, 24))
+        self.repeat_btn.setFixedSize(32, 32)
+        self.repeat_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.repeat_btn.clicked.connect(self.toggle_repeat)
-        self.repeat_btn.setFlat(True)
         self.repeat_btn.setToolTip("Repeat Video")
         layout.addWidget(self.repeat_btn)
 
         # Auto Play Button
         self.auto_play_btn = QPushButton("Auto")
         self.auto_play_btn.setCheckable(True)
+        self.auto_play_btn.setFixedSize(48, 32)
         self.auto_play_btn.clicked.connect(self.toggle_auto_play)
-        self.auto_play_btn.setFlat(True)
+        self.auto_play_btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; color: #888; }") # Dimmed when off
         self.auto_play_btn.setToolTip("Auto Play Next Video")
-        self.auto_play_btn.setStyleSheet("font-weight: bold; color: #888;") # Dimmed when off
         layout.addWidget(self.auto_play_btn)
 
         self.setLayout(layout)
@@ -94,7 +99,7 @@ class VideoControlPanel(QWidget):
                 padding: 5px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 50);
+                background-color: rgba(255, 255, 255, 30);
             }
             QSlider {
                 background: transparent;

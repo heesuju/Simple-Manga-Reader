@@ -29,9 +29,7 @@ from src.ui.batch_metadata_dialog import BatchMetadataDialog
 from src.ui.info_dialog import InfoDialog
 from src.ui.components.chapter_selection_dialog import ChapterSelectionDialog
 from src.utils.resource_utils import resource_path
-
-
-
+from src.ui.styles import FLAT_BUTTON_STYLE
 
 class StatusButton(QPushButton):
     def __init__(self, parent=None):
@@ -118,8 +116,13 @@ class FolderGrid(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Manga Browser")
-        self.add_icon = QIcon(resource_path("assets/icons/add.png"))
-        self.qr_icon = QIcon(resource_path("assets/icons/qr.png"))
+        self.add_icon = QIcon(resource_path("assets/icons/add.svg"))
+        self.qr_icon = QIcon(resource_path("assets/icons/web.svg"))
+        self.search_reset_icon = QIcon(resource_path("assets/icons/search_reset.svg"))
+        self.edit_icon = QIcon(resource_path("assets/icons/edit.svg"))
+        self.remove_icon = QIcon(resource_path("assets/icons/remove.svg"))
+        self.more_icon = QIcon(resource_path("assets/icons/more.svg"))
+        self.back_icon = QIcon(resource_path("assets/icons/search_reset.svg"))
 
         main_layout = QVBoxLayout(self)
 
@@ -148,26 +151,33 @@ class FolderGrid(QWidget):
 
         top_layout.addWidget(self.search_container)
 
-        self.clear_btn = QPushButton("Clear")
+        self.clear_btn = QPushButton()
+        self.clear_btn.setIcon(self.search_reset_icon)
+        self.clear_btn.setIconSize(QSize(24, 24))
+        self.clear_btn.setFixedSize(QSize(32, 32))
+        self.clear_btn.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.clear_btn.setToolTip("Clear Search")
         self.clear_btn.clicked.connect(self.clear_search)
         top_layout.addWidget(self.clear_btn)
 
         self.add_btn = QPushButton()
         self.add_btn.setIcon(self.add_icon)
-        self.add_btn.setIconSize(QSize(32, 32))
+        self.add_btn.setIconSize(QSize(24, 24))
         self.add_btn.setFixedSize(QSize(32, 32))
+        self.add_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.add_btn.clicked.connect(self.show_add_menu)
 
         self.web_access_btn = StatusButton()
         self.web_access_btn.set_status("stopped")
         self.web_access_btn.setIcon(self.qr_icon)
         self.web_access_btn.setIconSize(QSize(24, 24))
-        # self.web_access_btn.setFixedSize(QSize(32, 32)) # StatusButton sets this
+        self.web_access_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.web_access_btn.clicked.connect(self.handle_web_access_click)
         
         self.llm_config_btn = StatusButton()
-        self.llm_config_btn.setIcon(QIcon(resource_path("assets/icons/lang.png")))
+        self.llm_config_btn.setIcon(QIcon(resource_path("assets/icons/llm.svg")))
         self.llm_config_btn.setIconSize(QSize(24, 24))
+        self.llm_config_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.llm_config_btn.clicked.connect(self.show_llm_config)
 
         top_layout.addWidget(self.web_access_btn)
@@ -193,8 +203,11 @@ class FolderGrid(QWidget):
         normal_footer_layout.addStretch()
         normal_footer_layout.addWidget(self.add_btn)
 
-        self.more_options_btn = QPushButton("...")
+        self.more_options_btn = QPushButton()
+        self.more_options_btn.setIcon(self.more_icon)
+        self.more_options_btn.setIconSize(QSize(24, 24))
         self.more_options_btn.setFixedSize(QSize(32, 32))
+        self.more_options_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.more_options_btn.clicked.connect(self.show_more_options_menu)
         normal_footer_layout.addWidget(self.more_options_btn)
         
@@ -202,13 +215,31 @@ class FolderGrid(QWidget):
         selection_footer_layout = QHBoxLayout(self.selection_footer)
         selection_footer_layout.setContentsMargins(0, 0, 0, 0)
         self.selection_count_label = QLabel("0 items selected")
-        self.cancel_selection_btn = QPushButton("Cancel")
+        self.cancel_selection_btn = QPushButton()
+        self.cancel_selection_btn.setIcon(self.back_icon)
+        self.cancel_selection_btn.setIconSize(QSize(24, 24))
+        self.cancel_selection_btn.setFixedSize(QSize(32, 32))
+        self.cancel_selection_btn.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.cancel_selection_btn.setToolTip("Cancel")
         self.cancel_selection_btn.clicked.connect(lambda: self.toggle_selection_mode(False))
+        
         self.select_all_btn = QPushButton("Select All")
         self.select_all_btn.clicked.connect(self.select_all)
-        self.apply_batch_edit_btn = QPushButton("Edit")
+        
+        self.apply_batch_edit_btn = QPushButton()
+        self.apply_batch_edit_btn.setIcon(self.edit_icon)
+        self.apply_batch_edit_btn.setIconSize(QSize(24, 24))
+        self.apply_batch_edit_btn.setFixedSize(QSize(32, 32))
+        self.apply_batch_edit_btn.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.apply_batch_edit_btn.setToolTip("Edit Selected")
         self.apply_batch_edit_btn.clicked.connect(self.apply_batch_edit)
-        self.remove_selected_btn = QPushButton("Remove")
+        
+        self.remove_selected_btn = QPushButton()
+        self.remove_selected_btn.setIcon(self.remove_icon)
+        self.remove_selected_btn.setIconSize(QSize(24, 24))
+        self.remove_selected_btn.setFixedSize(QSize(32, 32))
+        self.remove_selected_btn.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.remove_selected_btn.setToolTip("Remove Selected")
         self.remove_selected_btn.clicked.connect(self.remove_selected_series)
         selection_footer_layout.addWidget(self.selection_count_label)
         selection_footer_layout.addWidget(self.cancel_selection_btn)

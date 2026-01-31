@@ -1,3 +1,4 @@
+import os
 from typing import Set, List
 from PyQt6.QtCore import QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog

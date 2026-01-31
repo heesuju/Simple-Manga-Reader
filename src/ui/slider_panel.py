@@ -5,6 +5,7 @@ from src.ui.components.input_label import InputLabel
 from src.ui.components.alt_selector import AltSelector
 from src.ui.components.alt_slider import AltSlider
 from src.utils.resource_utils import resource_path
+from src.ui.styles import FLAT_BUTTON_STYLE
 
 
 class SliderPanel(QWidget):
@@ -27,9 +28,8 @@ class SliderPanel(QWidget):
         self.setStyleSheet("background-color: rgba(0, 0, 0, 170); color: white;")
         
         # --- Icons ---
-        self.zoom_fit_icon = QIcon(resource_path("assets/icons/fit.png"))
-        # Fullscreen icon - using text for now, could be an icon later
-        self.fullscreen_icon = QIcon(resource_path("assets/icons/fit.png")) # Reusing fit icon for now, consider adding a new one
+        self.zoom_fit_icon = QIcon(resource_path("assets/icons/reset_zoom.svg"))
+        self.fullscreen_icon = QIcon(resource_path("assets/icons/fullscreen.svg"))
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 5, 10, 5)
@@ -80,13 +80,17 @@ class SliderPanel(QWidget):
 
         self.reset_zoom_button = QPushButton()
         self.reset_zoom_button.setIcon(self.zoom_fit_icon)
-        self.reset_zoom_button.setIconSize(QSize(16, 16))
+        self.reset_zoom_button.setIconSize(QSize(24, 24))
         self.reset_zoom_button.setFixedSize(button_size)
+        self.reset_zoom_button.setStyleSheet(FLAT_BUTTON_STYLE)
         self.reset_zoom_button.clicked.connect(self.zoom_reset)
 
         # New fullscreen button
-        self.fullscreen_button = QPushButton("Full Screen") # Using text for now
+        self.fullscreen_button = QPushButton()
+        self.fullscreen_button.setIcon(self.fullscreen_icon)
+        self.fullscreen_button.setIconSize(QSize(24, 24))
         self.fullscreen_button.setFixedSize(button_size)
+        self.fullscreen_button.setStyleSheet(FLAT_BUTTON_STYLE)
         self.fullscreen_button.clicked.connect(self.fullscreen_requested.emit)
         
         bottom_layout.addWidget(self.zoom_combobox)

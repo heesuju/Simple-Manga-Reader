@@ -1,8 +1,12 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButton, QHBoxLayout, QFrame, QGraphicsBlurEffect, QGraphicsScene, QGraphicsPixmapItem, QGraphicsDropShadowEffect, QSizePolicy, QMenu
-from PyQt6.QtGui import QAction
 import os
-from PyQt6.QtGui import QPixmap, QPalette, QColor, QPainter, QLinearGradient, QMouseEvent
-from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QRectF, QObject, QRunnable, QTimer
+from PyQt6.QtGui import (
+    QIcon, QPixmap, QPalette, QColor, QAction,
+    QPainter, QLinearGradient, QMouseEvent)
+from PyQt6.QtCore import (
+    Qt, QThreadPool, pyqtSignal, QRectF, 
+    QObject, QRunnable, QTimer, QSize
+)
 
 from src.core.item_loader import ItemLoader
 from src.ui.clickable_label import ClickableLabel
@@ -14,6 +18,8 @@ from src.workers.group_worker import GroupPagesWorker
 from src.workers.translation_matcher_worker import TranslationMatcherWorker
 from src.ui.add_translation_dialog import AddTranslationDialog
 from src.utils.img_utils import get_chapter_number, crop_pixmap
+from src.ui.styles import FLAT_BUTTON_STYLE
+from src.utils.resource_utils import resource_path
 
 class ChapterListLoaderSignals(QObject):
     chapter_processed = pyqtSignal(object, int, int)  # chapter, page_count, index
@@ -253,24 +259,12 @@ class ChapterListView(QWidget):
         self.content_layout.addWidget(self.top_spacer)
 
         # Back button is an overlay, everything else scrolls
-        self.back_btn = QPushButton("←", self)
-        self.back_btn.setFixedSize(40, 40)
-        self.back_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(0, 0, 0, 128);
-                color: white;
-                border:none;
-                border-radius: 20px;
-                font-size: 20px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 160);
-            }
-            QPushButton:pressed {
-                background-color: rgba(0, 0, 0, 190);
-            }
-        """)
+        self.back_btn = QPushButton(self)
+        self.back_btn.setIcon(QIcon(resource_path("assets/icons/back.svg")))
+        self.back_btn.setIconSize(QSize(24, 24))
+        self.back_btn.setFixedSize(32, 32)
+        self.back_btn.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.back_btn.clicked.connect(self.go_back)
         self.back_btn.clicked.connect(self.go_back)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self.gradient_overlay.set_scroll_offset)
 
