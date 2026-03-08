@@ -90,10 +90,11 @@ class EditAltsDialog(QDialog):
         categories = self.page_obj.get_categorized_variants()
         
         for cat_name, items in categories.items():
-            # Don't show the category if the only thing inside is the original un-editable first image
             valid_items = [p for p in items if p != self.page_obj.images[0]]
             
-            if not valid_items:
+            # Don't show the category if it's empty of editable items, 
+            # UNLESS it's the "Main" category (so we can drag items back to it).
+            if not valid_items and cat_name != "Main":
                 continue
                 
             cat_item = QTreeWidgetItem(self.tree, [cat_name])
