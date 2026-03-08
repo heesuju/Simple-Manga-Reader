@@ -116,7 +116,7 @@ class AltPanel(QWidget):
         self.cat_combo.currentIndexChanged.connect(self._on_combo_changed)
         top_row.addWidget(self.cat_combo, 1)
 
-        self.play_icon = QIcon(resource_path("assets/icons/play.png"))
+        self.play_icon = QIcon(resource_path("assets/icons/play.svg"))
         self.play_btn = QPushButton()
         self.play_btn.setIcon(self.play_icon)
         self.play_btn.setFixedSize(28, 28)
@@ -135,6 +135,25 @@ class AltPanel(QWidget):
         self.play_btn.clicked.connect(self._on_play_clicked)
         top_row.addWidget(self.play_btn)
 
+        # Revert button
+        self.revert_icon = QIcon(resource_path("assets/icons/search_reset.svg"))
+        self.revert_btn = QPushButton()
+        self.revert_btn.setIcon(self.revert_icon)
+        self.revert_btn.setFixedSize(28, 28)
+        self.revert_btn.setToolTip("Revert to Original")
+        self.revert_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 30);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 50);
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: rgba(255, 255, 255, 60); }
+        """)
+        self.revert_btn.clicked.connect(self._on_revert_clicked)
+        top_row.addWidget(self.revert_btn)
+
         main_layout.addLayout(top_row)
 
         # Scroll area for thumbnails
@@ -143,7 +162,7 @@ class AltPanel(QWidget):
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setLineWidth(0)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         main_layout.addWidget(self.scroll_area, 1)
 
@@ -328,9 +347,17 @@ class AltPanel(QWidget):
             state['timer'].setInterval(self.speeds[new_speed_idx])
         self._update_panel(self.model.current_index)
 
+    def _on_revert_clicked(self):
+        if self.model:
+            page_index = self.model.current_index
+            if 0 <= page_index < len(self.model.images):
+                # Variant index 0 is always the original image
+                self.model.change_variant(page_index, 0)
+
     def _advance_variant(self, page_index):
         if not self.model or not (0 <= page_index < len(self.model.images)):
             return
         page = self.model.images[page_index]
         new_variant_index = (page.current_variant_index + 1) % len(page.images)
         self.model.change_variant(page_index, new_variant_index)
+
