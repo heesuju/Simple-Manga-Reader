@@ -57,10 +57,16 @@ class EditAltsDialog(QDialog):
         categories = self.page_obj.get_categorized_variants()
         
         for cat_name, items in categories.items():
+            # Don't show the category if the only thing inside is the original un-editable first image
+            valid_items = [p for p in items if p != self.page_obj.images[0]]
+            
+            if not valid_items:
+                continue
+                
             cat_item = QTreeWidgetItem(self.tree, [cat_name])
             cat_item.setFlags(cat_item.flags() ^ Qt.ItemFlag.ItemIsDragEnabled) # Disable dragging categories themselves
             
-            for path in items:
+            for path in valid_items:
                 file_name = Path(path).name
                 variant_item = QTreeWidgetItem(cat_item, [file_name])
                 variant_item.setData(0, Qt.ItemDataRole.UserRole, path)
