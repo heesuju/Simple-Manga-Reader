@@ -437,7 +437,12 @@ class PagePanel(CollapsiblePanel):
             self.reload_requested.emit()
 
     def _open_drag_drop_dialog(self, index: int):
-        dialog = DragDropAltDialog(self)
+        existing_cats = []
+        if self.model and 0 <= index < len(self.model.images):
+            page_obj = self.model.images[index]
+            existing_cats = list(page_obj.get_categorized_variants().keys())
+
+        dialog = DragDropAltDialog(self, existing_categories=existing_cats)
         if dialog.exec():
             files = dialog.get_files()
             cat = dialog.get_category()

@@ -8,7 +8,7 @@ from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap
 from src.utils.img_utils import load_thumbnail_from_path
 
 class DragDropAltDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, existing_categories=None):
         super().__init__(parent)
         self.setWindowTitle("Add Alternates (Drag & Drop)")
         self.resize(600, 500)
@@ -58,13 +58,23 @@ class DragDropAltDialog(QDialog):
         self.remove_btn.clicked.connect(self._remove_selected)
         self.layout.addWidget(self.remove_btn)
         
-        from PyQt6.QtWidgets import QLineEdit, QFormLayout
+        from PyQt6.QtWidgets import QComboBox, QFormLayout
         # Optional Category Field
         self.category_layout = QFormLayout()
-        self.category_input = QLineEdit()
+        self.category_input = QComboBox()
+        self.category_input.setEditable(True)
         self.category_input.setPlaceholderText("e.g. au (Leave blank for Main)")
         self.category_input.setStyleSheet("background-color: #333; color: white; padding: 5px; border-radius: 3px;")
         
+        if existing_categories:
+            # Sort categories, putting Main first if it exists
+            cats = sorted([c for c in existing_categories if c.lower() != "main"])
+            if any(c.lower() == "main" for c in existing_categories):
+                 cats.insert(0, "Main")
+            
+            self.category_input.addItems(cats)
+            self.category_input.setCurrentIndex(-1) # Start empty
+
         cat_label = QLabel("Category Name (Optional):")
         cat_label.setStyleSheet("color: white;")
         self.category_layout.addRow(cat_label, self.category_input)
@@ -162,4 +172,4 @@ class DragDropAltDialog(QDialog):
         return self.file_paths
 
     def get_category(self):
-        return self.category_input.text().strip()
+        return self.category_input.currentText().strip()
