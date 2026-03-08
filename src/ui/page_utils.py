@@ -160,6 +160,9 @@ def open_in_explorer(model: ReaderModel, index: int):
         subprocess.Popen(['explorer', '/select,', str(path)])
 
 def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: int, on_reload: Callable[[], None], on_variants_updated: Callable[[int], None]):
+    from src.utils.str_utils import natural_sort_key
+    file_paths = sorted(file_paths, key=lambda p: natural_sort_key(Path(p).name))
+    
     target_page = model.images[target_index]
     if not target_page: return
     

@@ -106,7 +106,8 @@ class AltManager:
                     if suffix in ANIM_EXTS: return 1
                     return 0 # Image
                 
-                found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), Path(p).name.lower()))
+                from src.utils.str_utils import natural_sort_key
+                found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), natural_sort_key(Path(p).name.lower())))
                 variants.extend(found_alts)
                 
                 p = Page(variants, translations)
@@ -199,7 +200,8 @@ class AltManager:
         if main_name in existing_alts:
             existing_alts.remove(main_name)
             
-        entry["alts"] = sorted(list(existing_alts))
+        from src.utils.str_utils import natural_sort_key
+        entry["alts"] = sorted(list(existing_alts), key=natural_sort_key)
         data[chapter_name][main_name] = entry
 
         # Clean up: Ensure alt files are not keys themselves
@@ -221,7 +223,8 @@ class AltManager:
                          entry["alts"].append(sub_name)
                 
                 # Re-sort
-                entry["alts"].sort()
+                from src.utils.str_utils import natural_sort_key
+                entry["alts"].sort(key=natural_sort_key)
 
         AltManager.save_alts(series_path, data)
 
