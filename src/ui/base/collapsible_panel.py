@@ -1,9 +1,11 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QPushButton, QCheckBox
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QPushButton, QCheckBox, QLabel
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QIcon
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
 
 from src.ui.components.flow_layout import FlowLayout
+from src.utils.resource_utils import resource_path
+from src.ui.styles import FLAT_BUTTON_STYLE
 
 class HorizontalScrollArea(QScrollArea):
     def __init__(self, *args, **kwargs):
@@ -138,54 +140,52 @@ class CollapsiblePanel(QWidget):
         self.input_layout.setContentsMargins(0,0,0,0)
         self.layout.addWidget(self.input_container)
 
-        # Navigation Buttons (First, Prev, Next, Last)
+        # --- Header Layout ---
         self.nav_buttons_layout = QHBoxLayout()
         self.nav_buttons_layout.setContentsMargins(0, 0, 0, 0)
         self.nav_buttons_layout.setSpacing(5)
-        btn_style = """
-            QPushButton {
-                background-color: rgba(255, 255, 255, 30);
-                color: white;
-                border: none;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 60);
-            }
-            QPushButton:pressed {
-                background-color: rgba(255, 255, 255, 90);
-            }
-        """
 
-        # Center: Collapse Button
+        # Icons
+        self.icon_close = QIcon(resource_path("assets/icons/search_reset.svg"))
+        self.icon_expand = QIcon(resource_path("assets/icons/panel_expand.svg"))
+        self.icon_collapse = QIcon(resource_path("assets/icons/panel_collapse.svg"))
+
+        # Left: Close Button
+        self.btn_close = QPushButton()
+        self.btn_close.setIcon(self.icon_close)
+        self.btn_close.setFixedSize(28, 28)
+        self.btn_close.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.btn_close.setToolTip("Close Panel")
+        self.btn_close.clicked.connect(self.hide_content)
+        self.nav_buttons_layout.addWidget(self.btn_close)
+
+        # Center: Navigation Buttons
         self.nav_buttons_layout.addStretch(1)
         
-        self.btn_collapse = QPushButton("v")
-        self.btn_collapse.setFixedSize(40, 20)
-        self.btn_collapse.setStyleSheet(btn_style)
-        self.btn_collapse.clicked.connect(self.hide_content)
-        self.nav_buttons_layout.addWidget(self.btn_collapse)
-
-        self.btn_expand = QPushButton("[]")
-        self.btn_expand.setFixedSize(40, 20)
-        self.btn_expand.setStyleSheet(btn_style)
-        self.btn_expand.clicked.connect(self.toggle_expand)
-        self.nav_buttons_layout.addWidget(self.btn_expand)
+        self.nav_group = QHBoxLayout()
+        self.nav_group.setSpacing(2)
         
-        self.nav_buttons_layout.addStretch(1)
-
-        # Right: Navigation Buttons
         self.btn_first = QPushButton("<<")
         self.btn_prev = QPushButton("<")
         self.btn_next = QPushButton(">")
         self.btn_last = QPushButton(">>")
 
-
         for btn in [self.btn_first, self.btn_prev, self.btn_next, self.btn_last]:
-            btn.setFixedSize(40, 20)
-            btn.setStyleSheet(btn_style)
-            self.nav_buttons_layout.addWidget(btn)
+            btn.setFixedSize(32, 24)
+            btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-size: 10px; font-weight: bold; color: white; }")
+            self.nav_group.addWidget(btn)
+            
+        self.nav_buttons_layout.addLayout(self.nav_group)
+        self.nav_buttons_layout.addStretch(1)
+
+        # Right: Expand/Collapse Button
+        self.btn_expand = QPushButton()
+        self.btn_expand.setIcon(self.icon_expand)
+        self.btn_expand.setFixedSize(28, 28)
+        self.btn_expand.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.btn_expand.setToolTip("Expand to Grid View")
+        self.btn_expand.clicked.connect(self.toggle_expand)
+        self.nav_buttons_layout.addWidget(self.btn_expand)
 
         self.btn_first.clicked.connect(self.navigate_first.emit)
         self.btn_prev.clicked.connect(self.navigate_prev.emit)
@@ -220,7 +220,13 @@ class CollapsiblePanel(QWidget):
 
     def toggle_expand(self):
         self.is_expanded = not self.is_expanded
-        self.btn_expand.setText("=" if self.is_expanded else "[]")
+        if self.is_expanded:
+            self.btn_expand.setIcon(self.icon_collapse)
+            self.btn_expand.setToolTip("Collapse to Strip View")
+        else:
+            self.btn_expand.setIcon(self.icon_expand)
+            self.btn_expand.setToolTip("Expand to Grid View")
+            
         self.expand_toggled.emit(self.is_expanded)
         self._update_layout_mode()
 
