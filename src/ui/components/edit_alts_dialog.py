@@ -104,6 +104,8 @@ class EditAltsDialog(QDialog):
                 variant_item = QTreeWidgetItem(cat_item, [file_name])
                 variant_item.setData(0, Qt.ItemDataRole.UserRole, path)
                 variant_item.setIcon(0, self._make_thumbnail_icon(path))
+                # Prevent dropping items AS CHILDREN of this item — only reorder within the category
+                variant_item.setFlags(variant_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
                 
             cat_item.setExpanded(True)
 
