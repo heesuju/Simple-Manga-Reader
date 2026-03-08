@@ -166,7 +166,10 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
 
     app = QApplication(sys.argv)
-    qdarktheme.setup_theme("dark")
+    try:
+        qdarktheme.setup_theme("dark")
+    except AttributeError:
+        app.setStyleSheet(qdarktheme.load_stylesheet("dark"))
     
     # Start LLM Server
     from src.core.llm_server import LLMServerManager
