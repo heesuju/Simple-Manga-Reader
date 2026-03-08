@@ -250,7 +250,6 @@ class StripViewer(BaseViewer):
             self.reader_view.model.current_index = topmost_visible_index
             self.reader_view.page_panel._update_page_selection(self.reader_view.model.current_index)
             self.reader_view.slider_panel.set_value(self.reader_view.model.current_index)
-            self.reader_view.slider_panel.refresh_alt_selector(self.reader_view.model.current_index)
 
         # Trigger priority update
         if self.load_queue or self.loading_indices:

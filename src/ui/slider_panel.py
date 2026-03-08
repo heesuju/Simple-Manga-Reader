@@ -2,7 +2,6 @@ from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSlider, QLabel, QPushButton, 
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from src.ui.components.input_label import InputLabel
-from src.ui.components.alt_selector import AltSelector
 from src.ui.components.alt_slider import AltSlider
 from src.utils.resource_utils import resource_path
 from src.ui.styles import FLAT_BUTTON_STYLE
@@ -67,10 +66,6 @@ class SliderPanel(QWidget):
 
         button_size = QSize(32, 32)
         
-        # AltSelector (Replaces slideshow controls)
-        self.alt_selector = AltSelector(self, model)
-        bottom_layout.addWidget(self.alt_selector)
-
         bottom_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
 
         self.zoom_combobox = QComboBox()
@@ -155,7 +150,3 @@ class SliderPanel(QWidget):
         if real_index > self.slider.maximum(): real_index = self.slider.maximum()
         
         self.page_changed.emit(real_index + 1) # emitted value is 1-based usually expect by change_page
-
-    def refresh_alt_selector(self, index: int):
-        if self.alt_selector:
-             self.alt_selector._update_selector(index)

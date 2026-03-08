@@ -16,6 +16,7 @@ from src.ui.styles import FLAT_BUTTON_STYLE
 
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
+from src.ui.alt_panel import AltPanel
 from src.ui.chapter_panel import ChapterPanel
 from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
@@ -219,23 +220,29 @@ class ReaderView(QWidget):
         self.video_control_panel.raise_()
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
+        self.alt_panel = AltPanel(self, model=self.model)
 
         # Add panels to the layout
         main_layout.addWidget(self.top_panel, 0, 0, Qt.AlignmentFlag.AlignTop)
         
         # Create a container for the bottom panels
-        bottom_container = QWidget(self)
-        bottom_container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.bottom_container = QWidget(self)
+        self.bottom_container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         bottom_layout = QVBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
-        bottom_container.setLayout(bottom_layout)
+        self.bottom_container.setLayout(bottom_layout)
 
         bottom_layout.addWidget(self.page_panel)        
         bottom_layout.addWidget(self.chapter_panel)
         bottom_layout.addWidget(self.slider_panel)
                 
-        main_layout.addWidget(bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
+        main_layout.addWidget(self.bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
+
+        # Alt panel is NOT added to the layout manager so we can manually control its geometry
+        # as a floating overlay that doesn't trigger grid layout shifts.
+        self.alt_panel.setParent(self)
+
 
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
@@ -297,7 +304,31 @@ class ReaderView(QWidget):
         elif self.chapter_panel.is_expanded:
             self._update_expanded_panel_height(self.chapter_panel)
 
+        # Update alt panel height to fill available vertical space
+        self._update_alt_panel_height()
+
         QTimer.singleShot(0, self.apply_last_zoom)
+
+    def _update_alt_panel_height(self):
+        if not hasattr(self, 'alt_panel') or not self.alt_panel.isVisible():
+            return
+        
+        # Ensure layout has run
+        self.layout().activate()
+        
+        total_h = self.height()
+        # top_panel.height() can be unreliable during layout transitions, sizeHint is more stable
+        top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
+        bottom_h = self.bottom_container.height() if self.bottom_container.isVisible() else 0
+        
+        available_h = total_h - top_h - bottom_h
+        if available_h < 100:
+            available_h = 100
+        
+        # Position exactly below top_panel
+        self.alt_panel.setGeometry(0, top_h, self.alt_panel.width(), available_h)
+        self.alt_panel.raise_()
+
         
     def _on_panel_expand_toggled(self, panel, expanded: bool):
         if expanded:
@@ -312,6 +343,8 @@ class ReaderView(QWidget):
             panel.setMinimumHeight(0)
             panel.setMaximumHeight(16777215)
             panel.updateGeometry()
+        
+        QTimer.singleShot(100, self._update_alt_panel_height)
 
     def _update_expanded_panel_height(self, panel):
         total_h = self.height()
@@ -500,9 +533,15 @@ class ReaderView(QWidget):
         if self.panels_visible:
             self.top_panel.show()
             self.slider_panel.show()
+            # Re-trigger alt panel visibility check
+            if self.alt_panel:
+                self.alt_panel._update_panel(self.model.current_index)
+                QTimer.singleShot(100, self._update_alt_panel_height)
         else:
             self.top_panel.hide()
             self.slider_panel.hide()
+            if self.alt_panel:
+                self.alt_panel.hide()
 
             if self.page_panel.content_area.isVisible():
                 self.page_panel.hide_content()
