@@ -159,7 +159,7 @@ def open_in_explorer(model: ReaderModel, index: int):
     if os.name == 'nt':
         subprocess.Popen(['explorer', '/select,', str(path)])
 
-def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: int, on_reload: Callable[[], None], on_variants_updated: Callable[[int], None]):
+def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: int, on_reload: Callable[[], None], on_variants_updated: Callable[[int], None], category: str = None):
     from src.utils.str_utils import natural_sort_key
     file_paths = sorted(file_paths, key=lambda p: natural_sort_key(Path(p).name))
     
@@ -181,7 +181,10 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
     chapter_name = chapter_dir.name
     
     files_to_link = []
-    main_stem = Path(target_main_file).stem
+    
+    # If category is provided, use it as a prefix, otherwise use the destination's existing prefix logic
+    main_stem = category if category else Path(target_main_file).stem
+    
     start_index = len(target_page.images)
     if start_index < 1: start_index = 1
 

@@ -422,10 +422,11 @@ class PagePanel(CollapsiblePanel):
         dialog = DragDropAltDialog(self)
         if dialog.exec():
             files = dialog.get_files()
+            cat = dialog.get_category()
             if files:
-                self._add_alts_logic(files, target_index=index)
+                self._add_alts_logic(files, target_index=index, category=cat if cat else None)
 
-    def _add_alts_logic(self, file_paths: List[str], target_index: int = -1):
+    def _add_alts_logic(self, file_paths: List[str], target_index: int = -1, category: str = None):
         target_idx = target_index
         if target_idx == -1:
             if not self.edit_selected_indices:
@@ -440,7 +441,8 @@ class PagePanel(CollapsiblePanel):
             file_paths,
             target_idx,
             lambda: self.reload_requested.emit(),
-            lambda idx: self.model.update_page_variants(idx)
+            lambda idx: self.model.update_page_variants(idx),
+            category=category
         )
         
     def _get_real_index(self, index):

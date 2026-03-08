@@ -56,3 +56,23 @@ class Page:
         
     def is_showing_translation(self) -> bool:
         return self.active_translation_lang is not None
+
+    def get_categorized_variants(self) -> dict:
+        """Groups variant paths by category (label)."""
+        from src.utils.str_utils import natural_sort_key
+        categories = {}
+        for path in self.images:
+            name = Path(path).stem
+            # e.g., 'au_1', 'au 1', 'au-1' -> extract prefix 'au'
+            import re
+            m = re.match(r'^([a-zA-Z]+)[_\-\s]?\d*$', name)
+            if m:
+                cat = m.group(1).lower()
+            else:
+                cat = "Main"
+                
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(path)
+            
+        return categories

@@ -58,6 +58,18 @@ class DragDropAltDialog(QDialog):
         self.remove_btn.clicked.connect(self._remove_selected)
         self.layout.addWidget(self.remove_btn)
         
+        from PyQt6.QtWidgets import QLineEdit, QFormLayout
+        # Optional Category Field
+        self.category_layout = QFormLayout()
+        self.category_input = QLineEdit()
+        self.category_input.setPlaceholderText("e.g. au (Leave blank to use filename prefix)")
+        self.category_input.setStyleSheet("background-color: #333; color: white; padding: 5px; border-radius: 3px;")
+        
+        cat_label = QLabel("Category Name (Optional):")
+        cat_label.setStyleSheet("color: white;")
+        self.category_layout.addRow(cat_label, self.category_input)
+        self.layout.addLayout(self.category_layout)
+        
         # Dialog Buttons
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.button_box.accepted.connect(self.accept)
@@ -148,3 +160,6 @@ class DragDropAltDialog(QDialog):
 
     def get_files(self):
         return self.file_paths
+
+    def get_category(self):
+        return self.category_input.text().strip()

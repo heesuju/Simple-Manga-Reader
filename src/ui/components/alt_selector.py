@@ -101,10 +101,11 @@ class AltSelector(QWidget):
 
         has_variants = False
         
-        # We might need a vertical layout if we have multiple pages with variants
-        # But AltSelector inherits QWidget and uses QHBoxLayout self.layout.
-        # Let's switch to QVBoxLayout if we want rows, or just pack them horizontally with separators.
-        # Pack horizontally: "P1: [1][2] | P2: [1][2]"
+        # Store active category per page index: {page_idx: "category_name"}
+        if not hasattr(self, 'active_categories'):
+            self.active_categories = {}
+
+        has_variants = False
         
         for idx in indices_to_check:
             if not (0 <= idx < len(self.model.images)):
@@ -133,20 +134,56 @@ class AltSelector(QWidget):
                     state = self.slideshow_states[idx]
                     speed_idx = state['speed_idx']
                     play_btn.setText(self.speed_labels[speed_idx])
-                    # No icon when playing, just text to show speed? Or both?
-                    # User said "changes icon to x1.5 x2". Since QIcon text is hard, let's use text on button.
                 else:
                     play_btn.setIcon(self.play_icon)
                 
                 play_btn.clicked.connect(lambda checked, p_idx=idx: self._on_play_clicked(p_idx))
                 self.layout.addWidget(play_btn)
 
-                for i, variant_path in enumerate(page.images):
-                    btn = QPushButton(str(i + 1))
+                # Get categorized variants
+                categories = page.get_categorized_variants()
+                cat_names = sorted(list(categories.keys()))
+                
+                # Determine active category
+                active_cat = self.active_categories.get(idx)
+                if not active_cat or active_cat not in categories:
+                    # Default: Find the category that contains the currently selected variant
+                    current_path = page.images[page.current_variant_index]
+                    active_cat = cat_names[0]
+                    for cat, paths in categories.items():
+                        if current_path in paths:
+                            active_cat = cat
+                            break
+                    self.active_categories[idx] = active_cat
+
+                # 1. TIER 1: Categories
+                for cat in cat_names:
+                    cat_btn = QPushButton(cat.upper())
+                    cat_btn.setFixedSize(40, 24)
+                    cat_btn.setCheckable(True)
+                    if cat == active_cat:
+                        cat_btn.setChecked(True)
+                        cat_btn.setStyleSheet("background-color: rgba(255, 150, 50, 180); border: 1px solid rgba(255, 150, 50, 200); color: white;")
+                    
+                    cat_btn.clicked.connect(lambda checked, p_idx=idx, c=cat: self._on_category_clicked(p_idx, c))
+                    self.layout.addWidget(cat_btn)
+                
+                # Arrow separator between tiers
+                if cat_names:
+                    arrow = QLabel("→")
+                    arrow.setStyleSheet("color: rgba(255,255,255,150); margin: 0 2px;")
+                    self.layout.addWidget(arrow)
+
+                # 2. TIER 2: Numbers for active category
+                active_paths = categories[active_cat]
+                for cat_v_idx, variant_path in enumerate(active_paths):
+                    # Find true global variant index to pass to logic
+                    true_v_idx = page.images.index(variant_path)
+                    
+                    btn = QPushButton(str(cat_v_idx + 1))
                     btn.setFixedSize(24, 24)
                     btn.setCheckable(True)
                     
-                    # Determine type for styling
                     import os
                     ext = os.path.splitext(variant_path)[1].lower()
                     is_gif = ext == '.gif'
@@ -154,26 +191,21 @@ class AltSelector(QWidget):
                     
                     style = ""
                     if is_video:
-                        style = "border-color: #03A9F4; color: #03A9F4;" # Light Blue
+                        style = "border-color: #03A9F4; color: #03A9F4;" 
                         btn.setToolTip("Video")
                     elif is_gif:
-                        style = "border-color: #E040FB; color: #E040FB;" # Purple
+                        style = "border-color: #E040FB; color: #E040FB;" 
                         btn.setToolTip("Animated GIF")
                     else:
                         btn.setToolTip("Image")
 
                     if style:
-                        # Append to existing stylesheet logic or set directly
-                        # Since we have a global sheet, we need to be careful.
-                        # Setting specific style on widget overrides generic sheet for those properties.
                         btn.setStyleSheet(style)
 
-                    # If playing, variants are NOT checked (Play is the "selected" mode)
-                    if not is_playing and i == page.current_variant_index:
+                    if not is_playing and true_v_idx == page.current_variant_index:
                         btn.setChecked(True)
                     
-                    # Use closure to capture index
-                    btn.clicked.connect(lambda checked, p_idx=idx, v_idx=i: self._on_variant_clicked(p_idx, v_idx))
+                    btn.clicked.connect(lambda checked, p_idx=idx, v_idx=true_v_idx: self._on_variant_clicked(p_idx, v_idx))
                     self.layout.addWidget(btn)
 
         if has_variants:
@@ -222,4 +254,9 @@ class AltSelector(QWidget):
             self.model.change_variant(page_index, variant_index)
             # _update_selector is called automatically via model.image_loaded signal.
             # No need to call it explicitly here.
+
+    def _on_category_clicked(self, page_index, category):
+        """Handle switching the active category in the selector."""
+        self.active_categories[page_index] = category
+        self._update_selector(self.model.current_index)
 
