@@ -275,6 +275,9 @@ class ReaderView(QWidget):
 
         self.page_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.page_panel, expanded))
         self.chapter_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.chapter_panel, expanded))
+        
+        self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_alt_panel_height))
+        self.chapter_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_alt_panel_height))
 
         self.original_view_mouse_press = self.view.mousePressEvent
         self.original_view_mouse_release = self.view.mouseReleaseEvent
@@ -327,7 +330,12 @@ class ReaderView(QWidget):
         
         # Position exactly below top_panel
         self.alt_panel.setGeometry(0, top_h, self.alt_panel.width(), available_h)
+
+        # Ensure top_panel and bottom_container are always on top of alt_panel 
+        # to prevent it from covering our interactive controls.
         self.alt_panel.raise_()
+        self.top_panel.raise_()
+        self.bottom_container.raise_()
 
         
     def _on_panel_expand_toggled(self, panel, expanded: bool):
@@ -774,11 +782,13 @@ class ReaderView(QWidget):
         if self.chapter_panel.content_area.isVisible():
             self.chapter_panel.hide_content()
         self.page_panel.show_content()
+        QTimer.singleShot(100, self._update_alt_panel_height)
 
     def _show_chapter_panel(self):
         if self.page_panel.content_area.isVisible():
             self.page_panel.hide_content()
         self.chapter_panel.show_content()
+        QTimer.singleShot(100, self._update_alt_panel_height)
 
     def set_chapter(self, chapter:int):
         if self.model.set_chapter(chapter):

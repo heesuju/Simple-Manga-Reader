@@ -124,6 +124,7 @@ class CollapsiblePanel(QWidget):
     navigate_next = pyqtSignal()
     navigate_last = pyqtSignal()
     expand_toggled = pyqtSignal(bool)
+    content_hidden = pyqtSignal()
 
     def __init__(self, parent=None, name:str=""):
         super().__init__(parent)
@@ -261,6 +262,7 @@ class CollapsiblePanel(QWidget):
     def hide_content(self):
         self.content_area.setVisible(False)
         self.setVisible(False)
+        self.content_hidden.emit()
 
     def _load_thumbnail(self, path: str) -> QPixmap | None:
         crop = None
