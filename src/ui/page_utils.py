@@ -264,10 +264,8 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
         main_stem = category
         cat_dir_name = category.lower()
     else:
-        main_stem = Path(target_main_file).stem
-        import re
-        m = re.match(r'^([a-zA-Z\s]+?)[_\-\s]?\d*$', main_stem)
-        cat_dir_name = m.group(1).strip().lower() if m and m.group(1).strip() else "main"
+        main_stem = "main"
+        cat_dir_name = "main"
 
     # Store subfolders of original file name (original page) first, then put subfolders inside that have categories in there
     original_file_stem = Path(target_main_file).stem

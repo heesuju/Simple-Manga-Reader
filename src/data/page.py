@@ -92,6 +92,10 @@ class Page:
                     else:
                         cat = "Main"
                 
+                # Normalize "main" to "Main"
+                if cat and cat.lower() == "main":
+                    cat = "Main"
+                
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append(path)

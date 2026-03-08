@@ -62,7 +62,7 @@ class DragDropAltDialog(QDialog):
         # Optional Category Field
         self.category_layout = QFormLayout()
         self.category_input = QLineEdit()
-        self.category_input.setPlaceholderText("e.g. au (Leave blank to use filename prefix)")
+        self.category_input.setPlaceholderText("e.g. au (Leave blank for Main)")
         self.category_input.setStyleSheet("background-color: #333; color: white; padding: 5px; border-radius: 3px;")
         
         cat_label = QLabel("Category Name (Optional):")
