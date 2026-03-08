@@ -75,6 +75,14 @@ class AltManager:
                                  # Fallback: Check if file exists in alts folder relative to main file
                                  main_dir = Path(path).parent
                                  alt_path_check = main_dir / "alts" / alt_base
+                                 
+                                 # New logic: Check if alt_name itself contains directory info (e.g. 'alts/au/au_1.png')
+                                 if '/' in alt_name or '\\' in alt_name:
+                                     complex_path = main_dir / alt_name
+                                     if complex_path.exists():
+                                          found_alts.append(str(complex_path))
+                                          continue
+                                          
                                  if alt_path_check.exists():
                                      found_alts.append(str(alt_path_check))
 
@@ -185,8 +193,20 @@ class AltManager:
         
         # Ensure we are using filenames or relative paths
         main_name = Path(main_file).name
-        # FIX: Ensure we only store filenames, stripping any absolute paths
-        alt_names = [Path(p).name for p in alt_files]
+        # Keep relative paths if they exist, otherwise just use names
+        alt_names = []
+        for p in alt_files:
+            path_obj = Path(p)
+            # If the path has parts 'alts', 'category', 'filename'
+            if 'alts' in path_obj.parts:
+                idx = path_obj.parts.index('alts')
+                # Keep 'alts/category/filename' or just 'category/filename' depending on usage,
+                # actually 'alts/...' or 'alts/category/...' is better to store. Let's store what was passed.
+                # However, historically it stored just names. Now we store the relative paths passed from process_add_alts
+            
+            # Since process_add_alts now passes relative paths like "alts/au/au_1.png", we just use p directly
+            # but we should make sure it's unified to posix format
+            alt_names.append(str(p).replace('\\', '/'))
 
         # Init or Migrate entry
         if main_name in data[chapter_name]:

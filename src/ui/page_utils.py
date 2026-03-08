@@ -182,8 +182,24 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
     
     files_to_link = []
     
-    # If category is provided, use it as a prefix, otherwise use the destination's existing prefix logic
-    main_stem = category if category else Path(target_main_file).stem
+    if category:
+        main_stem = category
+        cat_dir_name = category.lower()
+    else:
+        main_stem = Path(target_main_file).stem
+        import re
+        m = re.match(r'^([a-zA-Z]+)[_\-\s]?\d*$', main_stem)
+        cat_dir_name = m.group(1).lower() if m else "main"
+
+    # Store subfolders of original file name (original page) first, then put subfolders inside that have categories in there
+    original_file_stem = Path(target_main_file).stem
+    specific_alts_dir = alts_dir / original_file_stem / cat_dir_name
+    if not specific_alts_dir.exists():
+        try:
+            specific_alts_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            print(f"Error creating specific alts sub-directory: {e}")
+            return
     
     start_index = len(target_page.images)
     if start_index < 1: start_index = 1
@@ -193,14 +209,19 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
         if not src_path.exists(): continue
         
         new_name = f"{main_stem}_{start_index + i}{src_path.suffix}"
-        dst_path = alts_dir / new_name
+        dst_path = specific_alts_dir / new_name
         
         while dst_path.exists() and dst_path.resolve() != src_path.resolve():
              new_name = f"{main_stem}_{start_index + i}_{uuid.uuid4().hex[:4]}{src_path.suffix}"
-             dst_path = alts_dir / new_name
+             dst_path = specific_alts_dir / new_name
         
         if src_path.resolve() == dst_path.resolve():
             files_to_link.append(str(dst_path))
+            try:
+                rel_path = dst_path.relative_to(chapter_dir)
+                files_to_link.append(str(rel_path).replace('\\', '/'))
+            except ValueError:
+                files_to_link.append(str(dst_path))
             continue
 
         try:
@@ -212,7 +233,11 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
             else:
                  shutil.copy2(src_path, dst_path)
                  
-            files_to_link.append(str(dst_path))
+            try:
+                rel_path = dst_path.relative_to(chapter_dir)
+                files_to_link.append(str(rel_path).replace('\\', '/'))
+            except ValueError:
+                files_to_link.append(str(dst_path))
             
         except Exception as e:
             print(f"Error processing file {src_path}: {e}")
