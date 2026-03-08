@@ -235,6 +235,18 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
     # Replace the existing alts directly via a new manager method
     AltManager.update_alts_order(series_path, chapter_name, main_file, alts_to_link)
     
+    # Cleanup empty category folders (except "main")
+    page_alts_root = alts_dir / main_stem
+    if page_alts_root.exists() and page_alts_root.is_dir():
+        for sub_dir in page_alts_root.iterdir():
+            if sub_dir.is_dir() and sub_dir.name.lower() != "main":
+                # Only remove if truly empty
+                try:
+                    if not any(sub_dir.iterdir()):
+                        sub_dir.rmdir()
+                except (OSError, StopIteration):
+                    pass
+
     return True
 
 def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: int, on_reload: Callable[[], None], on_variants_updated: Callable[[int], None], category: str = None):
