@@ -59,17 +59,34 @@ class Page:
 
     def get_categorized_variants(self) -> dict:
         """Groups variant paths by category (label)."""
-        from src.utils.str_utils import natural_sort_key
         categories = {}
         for path in self.images:
-            name = Path(path).stem
-            # e.g., 'au_1', 'au 1', 'au-1' -> extract prefix 'au'
-            import re
-            m = re.match(r'^([a-zA-Z]+)[_\-\s]?\d*$', name)
-            if m:
-                cat = m.group(1).lower()
-            else:
-                cat = "Main"
+            p = Path(path)
+            cat = None
+            
+            # Check if it was saved in a category subdirectory: alts/main_page/category_name/file
+            if 'alts' in p.parts:
+                try:
+                    alts_idx = p.parts.index('alts')
+                    # Expecting structure: .../alts/<main_file>/<category>/<file>
+                    if len(p.parts) > alts_idx + 3:
+                        cat = p.parts[alts_idx + 2].lower()
+                    # Fallback for old structure: .../alts/<category>/<file>
+                    elif len(p.parts) > alts_idx + 2:
+                        cat = p.parts[alts_idx + 1].lower()
+                except ValueError:
+                    pass
+            
+            # If no subdirectory category could be found, fallback to regex on filename
+            if not cat:
+                name = p.stem
+                import re
+                # Match letters AND spaces as group 1, then optional trailing space/underscore/dash, then numbers
+                m = re.match(r'^([a-zA-Z\s]+?)[_\-\s]?\d*$', name)
+                if m and m.group(1).strip():
+                    cat = m.group(1).strip().lower()
+                else:
+                    cat = "Main"
                 
             if cat not in categories:
                 categories[cat] = []

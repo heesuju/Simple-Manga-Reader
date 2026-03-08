@@ -188,8 +188,8 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
     else:
         main_stem = Path(target_main_file).stem
         import re
-        m = re.match(r'^([a-zA-Z]+)[_\-\s]?\d*$', main_stem)
-        cat_dir_name = m.group(1).lower() if m else "main"
+        m = re.match(r'^([a-zA-Z\s]+?)[_\-\s]?\d*$', main_stem)
+        cat_dir_name = m.group(1).strip().lower() if m and m.group(1).strip() else "main"
 
     # Store subfolders of original file name (original page) first, then put subfolders inside that have categories in there
     original_file_stem = Path(target_main_file).stem
@@ -201,8 +201,14 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
             print(f"Error creating specific alts sub-directory: {e}")
             return
     
-    start_index = len(target_page.images)
-    if start_index < 1: start_index = 1
+    # Calculate start index dynamically based strictly on files inside this specific category folder
+    existing_in_category = 0
+    if specific_alts_dir.exists():
+        for f in specific_alts_dir.iterdir():
+            if f.is_file() and f.stem.startswith(main_stem):
+                existing_in_category += 1
+                
+    start_index = existing_in_category + 1
 
     for i, file_path in enumerate(file_paths):
         src_path = Path(file_path)
@@ -216,7 +222,6 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
              dst_path = specific_alts_dir / new_name
         
         if src_path.resolve() == dst_path.resolve():
-            files_to_link.append(str(dst_path))
             try:
                 rel_path = dst_path.relative_to(chapter_dir)
                 files_to_link.append(str(rel_path).replace('\\', '/'))
