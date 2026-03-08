@@ -248,6 +248,29 @@ class AltManager:
 
         AltManager.save_alts(series_path, data)
 
+    @staticmethod
+    def update_alts_order(series_path: str, chapter_name: str, main_file: str, ordered_alt_files: List[str]):
+        """
+        Explicitly overwrite the 'alts' array in info.json with exact structure to commit rename/reorder.
+        """
+        data = AltManager.load_alts(series_path)
+        
+        if chapter_name not in data:
+            data[chapter_name] = {}
+            
+        main_name = Path(main_file).name
+        alt_names = [str(p).replace('\\', '/') for p in ordered_alt_files]
+        
+        if main_name in data[chapter_name]:
+            entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
+        else:
+            entry = {"alts": [], "translations": {}}
+            
+        entry["alts"] = alt_names
+        data[chapter_name][main_name] = entry
+        
+        AltManager.save_alts(series_path, data)
+
     from src.enums import Language
     @staticmethod
     def link_translation(series_path: str, chapter_name: str, main_file: str, lang: Language, translation_file: str):

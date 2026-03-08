@@ -159,6 +159,84 @@ def open_in_explorer(model: ReaderModel, index: int):
     if os.name == 'nt':
         subprocess.Popen(['explorer', '/select,', str(path)])
 
+def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
+    """
+    Applies edited category groups and orders to a page's alternates.
+    Renames and moves files on disk safely, then updates info.json.
+    """
+    if not page_obj or not page_obj.images: return False
+    
+    main_file = page_obj.images[0]
+    main_stem = Path(main_file).stem
+    chapter_dir = Path(model.manga_dir)
+    alts_dir = chapter_dir / "alts"
+    series_path = model.series['path']
+    chapter_name = chapter_dir.name
+    
+    flat_new_paths = [main_file]
+    
+    # Process each category
+    for cat_name, file_paths in new_structure.items():
+        # First image in file_paths might be main_file, ignore it in moves if so, but it shouldn't be in the ALTs list
+        if cat_name.lower() == "main":
+             cat_dir = alts_dir / main_stem / "main"
+        else:
+             cat_dir = alts_dir / main_stem / cat_name.lower()
+             
+        if not cat_dir.exists():
+            try:
+                cat_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                print(f"Failed to create category directory: {e}")
+                continue
+                
+        # To avoid name collision during rename (e.g. renaming 2 to 1 while 1 exists), we move them all to a temp name first
+        temp_moves = []
+        for path_str in file_paths:
+             if path_str == main_file: continue
+             old_path = Path(path_str)
+             if not old_path.exists(): continue
+             
+             temp_path = cat_dir / f"temp_{uuid.uuid4().hex[:8]}{old_path.suffix}"
+             try:
+                 shutil.move(old_path, temp_path)
+                 temp_moves.append(temp_path)
+             except Exception as e:
+                 print(f"Failed to move to temp: {e}")
+                 
+        # Now rename them sequentially
+        for i, temp_path in enumerate(temp_moves):
+             # Index 1-based start
+             new_name = f"{main_stem}_{i + 1}{temp_path.suffix}"
+             if cat_name.lower() != "main":
+                  new_name = f"{cat_name.lower()}_{i + 1}{temp_path.suffix}"
+                  
+             final_path = cat_dir / new_name
+             try:
+                 shutil.move(temp_path, final_path)
+                 
+                 # Save relative path for info.json linking
+                 try:
+                     rel_path = final_path.relative_to(chapter_dir)
+                     flat_new_paths.append(str(rel_path).replace('\\', '/'))
+                 except ValueError:
+                     flat_new_paths.append(str(final_path))
+                     
+             except Exception as e:
+                 print(f"Failed to move from temp to final: {e}")
+
+    # Remove main file from the list to be sent to AltManager (it expects only the alts list)
+    if flat_new_paths and flat_new_paths[0] == main_file:
+         alts_to_link = flat_new_paths[1:]
+    else:
+         alts_to_link = flat_new_paths
+         
+    from src.core.alt_manager import AltManager
+    # Replace the existing alts directly via a new manager method
+    AltManager.update_alts_order(series_path, chapter_name, main_file, alts_to_link)
+    
+    return True
+
 def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: int, on_reload: Callable[[], None], on_variants_updated: Callable[[int], None], category: str = None):
     from src.utils.str_utils import natural_sort_key
     file_paths = sorted(file_paths, key=lambda p: natural_sort_key(Path(p).name))

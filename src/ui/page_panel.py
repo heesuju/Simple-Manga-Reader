@@ -343,6 +343,9 @@ class PagePanel(CollapsiblePanel):
             add_dd_action.triggered.connect(lambda: self._open_drag_drop_dialog(index))
             menu.addAction(add_dd_action)
 
+            edit_alts_action = QAction("Edit Alts...", self)
+            edit_alts_action.triggered.connect(lambda: self._open_edit_alts_dialog(index))
+            menu.addAction(edit_alts_action)
             
             menu.addSeparator()
 
@@ -417,6 +420,21 @@ class PagePanel(CollapsiblePanel):
                 alt_count = len(page_obj.images) if page_obj else 0
                 if isinstance(widget, PageThumbnail):
                     widget.set_alt_count(alt_count)
+
+    def _open_edit_alts_dialog(self, index: int):
+        from src.ui.components.edit_alts_dialog import EditAltsDialog
+        
+        real_idx = self._get_real_index(index)
+        if real_idx == -1 or not self.model: return
+        
+        page_obj = self.model.images[real_idx]
+        if not page_obj or len(page_obj.images) <= 1:
+            return # Can't edit alts if there are no alts
+            
+        dialog = EditAltsDialog(self, page_obj, self.model)
+        if dialog.exec():
+            # Will handle apply logic internally or via callback
+            self.reload_requested.emit()
 
     def _open_drag_drop_dialog(self, index: int):
         dialog = DragDropAltDialog(self)
