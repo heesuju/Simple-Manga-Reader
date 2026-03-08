@@ -144,17 +144,15 @@ class AltSelector(QWidget):
                 categories = page.get_categorized_variants()
                 cat_names = sorted(list(categories.keys()))
                 
-                # Determine active category
-                active_cat = self.active_categories.get(idx)
-                if not active_cat or active_cat not in categories:
-                    # Default: Find the category that contains the currently selected variant
-                    current_path = page.images[page.current_variant_index]
-                    active_cat = cat_names[0]
-                    for cat, paths in categories.items():
-                        if current_path in paths:
-                            active_cat = cat
-                            break
-                    self.active_categories[idx] = active_cat
+                # Always sync active category to whichever category contains the current variant
+                # This ensures tab-cycling updates the highlighted category automatically
+                current_path = page.images[page.current_variant_index]
+                active_cat = cat_names[0]
+                for cat, paths in categories.items():
+                    if current_path in paths:
+                        active_cat = cat
+                        break
+                self.active_categories[idx] = active_cat
 
                 # 1. TIER 1: Categories
                 for cat in cat_names:
@@ -256,7 +254,21 @@ class AltSelector(QWidget):
             # No need to call it explicitly here.
 
     def _on_category_clicked(self, page_index, category):
-        """Handle switching the active category in the selector."""
+        """Handle switching the active category and selecting its first variant."""
         self.active_categories[page_index] = category
+        
+        # Auto-select the first variant in the clicked category
+        if self.model and 0 <= page_index < len(self.model.images):
+            page = self.model.images[page_index]
+            categories = page.get_categorized_variants()
+            if category in categories and categories[category]:
+                first_path = categories[category][0]
+                try:
+                    first_idx = page.images.index(first_path)
+                    self.model.change_variant(page_index, first_idx)
+                    return  # change_variant triggers image_loaded which calls _update_selector
+                except ValueError:
+                    pass
+        
         self._update_selector(self.model.current_index)
 
