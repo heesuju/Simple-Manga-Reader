@@ -246,7 +246,7 @@ class ReaderView(QWidget):
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
         # 2. Add control widgets to the panels
-        self.top_panel.set_series_title(self.model.series.get("name"))
+        self._update_top_panel_title()
         self.top_panel.add_back_button(self.back_btn)
         self.top_panel.add_layout_button(self.layout_btn)
 
@@ -421,6 +421,8 @@ class ReaderView(QWidget):
 
         if self.model.view_mode == ViewMode.STRIP:
             self.strip_viewer.refresh()
+
+        self._update_top_panel_title()
 
     def on_layout_updated(self):
         self.page_panel.model = self.model
@@ -1045,4 +1047,22 @@ class ReaderView(QWidget):
                 # User changed language while translating? 
                 # Just update button state to show translation is available
                 self.update_top_panel()
+
+    def _update_top_panel_title(self):
+        """Update top panel title with chapter information if different from series."""
+        if not self.model.series or not hasattr(self, 'top_panel'):
+            return
+            
+        series_name = self.model.series.get("name", "Unknown")
+        series_path = Path(str(self.model.series.get("path", "")))
+        
+        current_chapter_path = Path(str(self.model.manga_dir)) if self.model.manga_dir else None
+        
+        if current_chapter_path and current_chapter_path != series_path:
+            # Different chapter, show Series - Chapter
+            chapter_name = current_chapter_path.name
+            self.top_panel.set_series_title(f"{series_name} - {chapter_name}")
+        else:
+            # Same folder, just show Series
+            self.top_panel.set_series_title(series_name)
 
