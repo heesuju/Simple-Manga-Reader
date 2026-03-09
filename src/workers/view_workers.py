@@ -594,17 +594,16 @@ class ImageInfoWorker(QRunnable):
             img_size = reader.size()
             if img_size.isValid():
                 w, h = img_size.width(), img_size.height()
-                gcd = math.gcd(w, h)
-                ratio_w, ratio_h = w // gcd, h // gcd
-                
-                if ratio_w > 50 or ratio_h > 50:
-                    factor = max(ratio_w, ratio_h) / 10
-                    ratio_w = round(ratio_w / factor)
-                    ratio_h = round(ratio_h / factor)
-
+                from fractions import Fraction
                 dim_str = f"{w}x{h}"
-                ratio_str = f"{ratio_w}:{ratio_h}"
-                info_parts.append(f"{name} | {size_str} | {dim_str} | {ratio_str}")
+                # Find a simple fraction approximation (max denominator 12)
+                frac = Fraction(w, h).limit_denominator(12)
+                
+                if abs(float(Fraction(w, h)) / float(frac) - 1.0) < 0.02:
+                    ratio_str = f"{frac.numerator}:{frac.denominator}"
+                    info_parts.append(f"{name} | {size_str} | {dim_str} | {ratio_str}")
+                else:
+                    info_parts.append(f"{name} | {size_str} | {dim_str}")
             else:
                 info_parts.append(f"{name} | {size_str}")
 
