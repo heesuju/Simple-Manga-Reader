@@ -36,6 +36,7 @@ class VideoViewer(BaseViewer):
 
     def _connect_signals(self):
         self.media_player.playbackStateChanged.connect(self._on_media_playback_state_changed)
+        self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
         self.media_player.durationChanged.connect(self.reader_view.video_control_panel.set_duration)
         self.media_player.positionChanged.connect(self.reader_view.video_control_panel.set_position)
         self.media_player.positionChanged.connect(self._check_underlay_visibility)
@@ -223,6 +224,15 @@ class VideoViewer(BaseViewer):
             elif self.auto_play:
                 # Logic to find next video. 
                 # Ideally we ask ReaderView to "go to next video"
+                self._play_next_video()
+
+    def _on_media_status_changed(self, status):
+        # Fallback for formats that reach EndOfMedia but don't reliably trigger StoppedState
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            if self.video_repeat:
+                self.media_player.setPosition(0)
+                self.media_player.play()
+            elif self.auto_play:
                 self._play_next_video()
 
     def _play_next_video(self):
