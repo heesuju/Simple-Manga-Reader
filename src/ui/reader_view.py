@@ -1,7 +1,7 @@
+from typing import List, Union, Tuple
+from pathlib import Path
 import math
 import os
-from typing import List, Union
-from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene, QGraphicsView, QGraphicsPixmapItem,
@@ -27,8 +27,8 @@ from src.enums import Language
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, ArchiveExtractionWorker
-from src.workers.translate_worker import TranslateWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, ArchiveExtractionWorker, ImageInfoWorker
+# from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
 
 from src.ui.viewer.image_viewer import ImageViewer
@@ -462,7 +462,9 @@ class ReaderView(QWidget):
 
         # Reload content
         if self.model.view_mode == ViewMode.STRIP:
-            self.strip_viewer.load(None) 
+            self.strip_viewer.load(None)
+            if self.model.images and self.model.current_index < len(self.model.images):
+                self._update_image_info([self.model.images[self.model.current_index].path])
         else:
              if self.model.images and self.model.current_index < len(self.model.images):
                   self.model.load_image()
@@ -631,6 +633,7 @@ class ReaderView(QWidget):
              self.slider_panel.set_value(self.model.current_index)
              
         self.update_top_panel()
+        self._update_image_info([resolved_path])
 
     def _load_double_images(self, image1_path, image2_path):
         if self.current_viewer != self.image_viewer:
@@ -641,6 +644,35 @@ class ReaderView(QWidget):
         self.image_viewer.load((image1_path, image2_path))
         self.page_panel._update_page_selection(self.model.current_index)
         self.slider_panel.set_value(self.model._get_current_layout_index())
+        
+        paths = []
+        if image1_path and image1_path != "placeholder":
+            paths.append(self.resolve_path(image1_path))
+        if image2_path and image2_path != "placeholder":
+            paths.append(self.resolve_path(image2_path))
+        self._update_image_info(paths)
+
+    def _update_image_info(self, paths: List[str]):
+        if not paths:
+            self.slider_panel.set_info_text("")
+            return
+
+        items = []
+        for path in paths:
+            if not path or path == "placeholder":
+                continue
+                
+            resolved = self.resolve_path(path)
+            name = os.path.basename(path)
+            items.append((name, resolved))
+
+        if not items:
+            self.slider_panel.set_info_text("")
+            return
+
+        worker = ImageInfoWorker(items)
+        worker.signals.finished.connect(self.slider_panel.set_info_text)
+        self.thread_pool.start(worker)
 
     def set_zoom_mode(self, mode: str):
         self.last_zoom_mode = mode
@@ -765,6 +797,7 @@ class ReaderView(QWidget):
             self.strip_viewer._scroll_to_page(page - 1)
             self.page_panel._update_page_selection(page - 1)
             self.slider_panel.set_value(page - 1)
+            self._update_image_info([self.model.images[page - 1].path])
             return
 
         self.model.change_page(page)

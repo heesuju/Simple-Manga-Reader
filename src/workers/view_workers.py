@@ -5,7 +5,9 @@ import os
 from PIL import Image, ImageQt, ImageFilter
 
 from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF, QBuffer, QIODevice
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption
+from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption, QImageReader
+import math
+import os
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
 from src.core.alt_manager import AltManager
@@ -559,4 +561,53 @@ class AsyncScaleWorker(QRunnable):
             # Fallback to Qt scaling if PIL fails
             scaled = self.q_image.scaledToWidth(self.target_width, Qt.TransformationMode.SmoothTransformation)
             self.signals.finished.emit(self.index, scaled, self.generation_id)
+
+class ImageInfoSignals(QObject):
+    finished = pyqtSignal(str)
+
+class ImageInfoWorker(QRunnable):
+    def __init__(self, items: list): # List of (display_name, resolved_path)
+        super().__init__()
+        self.items = items
+        self.signals = ImageInfoSignals()
+
+    @pyqtSlot()
+    def run(self):
+        info_parts = []
+        
+        for name, resolved in self.items:
+            if not os.path.exists(resolved):
+                continue
+                
+            size_bytes = os.path.getsize(resolved)
+            
+            # Formatting size
+            if size_bytes < 1024:
+                size_str = f"{size_bytes} B"
+            elif size_bytes < 1024 * 1024:
+                size_str = f"{size_bytes / 1024:.1f} KB"
+            else:
+                size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+                
+            # Getting dimensions and ratio
+            reader = QImageReader(resolved)
+            img_size = reader.size()
+            if img_size.isValid():
+                w, h = img_size.width(), img_size.height()
+                gcd = math.gcd(w, h)
+                ratio_w, ratio_h = w // gcd, h // gcd
+                
+                if ratio_w > 50 or ratio_h > 50:
+                    factor = max(ratio_w, ratio_h) / 10
+                    ratio_w = round(ratio_w / factor)
+                    ratio_h = round(ratio_h / factor)
+
+                dim_str = f"{w}x{h}"
+                ratio_str = f"{ratio_w}:{ratio_h}"
+                info_parts.append(f"{name} | {size_str} | {dim_str} | {ratio_str}")
+            else:
+                info_parts.append(f"{name} | {size_str}")
+
+        final_info = "  +  ".join(info_parts)
+        self.signals.finished.emit(final_info)
 

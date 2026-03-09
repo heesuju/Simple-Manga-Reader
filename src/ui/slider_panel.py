@@ -60,12 +60,15 @@ class SliderPanel(QWidget):
         bottom_widget = QWidget()
         bottom_widget.setStyleSheet("background: transparent;")
         bottom_layout = QHBoxLayout(bottom_widget)
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(10)
         bottom_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         button_size = QSize(32, 32)
-        
+
+        self.info_label = QLabel("")
+        self.info_label.setStyleSheet("color: rgba(255, 255, 255, 150); font-size: 11px;")
+        bottom_layout.addWidget(self.info_label)
+
         bottom_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
 
         self.zoom_combobox = QComboBox()
@@ -99,6 +102,9 @@ class SliderPanel(QWidget):
         self.zoom_combobox.blockSignals(True)
         self.zoom_combobox.setCurrentText(text)
         self.zoom_combobox.blockSignals(False)
+
+    def set_info_text(self, text: str):
+        self.info_label.setText(text)
 
     def set_range(self, max_value):
         """Sets the range of the slider."""
