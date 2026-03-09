@@ -206,7 +206,8 @@ class AltManager:
             
             # Since process_add_alts now passes relative paths like "alts/au/au_1.png", we just use p directly
             # but we should make sure it's unified to posix format
-            alt_names.append(str(p).replace('\\', '/'))
+            alt_rel_path = str(p).replace('\\', '/')
+            alt_names.append(alt_rel_path)
 
         # Init or Migrate entry
         if main_name in data[chapter_name]:
@@ -225,22 +226,29 @@ class AltManager:
         data[chapter_name][main_name] = entry
 
         # Clean up: Ensure alt files are not keys themselves
-        for alt in alt_names:
-            if alt in data[chapter_name]:
+        for alt_rel in alt_names:
+            alt_base = Path(alt_rel).name
+            
+            # Check for exact matches (relative path as key) or base name matches (primary page as key)
+            keys_to_remove = []
+            if alt_rel in data[chapter_name]:
+                keys_to_remove.append(alt_rel)
+            if alt_base in data[chapter_name]:
+                keys_to_remove.append(alt_base)
+                
+            for key_to_remove in keys_to_remove:
                 # Merge its alts?
-                sub_entry = data[chapter_name].pop(alt)
+                sub_entry = data[chapter_name].pop(key_to_remove)
                 # If sub_entry was list
                 if isinstance(sub_entry, list):
                     sub_alts = sub_entry
                 else:
                     sub_alts = sub_entry.get("alts", [])
-                    # What about translations in the merged child? 
-                    # For now just merging alts. Translations on alts might be edge case.
                 
                 for sub in sub_alts:
-                    sub_name = Path(sub).name
-                    if sub_name != main_name and sub_name not in entry["alts"]:
-                         entry["alts"].append(sub_name)
+                    # Keep as is (already relative or name)
+                    if sub != main_name and sub not in entry["alts"]:
+                        entry["alts"].append(sub)
                 
                 # Re-sort
                 from src.utils.str_utils import natural_sort_key

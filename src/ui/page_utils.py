@@ -20,7 +20,7 @@ def save_page_as(parent: QWidget, model: ReaderModel, index: int):
     # Don't support saving directly from virtual paths (zips) efficiently yet without extraction logic 
     # If the path contains '|', it's a virtual path.
     if '|' in src_path:
-         return
+        return
     
     path_to_save = src_path
     if not os.path.exists(path_to_save):
@@ -77,30 +77,52 @@ def link_selected_pages(model: ReaderModel, indices: Set[int], on_reload: Callab
     
     main_stem = Path(main_file).stem
     
-    alts_dir = chapter_dir / "alts"
-    if not alts_dir.exists():
-        alts_dir.mkdir(parents=True, exist_ok=True)
+    # Target directory structure: alts/{main_stem}/main/
+    alts_root_dir = chapter_dir / "alts"
+    specific_alts_dir = alts_root_dir / main_stem / "main"
+    if not specific_alts_dir.exists():
+        specific_alts_dir.mkdir(parents=True, exist_ok=True)
         
     final_alt_files = []
+    
+    # To avoid naming collisions during multi-move, check current occupancy
+    existing_in_category = 0
+    if specific_alts_dir.exists():
+        for f in specific_alts_dir.iterdir():
+            if f.is_file() and f.stem.startswith("main"):
+                existing_in_category += 1
+    
+    start_index = existing_in_category + 1
+
     for i, alt_path in enumerate(original_alt_files):
         p = Path(alt_path)
-        new_name = f"{main_stem}_{i+1}{p.suffix}"
-        dst = alts_dir / new_name
-
-        counter = i + 1
-        while dst.exists() and dst.resolve() != p.resolve():
-            new_name = f"{main_stem}_{counter}_{uuid.uuid4().hex[:4]}{p.suffix}"
-            dst = alts_dir / new_name
+        if not p.exists(): continue
         
-        if alts_dir in p.parents and p.name == new_name:
-            final_alt_files.append(str(p))
-        else:
+        new_name = f"main_{start_index + i}{p.suffix}"
+        dst = specific_alts_dir / new_name
+
+        while dst.exists() and dst.resolve() != p.resolve():
+            new_name = f"main_{start_index + i}_{uuid.uuid4().hex[:4]}{p.suffix}"
+            dst = specific_alts_dir / new_name
+        
+        if p.resolve() == dst.resolve():
             try:
-                shutil.move(p, dst)
+                rel_path = dst.relative_to(chapter_dir)
+                final_alt_files.append(str(rel_path).replace('\\', '/'))
+            except ValueError:
                 final_alt_files.append(str(dst))
-            except Exception as e:
-                print(f"Error moving alt {p}: {e}")
-                final_alt_files.append(str(p))
+            continue
+            
+        try:
+            shutil.move(p, dst)
+            try:
+                rel_path = dst.relative_to(chapter_dir)
+                final_alt_files.append(str(rel_path).replace('\\', '/'))
+            except ValueError:
+                final_alt_files.append(str(dst))
+        except Exception as e:
+            print(f"Error moving alt {p}: {e}")
+            final_alt_files.append(str(p))
     
     AltManager.link_pages(series_path, chapter_name, main_file, final_alt_files)
     
@@ -148,7 +170,7 @@ def unlink_page(model: ReaderModel, index: int):
 def open_in_explorer(model: ReaderModel, index: int):
     page = model.images[index]
     if not page:
-         return
+        return
          
     path = page.images[0]
     if '|' in path:
@@ -179,9 +201,9 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
     for cat_name, file_paths in new_structure.items():
         # First image in file_paths might be main_file, ignore it in moves if so, but it shouldn't be in the ALTs list
         if cat_name.lower() == "main":
-             cat_dir = alts_dir / main_stem / "main"
+            cat_dir = alts_dir / main_stem / "main"
         else:
-             cat_dir = alts_dir / main_stem / cat_name.lower()
+            cat_dir = alts_dir / main_stem / cat_name.lower()
              
         if not cat_dir.exists():
             try:
@@ -193,43 +215,44 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
         # To avoid name collision during rename (e.g. renaming 2 to 1 while 1 exists), we move them all to a temp name first
         temp_moves = []
         for path_str in file_paths:
-             if path_str == main_file: continue
-             old_path = Path(path_str)
-             if not old_path.exists(): continue
+            if path_str == main_file: continue
+            old_path = Path(path_str)
+            if not old_path.exists(): continue
              
-             temp_path = cat_dir / f"temp_{uuid.uuid4().hex[:8]}{old_path.suffix}"
-             try:
-                 shutil.move(old_path, temp_path)
-                 temp_moves.append(temp_path)
-             except Exception as e:
-                 print(f"Failed to move to temp: {e}")
+            temp_path = cat_dir / f"temp_{uuid.uuid4().hex[:8]}{old_path.suffix}"
+            try:
+                shutil.move(old_path, temp_path)
+                temp_moves.append(temp_path)
+            except Exception as e:
+                print(f"Failed to move to temp: {e}")
                  
         # Now rename them sequentially
         for i, temp_path in enumerate(temp_moves):
-             # Index 1-based start
-             new_name = f"{main_stem}_{i + 1}{temp_path.suffix}"
-             if cat_name.lower() != "main":
-                  new_name = f"{cat_name.lower()}_{i + 1}{temp_path.suffix}"
-                  
-             final_path = cat_dir / new_name
-             try:
-                 shutil.move(temp_path, final_path)
-                 
-                 # Save relative path for info.json linking
-                 try:
-                     rel_path = final_path.relative_to(chapter_dir)
-                     flat_new_paths.append(str(rel_path).replace('\\', '/'))
-                 except ValueError:
-                     flat_new_paths.append(str(final_path))
+            # Index 1-based start
+            if cat_name.lower() == "main":
+                new_name = f"main_{i + 1}{temp_path.suffix}"
+            else:
+                new_name = f"{cat_name.lower()}_{i + 1}{temp_path.suffix}"
+            
+            final_path = cat_dir / new_name
+            try:
+                shutil.move(temp_path, final_path)
+                
+                # Save relative path for info.json linking
+                try:
+                    rel_path = final_path.relative_to(chapter_dir)
+                    flat_new_paths.append(str(rel_path).replace('\\', '/'))
+                except ValueError:
+                    flat_new_paths.append(str(final_path))
                      
-             except Exception as e:
-                 print(f"Failed to move from temp to final: {e}")
+            except Exception as e:
+                print(f"Failed to move from temp to final: {e}")
 
     # Remove main file from the list to be sent to AltManager (it expects only the alts list)
     if flat_new_paths and flat_new_paths[0] == main_file:
-         alts_to_link = flat_new_paths[1:]
+        alts_to_link = flat_new_paths[1:]
     else:
-         alts_to_link = flat_new_paths
+        alts_to_link = flat_new_paths
          
     from src.core.alt_manager import AltManager
     # Replace the existing alts directly via a new manager method

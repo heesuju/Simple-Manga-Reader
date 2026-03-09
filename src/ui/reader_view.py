@@ -663,7 +663,9 @@ class ReaderView(QWidget):
                 continue
                 
             resolved = self.resolve_path(path)
-            name = os.path.basename(path)
+            # If it's a virtual path (e.g. zip|image.jpg), show only the image filename
+            display_path = path.split('|')[-1] if '|' in path else path
+            name = os.path.basename(display_path)
             items.append((name, resolved))
 
         if not items:
