@@ -439,22 +439,24 @@ def load_pixmap_for_thumbnailing(path: str, target_width: int = 0) -> QPixmap | 
     return QPixmap.fromImage(image)
 
 def get_chapter_number(path):
-    """Extract the chapter number as integer from the folder or file name."""
+    """Extract a representative number for sorting from a filename or path."""
     if isinstance(path, str) and '|' in path:
         name = Path(path.split('|')[1]).name
     else:
         name = Path(path).name
     
-    # Try explicit "Ch." or "Chapter"
-    match = re.search(r'(?:ch|chapter|c)\.?\s*(\d+(?:\.\d+)?)', name, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
+    # 1. Prioritize page index (p, page, pg)
+    page_match = re.search(r'(?:page|pg|p)\.?\s*(\d+(?:\.\d+)?)', name, re.IGNORECASE)
+    if page_match:
+        return float(page_match.group(1))
+
+    # 2. Priority: Chapter (ch, chapter, c)
+    ch_match = re.search(r'(?:chapter|ch|c)\.?\s*(\d+(?:\.\d+)?)', name, re.IGNORECASE)
+    if ch_match:
+        return float(ch_match.group(1))
     
-    # Fallback to finding the first number, but be careful of "Vol 1 Ch 2"
-    # If there are multiple numbers, simple find_number might get the volume.
-    # But usually manga naming is "Series - Ch X" or "Series 01".
-    
-    # Inline float finding logic to avoid dependency on int-only find_number
+    # 3. Fallback to the first number found
+    # Using float finding logic to handle decimals
     numbers = re.findall(r'\d+(?:\.\d+)?', name)
     return float(numbers[0]) if numbers else float('inf')
 
