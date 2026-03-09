@@ -182,7 +182,6 @@ class ReaderView(QWidget):
 
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, activated=self.show_prev)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
-        QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
         QShortcut(QKeySequence(Qt.Key.Key_Tab), self, activated=self.cycle_current_variant)
         QShortcut(QKeySequence(Qt.Key.Key_Space), self, activated=self.toggle_playback)
 
