@@ -156,10 +156,18 @@ class ThumbnailWidget(QWidget):
             return
 
         chapter_path = series_obj['last_read_chapter']
-        chapter_number = get_chapter_number(chapter_path)
+        
+        # Find index in series chapters to match ChapterList naming
+        chapters = series_obj.get('chapters', [])
+        chapter_idx = -1
+        for i, ch in enumerate(chapters):
+            if ch.get('path') == chapter_path:
+                chapter_idx = i
+                break
 
-        if chapter_number is not None and chapter_number != float('inf'):
-            self.chapter_label.setText(f"Ch{chapter_number:02}")
+        if chapter_idx != -1:
+            # Use 1-based index (Ch01, Ch02, etc.)
+            self.chapter_label.setText(f"Ch{chapter_idx + 1:02d}")
             self.chapter_label.adjustSize()
             self.chapter_label.move(self.image_container.width() - self.chapter_label.width() - 5, 5)
             self.chapter_label.show()
