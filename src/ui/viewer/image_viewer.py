@@ -400,16 +400,21 @@ class ImageViewer(BaseViewer):
         original_w = self.original_pixmap.width()
         scaled_w = scaled_pixmap.width()
         
+        # Preserve existing path data
+        original_path = self.pixmap_item.data(0) if self.pixmap_item else None
+        
         if scaled_w == 0: return
         
         # In double view, we might have multiple items. Clear them and use single item for HQ result.
         if len(self.reader_view.scene.items()) > 1:
-             self._clear_scene_pixmaps()
-             self.pixmap_item = QGraphicsPixmapItem(scaled_pixmap)
-             self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-             self.reader_view.scene.addItem(self.pixmap_item)
+            self._clear_scene_pixmaps()
+            self.pixmap_item = QGraphicsPixmapItem(scaled_pixmap)
+            self.pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+            if original_path:
+                self.pixmap_item.setData(0, original_path)
+            self.reader_view.scene.addItem(self.pixmap_item)
         else:
-             self.pixmap_item.setPixmap(scaled_pixmap)
+            self.pixmap_item.setPixmap(scaled_pixmap)
 
         scale_factor = original_w / scaled_w
         self.pixmap_item.setScale(scale_factor)

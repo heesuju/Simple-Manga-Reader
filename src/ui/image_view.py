@@ -38,16 +38,16 @@ class ImageView(QGraphicsView):
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
 
     def contextMenuEvent(self, event):
-        item = self.itemAt(event.pos())
-        if not item:
-            return
-
-        # Handle Pixmap items or items with path data
-        path = item.data(0)
-        if hasattr(item, 'pixmap') and path: # Ensure it is likely our image item
-             self._show_context_menu(event.globalPos(), path)
-        else:
-             super().contextMenuEvent(event)
+        # Look for the top-most item that has our path data
+        # (This avoids being blocked by translation overlays)
+        items = self.items(event.pos())
+        for item in items:
+            path = item.data(0)
+            if path and (hasattr(item, 'pixmap') or isinstance(item, QGraphicsPixmapItem)):
+                self._show_context_menu(event.globalPos(), path)
+                return
+                
+        super().contextMenuEvent(event)
 
     def _show_context_menu(self, global_pos, path):
          if not os.path.exists(path):
