@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QPixmap
 from src.utils.img_utils import load_thumbnail_from_path
+from src.utils.str_utils import natural_sort_key
 
 THUMB_SIZE = 48
 
@@ -88,9 +89,13 @@ class EditAltsDialog(QDialog):
         if not self.page_obj: return
         
         categories = self.page_obj.get_categorized_variants()
+        cat_names = sorted(list(categories.keys()), key=natural_sort_key)
         
-        for cat_name, items in categories.items():
+        for cat_name in cat_names:
+            items = categories[cat_name]
             valid_items = [p for p in items if p != self.page_obj.images[0]]
+            # Sort items within category numerically
+            valid_items = sorted(valid_items, key=lambda p: natural_sort_key(Path(p).name))
             
             # Don't show the category if it's empty of editable items, 
             # UNLESS it's the "Main" category (so we can drag items back to it).
