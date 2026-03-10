@@ -285,6 +285,16 @@ class VideoViewer(BaseViewer):
         save_video_action.triggered.connect(self._save_current_video)
         menu.addAction(save_video_action)
         
+        menu.addSeparator()
+
+        add_file_action = QAction("Add Alternate from File...", self.reader_view)
+        add_file_action.triggered.connect(self._add_alt_from_file)
+        menu.addAction(add_file_action)
+
+        add_dd_action = QAction("Add Alternates (Drag & Drop)...", self.reader_view)
+        add_dd_action.triggered.connect(self._open_drag_drop_dialog)
+        menu.addAction(add_dd_action)
+
         # Convert scene pos to screen pos for menu display
         view_pos = self.reader_view.view.mapFromScene(scene_pos)
         global_pos = self.reader_view.view.mapToGlobal(view_pos)
@@ -322,6 +332,41 @@ class VideoViewer(BaseViewer):
         
         if was_playing:
             self.media_player.play()
+
+    def _add_alt_from_file(self):
+        default_dir = self.reader_view.model.manga_dir if self.reader_view.model else ""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self.reader_view, 
+            "Select Images/Videos", 
+            str(default_dir), 
+            "Media Files (*.png *.jpg *.jpeg *.webp *.gif *.mp4 *.webm *.mkv)"
+        )
+        if file_paths:
+            self.reader_view._add_alts_from_files(file_paths)
+
+    def _open_drag_drop_dialog(self):
+        from src.ui.components.drag_drop_alt_dialog import DragDropAltDialog
+        
+        target_index = self.reader_view.model.current_index
+        if target_index == -1: return
+        
+        page_obj = self.reader_view.model.images[target_index]
+        existing_cats = list(page_obj.get_categorized_variants().keys())
+
+        dialog = DragDropAltDialog(self.reader_view, existing_categories=existing_cats)
+        if dialog.exec():
+            files = dialog.get_files()
+            cat = dialog.get_category()
+            if files:
+                 import src.ui.page_utils as page_utils
+                 page_utils.process_add_alts(
+                    self.reader_view.model,
+                    files,
+                    target_index,
+                    lambda: self.reader_view.reload_chapter(),
+                    lambda idx: self.reader_view.model.update_page_variants(idx),
+                    category=cat if cat else None
+                )
 
     def _save_current_frame(self):
         # Pause video while saving

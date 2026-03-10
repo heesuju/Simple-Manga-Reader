@@ -66,8 +66,57 @@ class ImageView(QGraphicsView):
          export_action = QAction("Export in Lower Quality...", self)
          export_action.triggered.connect(lambda: self._export_lower_quality(path))
          menu.addAction(export_action)
+
+         menu.addSeparator()
+
+         add_file_action = QAction("Add Alternate from File...", self)
+         add_file_action.triggered.connect(self._add_alt_from_file)
+         menu.addAction(add_file_action)
+
+         add_dd_action = QAction("Add Alternates (Drag & Drop)...", self)
+         add_dd_action.triggered.connect(self._open_drag_drop_dialog)
+         menu.addAction(add_dd_action)
          
          menu.exec(global_pos)
+
+    def _add_alt_from_file(self):
+        if not self.manga_reader: return
+        
+        default_dir = self.manga_reader.model.manga_dir if self.manga_reader.model else ""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, 
+            "Select Images/Videos", 
+            str(default_dir), 
+            "Media Files (*.png *.jpg *.jpeg *.webp *.gif *.mp4 *.webm *.mkv)"
+        )
+        if file_paths:
+            self.manga_reader._add_alts_from_files(file_paths)
+
+    def _open_drag_drop_dialog(self):
+        if not self.manga_reader: return
+        
+        from src.ui.components.drag_drop_alt_dialog import DragDropAltDialog
+        
+        target_index = self.manga_reader.model.current_index
+        if target_index == -1: return
+        
+        page_obj = self.manga_reader.model.images[target_index]
+        existing_cats = list(page_obj.get_categorized_variants().keys())
+
+        dialog = DragDropAltDialog(self, existing_categories=existing_cats)
+        if dialog.exec():
+            files = dialog.get_files()
+            cat = dialog.get_category()
+            if files:
+                 import src.ui.page_utils as page_utils
+                 page_utils.process_add_alts(
+                    self.manga_reader.model,
+                    files,
+                    target_index,
+                    lambda: self.manga_reader.reload_chapter(),
+                    lambda idx: self.manga_reader.model.update_page_variants(idx),
+                    category=cat if cat else None
+                )
 
     def _save_image(self, path):
         base_name = os.path.basename(path)

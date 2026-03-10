@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QUrl, QSize
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap
 from src.utils.img_utils import load_thumbnail_from_path
+from src.workers.view_workers import IMAGE_EXTS, VIDEO_EXTS
 
 class DragDropAltDialog(QDialog):
     def __init__(self, parent=None, existing_categories=None):
@@ -113,6 +114,29 @@ class DragDropAltDialog(QDialog):
         """)
         super().dragLeaveEvent(event)
 
+    def add_files(self, file_paths: list[str]):
+        files_added = 0
+        valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS))
+        for file_path in file_paths:
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in valid_exts:
+                    if file_path not in self.file_paths:
+                        self.file_paths.append(file_path)
+                        
+                        # Create Item
+                        item = QListWidgetItem(os.path.basename(file_path))
+                        
+                        # Load Thumbnail (Sync is okay for small batches)
+                        pixmap = load_thumbnail_from_path(file_path, 100, 140)
+                        if pixmap:
+                            item.setIcon(QIcon(pixmap))
+                        
+                        self.list_widget.addItem(item)
+                        files_added += 1
+        self._update_count()
+        return files_added
+
     def dropEvent(self, event: QDropEvent):
         self.list_widget.setStyleSheet("""
             QListWidget {
@@ -130,31 +154,10 @@ class DragDropAltDialog(QDialog):
             }
         """)
         
-        files_added = 0
         if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
-                file_path = url.toLocalFile()
-                if os.path.isfile(file_path):
-                    ext = os.path.splitext(file_path)[1].lower()
-                    if ext in {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm', '.mkv', '.avi', '.mov'}:
-                        if file_path not in self.file_paths:
-                            self.file_paths.append(file_path)
-                            
-                            # Create Item
-                            item = QListWidgetItem(os.path.basename(file_path))
-                            
-                            # Load Thumbnail
-                            # For better performance we could run this in a thread, but for D&D of a few files this is okay.
-                            # We use 100x140 as base size
-                            pixmap = load_thumbnail_from_path(file_path, 100, 140)
-                            if pixmap:
-                                item.setIcon(QIcon(pixmap))
-                            
-                            self.list_widget.addItem(item)
-                            files_added += 1
-            
-            event.acceptProposedAction()
-            self._update_count()
+            file_paths = [url.toLocalFile() for url in event.mimeData().urls()]
+            if self.add_files(file_paths) > 0:
+                event.acceptProposedAction()
             
     def _remove_selected(self):
         for item in self.list_widget.selectedItems():

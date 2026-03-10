@@ -5,7 +5,7 @@ import os
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGraphicsScene, QGraphicsView, QGraphicsPixmapItem,
-    QPushButton, QHBoxLayout, QVBoxLayout, QLabel,
+    QPushButton, QHBoxLayout, QVBoxLayout, QLabel, QApplication,
     QMessageBox, QScrollArea, QSizePolicy, QPinchGesture, QStackedWidget, QGridLayout,
     QFrame
 )
@@ -27,7 +27,7 @@ from src.enums import Language
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, ArchiveExtractionWorker, ImageInfoWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, ArchiveExtractionWorker, ImageInfoWorker
 # from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
 
@@ -143,6 +143,8 @@ class ReaderView(QWidget):
         self.loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.loading_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; font-size: 24px;")
         self.loading_label.hide()
+        
+        self.setAcceptDrops(True)
 
         self.back_icon = QIcon(resource_path("assets/icons/back.svg"))
         self.layout_single_icon = QIcon(resource_path("assets/icons/layout_single.svg"))
@@ -184,6 +186,9 @@ class ReaderView(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
         QShortcut(QKeySequence(Qt.Key.Key_Tab), self, activated=self.cycle_current_variant)
         QShortcut(QKeySequence(Qt.Key.Key_Space), self, activated=self.toggle_playback)
+        QShortcut(QKeySequence(Qt.Key.Key_Paste), self, activated=self._paste_as_alternate_action)
+        # Also handle Ctrl+V just in case QKeySequence.StandardKey.Paste is picky
+        QShortcut(QKeySequence("Ctrl+V"), self, activated=self._paste_as_alternate_action)
 
         main_layout = QGridLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -583,6 +588,63 @@ class ReaderView(QWidget):
                             self.video_control_panel.hide()
 
         return super().eventFilter(obj, event)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            # Check if at least one URL is a local file with a valid extension
+            valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS))
+            for url in event.mimeData().urls():
+                path = url.toLocalFile()
+                if path and os.path.isfile(path) and path.lower().endswith(valid_exts):
+                    event.acceptProposedAction()
+                    return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            file_paths = [url.toLocalFile() for url in event.mimeData().urls()]
+            self._add_alts_from_files(file_paths)
+            event.acceptProposedAction()
+        super().dropEvent(event)
+
+    def _paste_as_alternate_action(self):
+        clipboard = QApplication.clipboard()
+        mime_data = clipboard.mimeData()
+        if mime_data.hasUrls():
+            file_paths = [url.toLocalFile() for url in mime_data.urls()]
+            self._add_alts_from_files(file_paths)
+
+    def _add_alts_from_files(self, file_paths: List[str]):
+        if not file_paths: return
+        
+        # Target the current page
+        target_idx = self.model.current_index
+        if target_idx == -1: return
+
+        from src.ui.components.drag_drop_alt_dialog import DragDropAltDialog
+        
+        page_obj = self.model.images[target_idx]
+        existing_cats = list(page_obj.get_categorized_variants().keys())
+
+        dialog = DragDropAltDialog(self, existing_categories=existing_cats)
+        # Pre-load the files into the dialog
+        if dialog.add_files(file_paths) > 0:
+            if dialog.exec():
+                files = dialog.get_files()
+                cat = dialog.get_category()
+                if files:
+                    import src.ui.page_utils as page_utils
+                    page_utils.process_add_alts(
+                        self.model,
+                        files,
+                        target_idx,
+                        lambda: self.reload_chapter(),
+                        lambda idx: self.model.update_page_variants(idx),
+                        category=cat if cat else None
+                    )
 
     def resolve_path(self, path: str) -> str:
         """Resolves a virtual archive path to a real local file path if it exists in cache."""

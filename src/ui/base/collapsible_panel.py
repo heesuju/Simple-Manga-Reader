@@ -74,6 +74,7 @@ class HorizontalScrollArea(QScrollArea):
         # Clamp
         target_val = max(0, min(target_val, scrollbar.maximum()))
         
+        self.animation.stop()
         if self.vertical_mode:
             self.animation.setPropertyName(b"value")
             self.animation.setTargetObject(self.verticalScrollBar())
@@ -81,7 +82,6 @@ class HorizontalScrollArea(QScrollArea):
             self.animation.setPropertyName(b"value")
             self.animation.setTargetObject(self.horizontalScrollBar())
 
-        self.animation.stop()
         self.animation.setStartValue(current_val)
         self.animation.setEndValue(int(target_val))
         self.animation.start()
