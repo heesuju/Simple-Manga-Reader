@@ -259,7 +259,16 @@ class AltPanel(QWidget):
 
         # Build thumbnail rows for active category
         active_paths = categories.get(active_cat, [])
-        active_paths = sorted(active_paths, key=lambda p: natural_sort_key(Path(p).name))
+        original_image_path = page.images[0]
+        
+        if active_cat == "Main" and original_image_path in active_paths:
+            # Keep original at top, sort the rest
+            other_paths = [p for p in active_paths if p != original_image_path]
+            other_paths = sorted(other_paths, key=lambda p: natural_sort_key(Path(p).name))
+            active_paths = [original_image_path] + other_paths
+        else:
+            active_paths = sorted(active_paths, key=lambda p: natural_sort_key(Path(p).name))
+            
         for cat_v_idx, variant_path in enumerate(active_paths):
             true_v_idx = page.images.index(variant_path)
             is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
