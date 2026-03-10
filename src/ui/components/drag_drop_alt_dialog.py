@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, QUrl, QSize
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap
 from src.utils.img_utils import load_thumbnail_from_path
 from src.workers.view_workers import IMAGE_EXTS, VIDEO_EXTS
+from src.utils.str_utils import natural_sort_key
 
 class DragDropAltDialog(QDialog):
     def __init__(self, parent=None, existing_categories=None):
@@ -69,7 +70,7 @@ class DragDropAltDialog(QDialog):
         
         if existing_categories:
             # Sort categories, putting Main first if it exists
-            cats = sorted([c for c in existing_categories if c.lower() != "main"])
+            cats = sorted([c for c in existing_categories if c.lower() != "main"], key=natural_sort_key)
             if any(c.lower() == "main" for c in existing_categories):
                  cats.insert(0, "Main")
             

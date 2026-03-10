@@ -9,6 +9,7 @@ from PyQt6.QtGui import QIcon, QPixmap
 from src.enums import ViewMode
 from src.utils.resource_utils import resource_path
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path
+from src.utils.str_utils import natural_sort_key
 
 THUMB_W = 120
 THUMB_H = 160
@@ -218,7 +219,7 @@ class AltPanel(QWidget):
 
         # Get categories
         categories = page.get_categorized_variants()
-        cat_names = sorted(list(categories.keys()))
+        cat_names = sorted(list(categories.keys()), key=natural_sort_key)
 
         if not cat_names:
             self.hide()
@@ -258,6 +259,7 @@ class AltPanel(QWidget):
 
         # Build thumbnail rows for active category
         active_paths = categories.get(active_cat, [])
+        active_paths = sorted(active_paths, key=lambda p: natural_sort_key(Path(p).name))
         for cat_v_idx, variant_path in enumerate(active_paths):
             true_v_idx = page.images.index(variant_path)
             is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
