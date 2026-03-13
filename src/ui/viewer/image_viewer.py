@@ -294,6 +294,7 @@ class ImageViewer(BaseViewer):
             self._restore_original_pixmap()
 
         if mode == "Fit Page":
+            self.reader_view.view.reset_zoom_state()
             self.reader_view.view.resetTransform()
             
             scene_rect = self.reader_view.scene.sceneRect()
@@ -314,6 +315,7 @@ class ImageViewer(BaseViewer):
             self._trigger_hq_rescale()
 
         elif mode == "Fit Width":
+            self.reader_view.view.reset_zoom_state()
             scene_rect = self.reader_view.scene.sceneRect()
             if scene_rect.width() > 0:
                 view_width = self.reader_view.view.viewport().width()
@@ -326,6 +328,7 @@ class ImageViewer(BaseViewer):
             try:
                 zoom_value = float(mode.replace('%', '')) / 100.0
                 
+                self.reader_view.view.reset_zoom_state()
                 self.reader_view.view.resetTransform()
                 self.reader_view.view.scale(zoom_value, zoom_value)
                 

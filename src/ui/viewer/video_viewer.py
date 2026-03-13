@@ -181,6 +181,7 @@ class VideoViewer(BaseViewer):
             return
 
         if mode == "Fit Page":
+            self.reader_view.view.reset_zoom_state()
             self.reader_view.view.resetTransform()
             
             scene_rect = self.reader_view.scene.sceneRect()
@@ -201,6 +202,7 @@ class VideoViewer(BaseViewer):
             try:
                 zoom_value = float(mode.replace('%', '')) / 100.0
                 
+                self.reader_view.view.reset_zoom_state()
                 self.reader_view.view.resetTransform()
                 self.reader_view.view.scale(zoom_value, zoom_value)
                 

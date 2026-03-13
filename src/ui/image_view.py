@@ -254,6 +254,7 @@ class ImageView(QGraphicsView):
     
     def reset_zoom_state(self):
         self._zoom_factor = 1.0
+        self._zoom_steps = 0
 
     @_zoom.setter
     def _zoom(self, value):
