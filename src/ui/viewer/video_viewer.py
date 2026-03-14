@@ -1,4 +1,6 @@
 import os
+import time
+import shutil
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
 from PyQt6.QtGui import QPixmap, QAction
@@ -81,11 +83,12 @@ class VideoViewer(BaseViewer):
             self.video_last_frame_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
             self.video_last_frame_item.setZValue(-1)
 
-        # Add to scene if not present
         if self.video_item.scene() != self.reader_view.scene:
+            self.video_item.setZValue(1) # Ensure video is on top of potential underlays/stale pixmaps
             self.reader_view.scene.addItem(self.video_item)
             
         if self.video_last_frame_item.scene() != self.reader_view.scene:
+            self.video_last_frame_item.setZValue(0) # Underlay below active video
             self.reader_view.scene.addItem(self.video_last_frame_item)
 
     def _play_video(self, path: str):
@@ -122,6 +125,10 @@ class VideoViewer(BaseViewer):
         self.video_item.setPos(0, 0)
         self.reader_view.scene.setSceneRect(QRectF(0, 0, size.width(), size.height()))
         self.reader_view.apply_last_zoom()
+        
+        # Update selection overlay bounds
+        if hasattr(self.reader_view.view, '_update_overlay_bounds'):
+            self.reader_view.view._update_overlay_bounds()
 
     def _stop_video(self):
         if self.media_player.playbackState() != QMediaPlayer.PlaybackState.StoppedState:
@@ -305,14 +312,17 @@ class VideoViewer(BaseViewer):
 
     def _save_current_video(self):
         path = self.video_item.data(0)
-        if not path or not os.path.exists(path):
+        if not path:
+            return
+            
+        is_virtual = '|' in path
+        if not is_virtual and not os.path.exists(path):
             return
 
         was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
         if was_playing:
             self.media_player.pause()
 
-        import shutil
         base_name = os.path.basename(path)
         ext = os.path.splitext(base_name)[1]
         
@@ -328,9 +338,18 @@ class VideoViewer(BaseViewer):
         
         if file_path:
             try:
-                shutil.copy2(path, file_path)
+                if '|' in path:
+                    from src.utils.img_utils import get_image_data_from_zip
+                    data = get_image_data_from_zip(path)
+                    if data:
+                        with open(file_path, "wb") as f:
+                            f.write(data)
+                    else:
+                        raise Exception("Failed to extract video from zip")
+                else:
+                    shutil.copy2(path, file_path)
             except Exception as e:
-                print(f"Error copying video: {e}")
+                print(f"Error saving video: {e}")
         
         if was_playing:
             self.media_player.play()
@@ -410,6 +429,116 @@ class VideoViewer(BaseViewer):
         # For now we assume typical user flow, maybe just log or do nothing.
         # Could verify by checking if file exists.
         pass
+
+    def save_area(self, scene_rect, size_limit_mb=None):
+        if not self.video_item or self.media_player.source().isEmpty():
+            return
+            
+        current_time = self.media_player.position()
+        source_path = self.media_player.source().toLocalFile()
+        
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        # Default to jpg for better balance of size/quality from videos
+        initial_path = os.path.join(downloads_dir, f"crop_frame_{timestamp}.jpg")
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.reader_view,
+            "Save Cropped Frame As",
+            initial_path,
+            "JPEG Image (*.jpg);;PNG Image (*.png);;WebP Image (*.webp);;All Files (*)"
+        )
+        
+        if file_path:
+            worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
+            # Pass metadata to handler
+            worker.signals.finished.connect(
+                lambda s, img, p: self._on_area_frame_extracted(idx=None, img=img, save_path=p, rect=scene_rect, limit=size_limit_mb)
+            )
+            self.reader_view.thread_pool.start(worker)
+
+    def _on_area_frame_extracted(self, idx, img, save_path, rect, limit):
+        # Crop
+        intersected = rect.toRect().intersected(img.rect())
+        if intersected.width() <= 0 or intersected.height() <= 0:
+            return
+        
+        cropped = img.copy(intersected)
+        ext = os.path.splitext(save_path)[1].lower()
+        if ext in [".jpg", ".jpeg"]: fmt = "JPEG"
+        elif ext == ".webp": fmt = "WEBP"
+        else: fmt = "PNG"
+
+        from PyQt6.QtWidgets import QMessageBox
+        from PyQt6.QtCore import QByteArray, QBuffer, Qt
+
+        if limit:
+            target_bytes = limit * 1024 * 1024
+            
+            # Fast path
+            ba = QByteArray()
+            buf = QBuffer(ba)
+            buf.open(QBuffer.OpenModeFlag.WriteOnly)
+            quality = 95 if fmt in ["JPEG", "WEBP"] else -1
+            cropped.save(buf, fmt, quality)
+            
+            if ba.size() <= target_bytes:
+                try:
+                    with open(save_path, "wb") as f:
+                        f.write(ba.data())
+                    return
+                except Exception as e:
+                    QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
+                    return
+
+            if fmt in ["JPEG", "WEBP"]:
+                # Binary search quality
+                low, high = 0, 100
+                best_data = None
+                for _ in range(8):
+                    mid = (low + high) // 2
+                    ba = QByteArray()
+                    buf = QBuffer(ba)
+                    buf.open(QBuffer.OpenModeFlag.WriteOnly)
+                    cropped.save(buf, fmt, mid)
+                    if ba.size() <= target_bytes:
+                        best_data = ba
+                        low = mid + 1
+                    else:
+                        high = mid - 1
+                
+                if best_data is None:
+                    # Downscale
+                    scale = 0.9
+                    curr_img = cropped
+                    while True:
+                        w = int(curr_img.width() * scale)
+                        h = int(curr_img.height() * scale)
+                        if w < 10 or h < 10: break
+                        curr_img = curr_img.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        ba = QByteArray()
+                        buf = QBuffer(ba)
+                        buf.open(QBuffer.OpenModeFlag.WriteOnly)
+                        curr_img.save(buf, fmt, 0)
+                        if ba.size() <= target_bytes:
+                            best_data = ba
+                            break
+                
+                if best_data:
+                    try:
+                        with open(save_path, "wb") as f:
+                            f.write(best_data.data())
+                    except Exception as e:
+                        QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
+                else:
+                    QMessageBox.warning(self.reader_view, "Error", "Could not compress to the target size.")
+            else:
+                cropped.save(save_path, "PNG")
+                if os.path.getsize(save_path) > target_bytes:
+                    QMessageBox.warning(self.reader_view, "Warning", "Saved PNG exceeds the size limit. Use JPEG or WebP for better compression.")
+        else:
+            quality = 95 if fmt in ["JPEG", "WEBP"] else -1
+            cropped.save(save_path, fmt, quality)
 
     def cleanup(self):
         self._stop_video()

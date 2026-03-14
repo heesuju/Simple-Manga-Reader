@@ -462,6 +462,8 @@ class ReaderView(QWidget):
             self.current_viewer.set_active(False)
             self.current_viewer = new_viewer
             self.current_viewer.set_active(True)
+            if hasattr(self.view, '_update_overlay_bounds'):
+                self.view._update_overlay_bounds()
             
         self.layout_btn.setText("")
         if self.model.view_mode == ViewMode.SINGLE:
@@ -689,6 +691,8 @@ class ReaderView(QWidget):
                  self.current_viewer.set_active(False)
                  self.current_viewer = target_viewer
                  self.current_viewer.set_active(True)
+                 if hasattr(self.view, '_update_overlay_bounds'):
+                     self.view._update_overlay_bounds()
         
         if self.current_viewer == self.strip_viewer:
              # Refresh current index just in case, though on_page_updated handles specific updates

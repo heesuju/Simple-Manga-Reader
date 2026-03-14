@@ -145,6 +145,10 @@ class ImageViewer(BaseViewer):
         self.reader_view.view.reset_zoom_state()
         self.reader_view.apply_last_zoom()
         self._trigger_hq_rescale()
+        
+        # Update selection overlay bounds if active
+        if hasattr(self.reader_view.view, '_update_overlay_bounds'):
+            self.reader_view.view._update_overlay_bounds()
 
     def _setup_double_view(self, pix1, pix2, path1, path2):
         h1 = pix1.height()

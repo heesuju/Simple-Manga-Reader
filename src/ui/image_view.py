@@ -160,12 +160,17 @@ class ImageView(QGraphicsView):
         # Ensure overlay covers entire viewport
         self._selection_overlay.setGeometry(self.viewport().rect())
         
-        # Get the combined rect of all pixmap items in the scene
+        # Get the media bounds from scene
         image_bounds = QRectF()
         if self.scene():
-            for item in self.scene().items():
-                if isinstance(item, QGraphicsPixmapItem):
-                    image_bounds = image_bounds.united(item.sceneBoundingRect())
+            image_bounds = self.scene().sceneRect()
+            if not image_bounds.isValid() or image_bounds.isEmpty():
+                # Fallback to item bounds
+                from PyQt6.QtWidgets import QGraphicsPixmapItem
+                from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
+                for item in self.scene().items():
+                    if isinstance(item, (QGraphicsPixmapItem, QGraphicsVideoItem)):
+                        image_bounds = image_bounds.united(item.sceneBoundingRect())
         
         self._selection_overlay.start_selection(image_bounds=image_bounds)
         if self.manga_reader:
@@ -198,15 +203,22 @@ class ImageView(QGraphicsView):
 
     def _update_overlay_bounds(self):
         """Calculates and updates the image scene bounds in the selection overlay."""
-        if not self._selection_mode or not hasattr(self, '_selection_overlay'):
+        if not hasattr(self, '_selection_overlay'):
             return
             
         image_bounds = None
-        if self.scene() and self.scene().items():
-            image_bounds = QRectF()
-            for item in self.scene().items():
-                if isinstance(item, QGraphicsPixmapItem):
-                    image_bounds = image_bounds.united(item.sceneBoundingRect())
+        if self.scene():
+            # Use sceneRect as it's specifically managed by our viewers to match media dimensions
+            image_bounds = self.scene().sceneRect()
+            
+            # If sceneRect is not explicitly set, fallback to item bounding rects
+            if not image_bounds.isValid() or image_bounds.isEmpty():
+                image_bounds = QRectF()
+                from PyQt6.QtWidgets import QGraphicsPixmapItem
+                from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
+                for item in self.scene().items():
+                    if isinstance(item, (QGraphicsPixmapItem, QGraphicsVideoItem)):
+                        image_bounds = image_bounds.united(item.sceneBoundingRect())
         
         self._selection_overlay.set_image_bounds(image_bounds)
 
