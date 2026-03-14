@@ -47,13 +47,28 @@ class ImageViewer(BaseViewer):
         else:
             self.resize_timer.stop()
             self.hq_generation_id += 1 # Invalidate any pending HQ workers
-            if self.pixmap_item:
-                self.pixmap_item.setVisible(False)
+            
+            # Hide ALL pixmap items in the scene to avoid overlapping videos/next pages
+            if self.reader_view.scene:
+                for item in self.reader_view.scene.items():
+                    if isinstance(item, QGraphicsPixmapItem):
+                        item.setVisible(False)
             
             if self.movie:
                 self.movie.setPaused(True)
                 
             self.reader_view.layout_btn.hide()
+
+    def _clear_scene_pixmaps(self):
+        if not self.reader_view.scene:
+            return
+        # Find all pixmap items and remove them
+        to_remove = [item for item in self.reader_view.scene.items() 
+                     if isinstance(item, QGraphicsPixmapItem)]
+        for item in to_remove:
+            self.reader_view.scene.removeItem(item)
+        self.pixmap_item = None
+        self.scaled_pixmap_item = False
 
     def load(self, item):
         self._stop_movie()
