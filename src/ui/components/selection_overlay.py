@@ -71,7 +71,9 @@ class AdvancedSelectionOverlay(QWidget):
         self._image_bounds = QRectF(bounds) if bounds else None
         if self._rect.isValid() and self._image_bounds:
             # Re-constrain current rect to new bounds
-            if self._aspect_ratio:
+            if self._aspect_ratio == "FULL":
+                self._rect = QRectF(self._image_bounds)
+            elif self._aspect_ratio:
                 self._apply_ratio_constraint(self._rect, "TL")
             else:
                 # Simple snap
@@ -243,7 +245,7 @@ class AdvancedSelectionOverlay(QWidget):
 
     def _apply_ratio_constraint(self, rect, anchor):
         ratio = self._aspect_ratio
-        if not ratio: return
+        if not ratio or ratio == "FULL": return
         
         w, h = rect.width(), rect.height()
         if h == 0:
