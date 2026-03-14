@@ -16,6 +16,7 @@ class VideoControlPanel(QWidget):
     position_changed = pyqtSignal(int)
     mode_changed = pyqtSignal(str) # "time" or "frame"
     seek_frame = pyqtSignal(int)
+    step_frame = pyqtSignal(int) # -1 or 1
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -47,6 +48,22 @@ class VideoControlPanel(QWidget):
         self.play_pause_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.play_pause_btn.clicked.connect(self.play_pause_clicked.emit)
         layout.addWidget(self.play_pause_btn)
+
+        self.prev_frame_btn = QPushButton("<")
+        self.prev_frame_btn.setFixedSize(24, 32)
+        self.prev_frame_btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; }")
+        self.prev_frame_btn.clicked.connect(lambda: self.step_frame.emit(-1))
+        self.prev_frame_btn.setToolTip("Previous Frame")
+        self.prev_frame_btn.setVisible(False)
+        layout.addWidget(self.prev_frame_btn)
+
+        self.next_frame_btn = QPushButton(">")
+        self.next_frame_btn.setFixedSize(24, 32)
+        self.next_frame_btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; }")
+        self.next_frame_btn.clicked.connect(lambda: self.step_frame.emit(1))
+        self.next_frame_btn.setToolTip("Next Frame")
+        self.next_frame_btn.setVisible(False)
+        layout.addWidget(self.next_frame_btn)
         
         self.current_time_label = QLabel("00:00")
         layout.addWidget(self.current_time_label)
@@ -215,6 +232,10 @@ class VideoControlPanel(QWidget):
         self.mode_changed.emit(self.seek_mode)
 
     def update_ui_for_mode(self):
+        is_frame = self.seek_mode == "frame"
+        self.prev_frame_btn.setVisible(is_frame)
+        self.next_frame_btn.setVisible(is_frame)
+        
         if self.seek_mode == "time":
             self.set_duration(getattr(self, 'duration_ms', 0))
             self.set_position(getattr(self, 'current_position_ms', 0))

@@ -52,6 +52,7 @@ class VideoViewer(BaseViewer):
         panel.repeat_clicked.connect(self._set_video_repeat)
         panel.auto_play_toggled.connect(self._set_auto_play)
         panel.seek_frame.connect(self._seek_to_frame)
+        panel.step_frame.connect(self._step_video_frame)
 
     def set_active(self, active: bool):
         if active:
@@ -163,6 +164,20 @@ class VideoViewer(BaseViewer):
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
             self.media_player.pause()
         self.media_player.setPosition(position)
+
+    def _step_video_frame(self, step):
+        panel = self.reader_view.video_control_panel
+        if panel.fps <= 0: return
+
+        current_pos = self.media_player.position()
+        # Use round to find the closest frame to the current reported position
+        current_frame = round(current_pos * panel.fps / 1000)
+        target_frame = max(0, min(panel.total_frames, current_frame + step))
+        
+        # When stepping, seek to the MIDDLE of the target frame to avoid boundary precision issues
+        # and ensure the decoder actually advances to the new frame.
+        target_pos_ms = int((target_frame + 0.5) * 1000 / panel.fps)
+        self._set_video_position(target_pos_ms)
 
     def _check_underlay_visibility(self, position):
         if (self.video_last_frame_item and 
