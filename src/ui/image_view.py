@@ -164,9 +164,6 @@ class ImageView(QGraphicsView):
         self._selection_overlay.start_selection(image_bounds=image_bounds)
         if self.manga_reader:
             self.manga_reader._on_area_selection_started()
-        
-        # Initial bounds update
-        self._update_overlay_bounds()
 
     def set_selection_ratio(self, ratio):
         self._selection_overlay.set_aspect_ratio(ratio)
@@ -286,12 +283,9 @@ class ImageView(QGraphicsView):
         super().resizeEvent(event)
         if hasattr(self, '_selection_overlay') and self._selection_mode:
             self._selection_overlay.setGeometry(self.viewport().rect())
-            self._update_overlay_bounds()
 
     def scrollContentsBy(self, dx, dy):
         super().scrollContentsBy(dx, dy)
-        if hasattr(self, '_selection_mode') and self._selection_mode:
-            self._update_overlay_bounds()
 
     def _update_overlay_bounds(self):
         """Calculates and updates the image scene bounds in the selection overlay."""
@@ -322,9 +316,6 @@ class ImageView(QGraphicsView):
 
             if self.manga_reader:
                 self.manga_reader._update_zoom(self._zoom_factor)
-            
-            if self._selection_mode:
-                self._update_overlay_bounds()
         else:
             super().wheelEvent(event)
 
