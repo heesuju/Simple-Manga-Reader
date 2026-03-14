@@ -72,10 +72,6 @@ class ImageView(QGraphicsView):
          save_area_action.triggered.connect(self.start_area_selection)
          menu.addAction(save_area_action)
          
-         export_action = QAction("Export in Lower Quality...", self)
-         export_action.triggered.connect(lambda: self._export_lower_quality(path))
-         menu.addAction(export_action)
-
          menu.addSeparator()
 
          add_file_action = QAction("Add Alternate from File...", self)
@@ -187,103 +183,6 @@ class ImageView(QGraphicsView):
         if hasattr(self, '_selection_overlay'):
             self._selection_overlay.setGeometry(self.viewport().rect())
 
-    def _export_lower_quality(self, path):
-        from PyQt6.QtWidgets import QInputDialog, QMessageBox
-        from PyQt6.QtCore import QByteArray, QBuffer
-        from PyQt6.QtGui import QImage
-        import math
-
-        target_kb, ok = QInputDialog.getInt(
-            self,
-            "Export Lower Quality",
-            "Enter target file size in KB:",
-            value=500, min=10, max=100000
-        )
-        if not ok:
-            return
-
-        base_name = os.path.basename(path)
-        name, _ = os.path.splitext(base_name)
-        
-        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-        initial_path = os.path.join(downloads_dir, f"{name}_lowq.jpg")
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Image As (Lower Quality)",
-            initial_path,
-            "JPEG Image (*.jpg);;All Files (*)"
-        )
-        
-        if not file_path:
-            return
-
-        img = QImage(path)
-        if img.isNull():
-            QMessageBox.warning(self, "Error", "Failed to load image for export.")
-            return
-
-        target_bytes = target_kb * 1024
-        
-        # Binary search for best quality
-        low = 0
-        high = 100
-        best_quality = -1
-        best_data = None
-        
-        for _ in range(8):
-            mid = (low + high) // 2
-            ba = QByteArray()
-            buf = QBuffer(ba)
-            buf.open(QBuffer.OpenModeFlag.WriteOnly)
-            img.save(buf, "JPEG", mid)
-            if ba.size() <= target_bytes:
-                best_quality = mid
-                best_data = ba
-                low = mid + 1
-            else:
-                high = mid - 1
-                
-        if best_data is not None:
-            try:
-                with open(file_path, "wb") as f:
-                    f.write(best_data.data())
-                QMessageBox.information(self, "Success", f"Exported successfully at quality {best_quality}.\nSize: {len(best_data)//1024} KB")
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to save file:\n{e}")
-        else:
-            # Need to resize image because even quality 0 is too large
-            scale_factor = 0.9
-            current_img = img
-            while True:
-                new_width = int(current_img.width() * scale_factor)
-                new_height = int(current_img.height() * scale_factor)
-                if new_width < 10 or new_height < 10:
-                    break
-                current_img = current_img.scaled(new_width, new_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                ba = QByteArray()
-                buf = QBuffer(ba)
-                buf.open(QBuffer.OpenModeFlag.WriteOnly)
-                current_img.save(buf, "JPEG", 0)
-                if ba.size() <= target_bytes:
-                    best_data = ba
-                    break
-
-            if best_data is not None:
-                 try:
-                     with open(file_path, "wb") as f:
-                         f.write(best_data.data())
-                     QMessageBox.information(self, "Success", f"Exported successfully (resized).\nSize: {len(best_data)//1024} KB")
-                 except Exception as e:
-                     QMessageBox.warning(self, "Error", f"Failed to save file:\n{e}")
-            else:
-                 QMessageBox.warning(self, "Error", "Could not compress to the target size.")
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, '_selection_overlay') and self._selection_mode:
-            self._selection_overlay.setGeometry(self.viewport().rect())
-
     def scrollContentsBy(self, dx, dy):
         super().scrollContentsBy(dx, dy)
 
@@ -322,15 +221,15 @@ class ImageView(QGraphicsView):
     @pyqtProperty(float)
     def _zoom(self):
         return self._zoom_factor
-    
-    def reset_zoom_state(self):
-        self._zoom_factor = 1.0
-        self._zoom_steps = 0
 
     @_zoom.setter
     def _zoom(self, value):
         self.setTransform(QTransform().scale(value, value))
         self._zoom_factor = value
+
+    def reset_zoom_state(self):
+        self._zoom_factor = 1.0
+        self._zoom_steps = 0
 
     def mouseDoubleClickEvent(self, event):
         if self.manga_reader:

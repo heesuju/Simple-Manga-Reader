@@ -751,9 +751,9 @@ class ReaderView(QWidget):
         self.last_zoom_mode = mode
         self.current_viewer.zoom(mode)
 
-    def save_area(self, scene_rect: QRectF):
+    def save_area(self, scene_rect: QRectF, size_limit_mb=None):
         if self.current_viewer:
-            self.current_viewer.save_area(scene_rect)
+            self.current_viewer.save_area(scene_rect, size_limit_mb=size_limit_mb)
 
     def start_area_selection(self):
         """Triggers the area selection UI on the current view."""
@@ -768,7 +768,8 @@ class ReaderView(QWidget):
     def _apply_area_selection(self):
         rect = self.view.get_selection_rect()
         if rect:
-            self.save_area(rect)
+            size_limit = self.selection_panel.get_size_limit()
+            self.save_area(rect, size_limit_mb=size_limit)
             self._cancel_area_selection()
         else:
             QMessageBox.information(self, "No Selection", "Please select an area first.")

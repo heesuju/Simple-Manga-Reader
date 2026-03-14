@@ -85,11 +85,48 @@ class SelectionPanel(QWidget):
         # Default to Free
         self.ratio_buttons[0].setChecked(True)
 
-        # Remove the stretch that was after the scroll area
+        # Size Limit Controls
+        size_container = QWidget()
+        size_layout = QHBoxLayout(size_container)
+        size_layout.setContentsMargins(0, 0, 0, 0)
+        size_layout.setSpacing(5)
+        
+        size_label = QLabel("Limit:")
+        size_label.setStyleSheet("color: #888; font-size: 11px; margin-left: 10px;")
+        size_layout.addWidget(size_label)
+        
+        self.size_limits = [
+            ("Original", None),
+            ("2MB", 2),
+            ("4MB", 4),
+            ("6MB", 6),
+            ("8MB", 8),
+            ("10MB", 10)
+        ]
+        
+        self.size_group = []
+        self._current_size_limit = None
+        
+        for label, val in self.size_limits:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setFixedWidth(55 if label == "Original" else 42)
+            btn.setStyleSheet(FLAT_BUTTON_STYLE + """
+                QPushButton { padding: 3px 5px; font-size: 11px; color: #999; border: 1px solid rgba(255,255,255,10); }
+                QPushButton:checked { background-color: rgba(0, 120, 215, 60); color: white; border: 1px solid #0078d7; }
+                QPushButton:hover:!checked { background-color: rgba(255, 255, 255, 20); }
+            """)
+            btn.clicked.connect(lambda checked, v=val, b=btn: self._on_size_clicked(v, b))
+            size_layout.addWidget(btn)
+            self.size_group.append(btn)
+        
+        # Default to Original
+        self.size_group[0].setChecked(True)
+        main_layout.addWidget(size_container)
 
         # Action Buttons
         self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setStyleSheet(FLAT_BUTTON_STYLE + "QPushButton { color: #ff5555; padding: 4px 15px; font-weight: bold; }")
+        self.cancel_btn.setStyleSheet(FLAT_BUTTON_STYLE + "QPushButton { color: #ff5555; padding: 4px 12px; font-weight: bold; margin-left: 10px; }")
         self.cancel_btn.clicked.connect(self.cancel_clicked)
         main_layout.addWidget(self.cancel_btn)
 
@@ -99,7 +136,7 @@ class SelectionPanel(QWidget):
                 background-color: #0078d7;
                 border: none;
                 color: white;
-                padding: 8px 25px;
+                padding: 8px 20px;
                 border-radius: 4px;
                 font-weight: bold;
                 font-size: 13px;
@@ -120,8 +157,26 @@ class SelectionPanel(QWidget):
         button.setChecked(True)
         self.ratio_selected.emit(value)
 
+    def _on_size_clicked(self, value, button):
+        for btn in self.size_group:
+            if btn != button:
+                btn.setChecked(False)
+        button.setChecked(True)
+        self._current_size_limit = value
+
+    def get_size_limit(self):
+        """Returns the selected size limit in MB, or None if 'Original'."""
+        return self._current_size_limit
+
     def reset(self):
+        # Reset ratios
         for btn in self.ratio_buttons:
             btn.setChecked(False)
         self.ratio_buttons[0].setChecked(True)
         self.ratio_selected.emit(None)
+        
+        # Reset size limit
+        for btn in self.size_group:
+            btn.setChecked(False)
+        self.size_group[0].setChecked(True)
+        self._current_size_limit = None

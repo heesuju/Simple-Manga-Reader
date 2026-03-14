@@ -213,6 +213,10 @@ class ImageViewer(BaseViewer):
         self.reader_view.view.reset_zoom_state()
         self.reader_view.apply_last_zoom()
         self._trigger_hq_rescale()
+        
+        # Update selection overlay bounds if active
+        if hasattr(self.reader_view.view, '_update_overlay_bounds'):
+            self.reader_view.view._update_overlay_bounds()
 
     def _on_movie_frame_changed(self, frame_number):
         if self.movie and self.pixmap_item:
@@ -435,7 +439,7 @@ class ImageViewer(BaseViewer):
     def show_next(self):
         pass
 
-    def save_area(self, scene_rect):
+    def save_area(self, scene_rect, size_limit_mb=None):
         if not self.original_pixmap and not self.pixmap_item:
             return
 
@@ -452,24 +456,115 @@ class ImageViewer(BaseViewer):
 
         cropped = source_pixmap.copy(intersected)
         
+        # Determine source extension to use as default
+        original_path = self.pixmap_item.data(0) if self.pixmap_item else None
+        source_ext = "jpg"
+        if original_path:
+            ext = os.path.splitext(original_path)[1].lower().replace(".", "")
+            if ext in ["jpg", "jpeg", "png", "webp"]:
+                source_ext = ext
+        
+        if source_ext == "jpeg": source_ext = "jpg"
+
         # Save via dialog
         downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        initial_path = os.path.join(downloads_dir, f"crop_{timestamp}.png")
+        initial_path = os.path.join(downloads_dir, f"crop_{timestamp}.{source_ext}")
         
-        from PyQt6.QtWidgets import QFileDialog
-        file_path, _ = QFileDialog.getSaveFileName(
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from PyQt6.QtCore import QByteArray, QBuffer
+        
+        file_path, selected_filter = QFileDialog.getSaveFileName(
             self.reader_view,
             "Save Cropped Image As",
             initial_path,
-            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+            "JPEG Image (*.jpg);;PNG Image (*.png);;WebP Image (*.webp);;All Files (*)"
         )
         
-        if file_path:
+        if not file_path:
+            return
+
+        # Determine format from extension
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in [".jpg", ".jpeg"]: fmt = "JPEG"
+        elif ext == ".webp": fmt = "WEBP"
+        else: fmt = "PNG"
+        
+        if size_limit_mb:
+            img = cropped.toImage()
+            target_bytes = size_limit_mb * 1024 * 1024
+            
+            # Fast path: check if high quality already fits
+            ba = QByteArray()
+            buf = QBuffer(ba)
+            buf.open(QBuffer.OpenModeFlag.WriteOnly)
+            quality = 95 if fmt in ["JPEG", "WEBP"] else -1
+            img.save(buf, fmt, quality)
+            
+            if ba.size() <= target_bytes:
+                try:
+                    with open(file_path, "wb") as f:
+                        f.write(ba.data())
+                    return
+                except Exception as e:
+                    QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
+                    return
+
+            if fmt in ["JPEG", "WEBP"]:
+                # Binary search for best quality
+                low, high = 0, 100
+                best_data = None
+                
+                for _ in range(8):
+                    mid = (low + high) // 2
+                    ba = QByteArray()
+                    buf = QBuffer(ba)
+                    buf.open(QBuffer.OpenModeFlag.WriteOnly)
+                    img.save(buf, fmt, mid)
+                    if ba.size() <= target_bytes:
+                        best_data = ba
+                        low = mid + 1
+                    else:
+                        high = mid - 1
+                
+                if best_data is None:
+                    # Need to downscale because even quality 0 is too large
+                    scale = 0.9
+                    curr_img = img
+                    while True:
+                        w = int(curr_img.width() * scale)
+                        h = int(curr_img.height() * scale)
+                        if w < 10 or h < 10: break
+                        curr_img = curr_img.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        ba = QByteArray()
+                        buf = QBuffer(ba)
+                        buf.open(QBuffer.OpenModeFlag.WriteOnly)
+                        curr_img.save(buf, fmt, 0)
+                        if ba.size() <= target_bytes:
+                            best_data = ba
+                            break
+                            
+                if best_data:
+                    try:
+                        with open(file_path, "wb") as f:
+                            f.write(best_data.data())
+                    except Exception as e:
+                        QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
+                else:
+                    QMessageBox.warning(self.reader_view, "Error", "Could not compress to the target size.")
+            else:
+                # PNG - already tried fast path and it was too big
+                try:
+                    cropped.save(file_path, "PNG")
+                    QMessageBox.warning(self.reader_view, "Warning", "Saved PNG exceeds the size limit. Use JPEG or WebP for better compression.")
+                except Exception as e:
+                    QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
+        else:
             try:
-                cropped.save(file_path)
+                # Use high quality for JPEG/WebP when saving "Original"
+                quality = 95 if fmt in ["JPEG", "WEBP"] else -1
+                cropped.save(file_path, fmt, quality)
             except Exception as e:
-                from PyQt6.QtWidgets import QMessageBox
                 QMessageBox.warning(self.reader_view, "Error", f"Failed to save cropped image:\n{e}")
 
     def cleanup(self):
