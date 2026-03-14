@@ -23,6 +23,7 @@ from src.ui.slider_panel import SliderPanel
 from src.ui.video_control_panel import VideoControlPanel
 from src.ui.image_view import ImageView
 from src.enums import Language
+from src.ui.components.selection_panel import SelectionPanel
 
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
@@ -226,6 +227,7 @@ class ReaderView(QWidget):
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
         self.alt_panel = AltPanel(self, model=self.model)
+        self.selection_panel = SelectionPanel(self)
 
         # Add panels to the layout
         main_layout.addWidget(self.top_panel, 0, 0, Qt.AlignmentFlag.AlignTop)
@@ -243,6 +245,8 @@ class ReaderView(QWidget):
         bottom_layout.addWidget(self.slider_panel)
                 
         main_layout.addWidget(self.bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
+        main_layout.addWidget(self.selection_panel, 0, 0, Qt.AlignmentFlag.AlignBottom)
+        self.selection_panel.hide()
 
         # Alt panel is NOT added to the layout manager so we can manually control its geometry
         # as a floating overlay that doesn't trigger grid layout shifts.
@@ -272,6 +276,10 @@ class ReaderView(QWidget):
         self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
         self.slider_panel.zoom_reset.connect(self.reset_zoom)
         self.slider_panel.fullscreen_requested.connect(self.toggle_fullscreen)
+
+        self.selection_panel.ratio_selected.connect(self.view.set_selection_ratio)
+        self.selection_panel.apply_clicked.connect(self._apply_area_selection)
+        self.selection_panel.cancel_clicked.connect(self._cancel_area_selection)
 
         self.zoom_changed.connect(self.slider_panel.set_zoom_text)
 
@@ -751,6 +759,24 @@ class ReaderView(QWidget):
         """Triggers the area selection UI on the current view."""
         if hasattr(self.view, 'start_area_selection'):
             self.view.start_area_selection()
+
+    def _on_area_selection_started(self):
+        self._toggle_panels(visible=False)
+        self.selection_panel.reset()
+        self.selection_panel.show()
+
+    def _apply_area_selection(self):
+        rect = self.view.get_selection_rect()
+        if rect:
+            self.save_area(rect)
+            self._cancel_area_selection()
+        else:
+            QMessageBox.information(self, "No Selection", "Please select an area first.")
+
+    def _cancel_area_selection(self):
+        self.view.clear_selection()
+        self.selection_panel.hide()
+        self._toggle_panels(visible=True)
 
     def reset_zoom(self):
         self.set_zoom_mode("Fit Page")

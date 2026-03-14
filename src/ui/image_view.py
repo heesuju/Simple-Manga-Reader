@@ -4,67 +4,7 @@ from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphics
 from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform, QCursor, QColor, QPainterPath
 from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QPoint, QRect, QSize, QRectF
 
-class SelectionOverlay(QWidget):
-    selection_finished = pyqtSignal(QRect)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        self.setMouseTracking(True)
-        self._start_pos = QPoint()
-        self._current_pos = QPoint()
-        self._is_selecting = False
-        self.hide()
-
-    def start_selection(self, pos):
-        self._start_pos = pos
-        self._current_pos = pos
-        self._is_selecting = True
-        self.show()
-        self.update()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._start_pos = event.pos()
-            self._current_pos = event.pos()
-            self._is_selecting = True
-            self.update()
-
-    def mouseMoveEvent(self, event):
-        if self._is_selecting:
-            self._current_pos = event.pos()
-            self.update()
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self._is_selecting:
-            self._is_selecting = False
-            rect = QRect(self._start_pos, self._current_pos).normalized()
-            self.hide()
-            self.selection_finished.emit(rect)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Background dimming
-        full_rect = self.rect()
-        path = QPainterPath()
-        path.addRect(QRectF(full_rect))
-
-        if self._is_selecting:
-            selection_rect = QRect(self._start_pos, self._current_pos).normalized()
-            if selection_rect.isValid():
-                # Cutout
-                path.addRect(QRectF(selection_rect))
-                
-        painter.fillPath(path, QColor(0, 0, 0, 150)) # Semi-transparent black
-
-        # Selection border
-        if self._is_selecting:
-            selection_rect = QRect(self._start_pos, self._current_pos).normalized()
-            if selection_rect.isValid():
-                painter.setPen(QColor(255, 255, 255, 200)) # subtle white border
-                painter.drawRect(selection_rect)
+from src.ui.components.selection_overlay import AdvancedSelectionOverlay
 
 class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
@@ -89,8 +29,7 @@ class ImageView(QGraphicsView):
         self._zoom_factor = 1.0  # 1.0 = fit to screen
 
         self._selection_mode = False
-        self._selection_overlay = SelectionOverlay(self.viewport())
-        self._selection_overlay.selection_finished.connect(self._on_selection_finished)
+        self._selection_overlay = AdvancedSelectionOverlay(self.viewport())
 
         # Smooth rendering
         hints = (
@@ -210,20 +149,28 @@ class ImageView(QGraphicsView):
 
     def start_area_selection(self):
         self._selection_mode = True
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.setCursor(Qt.CursorShape.CrossCursor)
         # Ensure overlay covers entire viewport
         self._selection_overlay.setGeometry(self.viewport().rect())
-        self._selection_overlay.show()
+        self._selection_overlay.start_selection()
+        if self.manga_reader:
+            self.manga_reader._on_area_selection_started()
 
-    def _on_selection_finished(self, selection_rect):
+    def set_selection_ratio(self, ratio):
+        self._selection_overlay.set_aspect_ratio(ratio)
+
+    def get_selection_rect(self):
+        viewport_rect = self._selection_overlay.get_selection()
+        if viewport_rect.width() > 5 and viewport_rect.height() > 5:
+            return self.mapToScene(viewport_rect).boundingRect()
+        return None
+
+    def clear_selection(self):
         self._selection_mode = False
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setCursor(Qt.CursorShape.ArrowCursor)
-        
-        if selection_rect.width() > 5 and selection_rect.height() > 5:
-            # Map viewport rect to scene rect
-            scene_rect = self.mapToScene(selection_rect).boundingRect()
-            if self.manga_reader:
-                self.manga_reader.save_area(scene_rect)
+        self._selection_overlay.hide()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
