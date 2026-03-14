@@ -29,7 +29,7 @@ class ImageView(QGraphicsView):
         self._zoom_factor = 1.0  # 1.0 = fit to screen
 
         self._selection_mode = False
-        self._selection_overlay = AdvancedSelectionOverlay(self.viewport())
+        self._selection_overlay = AdvancedSelectionOverlay(self.viewport(), parent_view=self)
 
         # Smooth rendering
         hints = (
@@ -154,30 +154,29 @@ class ImageView(QGraphicsView):
         # Ensure overlay covers entire viewport
         self._selection_overlay.setGeometry(self.viewport().rect())
         
-        # Calculate image bounds in viewport coordinates
-        image_bounds = None
-        if self.scene().items():
-            # Get the combined rect of all pixmap items in the scene
-            scene_rect = QRectF()
+        # Get the combined rect of all pixmap items in the scene
+        image_bounds = QRectF()
+        if self.scene():
             for item in self.scene().items():
                 if isinstance(item, QGraphicsPixmapItem):
-                    scene_rect = scene_rect.united(item.sceneBoundingRect())
-            
-            if not scene_rect.isNull():
-                # Map to viewport
-                image_bounds = self.mapFromScene(scene_rect).boundingRect()
+                    image_bounds = image_bounds.united(item.sceneBoundingRect())
         
         self._selection_overlay.start_selection(image_bounds=image_bounds)
         if self.manga_reader:
             self.manga_reader._on_area_selection_started()
+        
+        # Initial bounds update
+        self._update_overlay_bounds()
 
     def set_selection_ratio(self, ratio):
         self._selection_overlay.set_aspect_ratio(ratio)
 
     def get_selection_rect(self):
-        viewport_rect = self._selection_overlay.get_selection()
-        if viewport_rect.width() > 5 and viewport_rect.height() > 5:
-            return self.mapToScene(viewport_rect).boundingRect()
+        """Returns the current selection rect in scene coordinates."""
+        if self._selection_mode:
+            rect = self._selection_overlay.get_selection()
+            if rect.isValid() and not rect.isEmpty():
+                return rect
         return None
 
     def clear_selection(self):
@@ -283,6 +282,31 @@ class ImageView(QGraphicsView):
             else:
                  QMessageBox.warning(self, "Error", "Could not compress to the target size.")
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, '_selection_overlay') and self._selection_mode:
+            self._selection_overlay.setGeometry(self.viewport().rect())
+            self._update_overlay_bounds()
+
+    def scrollContentsBy(self, dx, dy):
+        super().scrollContentsBy(dx, dy)
+        if hasattr(self, '_selection_mode') and self._selection_mode:
+            self._update_overlay_bounds()
+
+    def _update_overlay_bounds(self):
+        """Calculates and updates the image scene bounds in the selection overlay."""
+        if not self._selection_mode or not hasattr(self, '_selection_overlay'):
+            return
+            
+        image_bounds = None
+        if self.scene() and self.scene().items():
+            image_bounds = QRectF()
+            for item in self.scene().items():
+                if isinstance(item, QGraphicsPixmapItem):
+                    image_bounds = image_bounds.united(item.sceneBoundingRect())
+        
+        self._selection_overlay.set_image_bounds(image_bounds)
+
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self.zoom_started.emit()
@@ -298,6 +322,9 @@ class ImageView(QGraphicsView):
 
             if self.manga_reader:
                 self.manga_reader._update_zoom(self._zoom_factor)
+            
+            if self._selection_mode:
+                self._update_overlay_bounds()
         else:
             super().wheelEvent(event)
 

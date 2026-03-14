@@ -5,12 +5,13 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QRect, QRectF, QSize, QSizeF, Q
 class AdvancedSelectionOverlay(QWidget):
     selection_finished = pyqtSignal(QRect)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, parent_view=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setMouseTracking(True)
         
-        self._rect = QRectF()
+        self._parent_view = parent_view
+        self._rect = QRectF() # Scene coordinates
         self._aspect_ratio = None
         
         self._is_dragging = False
@@ -43,22 +44,49 @@ class AdvancedSelectionOverlay(QWidget):
                 self._apply_ratio_constraint(self._rect, "TL")
         self.update()
 
+    def set_image_bounds(self, bounds):
+        self._image_bounds = QRectF(bounds) if bounds else None
+        if self._rect.isValid() and self._image_bounds:
+            # Re-constrain current rect to new bounds
+            if self._aspect_ratio:
+                self._apply_ratio_constraint(self._rect, "TL")
+            else:
+                # Simple snap
+                left = max(self._rect.left(), self._image_bounds.left())
+                top = max(self._rect.top(), self._image_bounds.top())
+                right = min(self._rect.right(), self._image_bounds.right())
+                bottom = min(self._rect.bottom(), self._image_bounds.bottom())
+                self._rect = QRectF(left, top, right - left, bottom - top).normalized()
+        self.update()
+
     def start_selection(self, pos=None, image_bounds=None):
         self._rect = QRectF()
         self._active_handle = 0
-        self._image_bounds = QRectF(image_bounds) if image_bounds else None
+        self._image_bounds = QRectF(image_bounds) if image_bounds else None # Scene coordinates
         self.show()
         if pos:
-            self._drag_start_pos = pos
+            # Map pos to scene
+            scene_pos = self._parent_view.mapToScene(pos.toPoint()) if self._parent_view else pos
+            self._drag_start_pos = scene_pos
             self._is_dragging = True
-            self._active_handle = 8 # Bottom Right (as if creating)
+            self._active_handle = 8 
         self.update()
 
+    def _get_visual_rect(self):
+        """Maps scene selection rect to viewport rect."""
+        if not self._rect.isValid() or not self._parent_view:
+            return QRectF()
+        # mapFromScene can return QPolygon or QPolygonF. 
+        # For PyQt6 strict typing, we ensure QRectF.
+        poly = self._parent_view.mapFromScene(self._rect)
+        return QRectF(poly.boundingRect())
+
     def _get_handle_rects(self):
-        if not self._rect.isValid():
+        visual_rect = self._get_visual_rect()
+        if not visual_rect.isValid():
             return {}
         
-        r = self._rect
+        r = visual_rect
         s = self._handle_size
         hs = s / 2
         
@@ -74,37 +102,44 @@ class AdvancedSelectionOverlay(QWidget):
         }
 
     def _hit_test(self, pos):
+        # pos is in viewport coordinates
         handles = self._get_handle_rects()
         for h_type, h_rect in handles.items():
             if h_rect.contains(pos):
                 return h_type
-        if self._rect.contains(pos):
+        
+        visual_rect = self._get_visual_rect()
+        if visual_rect.contains(pos):
             return -1 # Body
         return 0
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            hit = self._hit_test(event.position())
+            pos = event.position()
+            scene_pos = self._parent_view.mapToScene(pos.toPoint()) if self._parent_view else pos
+            
+            hit = self._hit_test(pos)
             if hit != 0:
                 self._is_dragging = True
                 self._active_handle = hit
-                self._drag_start_pos = event.position()
+                self._drag_start_pos = scene_pos
                 self._rect_at_start = QRectF(self._rect)
             else:
                 # Clicked outside - start new selection
-                self._rect = QRectF(event.position(), QSizeF(0, 0))
+                self._rect = QRectF(scene_pos, QSizeF(0, 0))
                 self._is_dragging = True
                 self._active_handle = 8 # Bottom Right
-                self._drag_start_pos = event.position()
+                self._drag_start_pos = scene_pos
                 self._rect_at_start = QRectF(self._rect)
             self.update()
 
     def mouseMoveEvent(self, event):
-        pos = event.position()
+        viewport_pos = event.position()
+        scene_pos = self._parent_view.mapToScene(viewport_pos.toPoint()) if self._parent_view else viewport_pos
         
         if not self._is_dragging:
             # Update cursor based on hit test
-            hit = self._hit_test(pos)
+            hit = self._hit_test(viewport_pos)
             if hit == 1 or hit == 8: self.setCursor(Qt.CursorShape.SizeFDiagCursor)
             elif hit == 3 or hit == 6: self.setCursor(Qt.CursorShape.SizeBDiagCursor)
             elif hit == 2 or hit == 7: self.setCursor(Qt.CursorShape.SizeVerCursor)
@@ -113,17 +148,11 @@ class AdvancedSelectionOverlay(QWidget):
             else: self.setCursor(Qt.CursorShape.CrossCursor)
             return
 
-        delta = pos - self._drag_start_pos
+        delta = scene_pos - self._drag_start_pos
         new_rect = QRectF(self._rect_at_start)
         
         if self._active_handle == -1: # Move
             new_rect.translate(delta.x(), delta.y())
-            # Constrain to parent (viewport)
-            if new_rect.left() < 0: new_rect.moveLeft(0)
-            if new_rect.top() < 0: new_rect.moveTop(0)
-            if new_rect.right() > self.width(): new_rect.moveRight(self.width())
-            if new_rect.bottom() > self.height(): new_rect.moveBottom(self.height())
-            
             # Constrain to image bounds if available
             if self._image_bounds:
                 if new_rect.left() < self._image_bounds.left(): new_rect.moveLeft(self._image_bounds.left())
@@ -244,15 +273,16 @@ class AdvancedSelectionOverlay(QWidget):
         path = QPainterPath()
         path.addRect(QRectF(self.rect()))
 
-        if self._rect.isValid():
-            path.addRect(self._rect)
+        visual_rect = self._get_visual_rect()
+        if visual_rect.isValid():
+            path.addRect(visual_rect)
                 
         painter.fillPath(path, QColor(0, 0, 0, 150))
 
         # Selection border
-        if self._rect.isValid():
+        if visual_rect.isValid():
             painter.setPen(QPen(QColor(255, 255, 255, 180), 1))
-            painter.drawRect(self._rect)
+            painter.drawRect(visual_rect)
             
             # Draw handles
             painter.setBrush(QColor(255, 255, 255, 200))
@@ -261,4 +291,4 @@ class AdvancedSelectionOverlay(QWidget):
                 painter.drawEllipse(h_rect)
 
     def get_selection(self):
-        return self._rect.toRect()
+        return self._rect
