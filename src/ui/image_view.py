@@ -139,9 +139,19 @@ class ImageView(QGraphicsView):
         
         if file_path:
             try:
-                shutil.copy2(path, file_path)
+                if '|' in path:
+                    from src.utils.img_utils import get_image_data_from_zip
+                    data = get_image_data_from_zip(path)
+                    if data:
+                        with open(file_path, "wb") as f:
+                            f.write(data)
+                    else:
+                        raise Exception("Failed to extract data from zip")
+                else:
+                    import shutil
+                    shutil.copy2(path, file_path)
             except Exception as e:
-                print(f"Error copying image: {e}")
+                print(f"Error saving image: {e}")
 
     def start_area_selection(self):
         self._selection_mode = True
