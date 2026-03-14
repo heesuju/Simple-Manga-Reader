@@ -62,6 +62,7 @@ class ReaderView(QWidget):
         self.vbox = None
         
         self.slider_panel = None
+        self._restore_page_path = None
 
         self._last_total_scale = 1.0
         
@@ -937,6 +938,10 @@ class ReaderView(QWidget):
             self.current_chapter_changed.emit(self.model.series, self.model.chapters[self.model.chapter_index])
 
     def reload_chapter(self):
+        # Store current page to restore after reload
+        if self.model.images and 0 <= self.model.current_index < len(self.model.images):
+            self._restore_page_path = self.model.images[self.model.current_index].images[0]
+            
         self._load_chapter_async(start_from_end=False)
 
     def _change_chapter(self, direction: int):
@@ -989,7 +994,16 @@ class ReaderView(QWidget):
         if result.get("start_from_end", False):
             self.model.current_index = max(0, len(self.model.images) - 1)
         else:
-            self.model.current_index = 0
+            # Try to restore previous page if path exists
+            found_idx = -1
+            if self._restore_page_path:
+                found_idx = self.model.get_page_index(self._restore_page_path)
+                self._restore_page_path = None # Clear after use
+            
+            if found_idx != -1:
+                self.model.current_index = found_idx
+            else:
+                self.model.current_index = 0
 
         self.model.refresh()
         self.model.layout_updated.emit(self.model.view_mode)
