@@ -1,6 +1,7 @@
 import os
 import io
 import time
+import shutil
 from typing import Union, List
 from PIL import Image, ImageQt
 
@@ -509,10 +510,39 @@ class ImageViewer(BaseViewer):
         elif ext == ".webp": fmt = "WEBP"
         else: fmt = "PNG"
         
+        # Detection of full-frame capture for optimization
+        is_full_frame = (intersected.width() == source_pixmap.width() and 
+                         intersected.height() == source_pixmap.height())
+
         if size_limit_mb:
             img = cropped.toImage()
             target_bytes = size_limit_mb * 1024 * 1024
             
+            # Optimization: If full frame and original fits, just copy original
+            if is_full_frame and original_path and ext.replace(".","") == source_ext:
+                original_size = 0
+                if '|' in original_path:
+                    # Virtual path, we need to extract to check size or just extract and see
+                    # For simplicity, let's extract it
+                    data = get_image_data_from_zip(original_path)
+                    if data and len(data) <= target_bytes:
+                        try:
+                            with open(file_path, "wb") as f:
+                                f.write(data)
+                            return
+                        except Exception as e:
+                            QMessageBox.warning(self.reader_view, "Error", f"Failed to save original data:\n{e}")
+                            return
+                elif os.path.exists(original_path):
+                    original_size = os.path.getsize(original_path)
+                    if original_size <= target_bytes:
+                        try:
+                            shutil.copy2(original_path, file_path)
+                            return
+                        except Exception as e:
+                            QMessageBox.warning(self.reader_view, "Error", f"Failed to copy original file:\n{e}")
+                            return
+
             # Fast path: check if high quality already fits
             ba = QByteArray()
             buf = QBuffer(ba)
@@ -579,6 +609,23 @@ class ImageViewer(BaseViewer):
                 except Exception as e:
                     QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
         else:
+            # ORIGINAL size requested
+            # Optimization: If full frame and same format, just copy original
+            if is_full_frame and original_path and ext.replace(".","") == source_ext:
+                try:
+                    if '|' in original_path:
+                        data = get_image_data_from_zip(original_path)
+                        if data:
+                            with open(file_path, "wb") as f:
+                                f.write(data)
+                            return
+                    elif os.path.exists(original_path):
+                        shutil.copy2(original_path, file_path)
+                        return
+                except Exception as e:
+                    QMessageBox.warning(self.reader_view, "Error", f"Failed to save original file:\n{e}")
+                    return
+
             try:
                 # Use high quality for JPEG/WebP when saving "Original"
                 quality = 95 if fmt in ["JPEG", "WEBP"] else -1
