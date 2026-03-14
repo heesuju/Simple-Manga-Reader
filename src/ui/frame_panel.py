@@ -113,6 +113,9 @@ class FramePanel(QWidget):
         self.hide()
 
     def set_video(self, path, total_frames):
+        if self.video_path == path and self.total_frames == total_frames:
+            return  # Prevent redundant reload
+
         self.video_path = path
         self.total_frames = total_frames
         self.current_page = 0
