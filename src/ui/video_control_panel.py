@@ -162,6 +162,7 @@ class VideoControlPanel(QWidget):
             }
             QLabel {
                 color: white;
+                background: transparent;
             }
         """)
 
