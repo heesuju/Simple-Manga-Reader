@@ -31,14 +31,33 @@ class AdvancedSelectionOverlay(QWidget):
         self._aspect_ratio = ratio
         if ratio:
             if not self._rect.isValid() or self._rect.isEmpty():
-                # Create default centered rect
-                w = min(self.width(), self.height()) * 0.5
-                h = w / ratio
-                if h > self.height() * 0.8:
-                     h = self.height() * 0.8
-                     w = h * ratio
+                # Create default centered rect in SCENE coordinates using image bounds
+                bounds = self._image_bounds
+                if not bounds:
+                    # Fallback if bounds aren't available yet
+                    return
                 
-                cx, cy = self.width() / 2, self.height() / 2
+                bw, bh = bounds.width(), bounds.height()
+                
+                # Calculate max possible size for this ratio within bounds (90% of fit)
+                if bw / bh > ratio:
+                    # Bounds are wider than the selection ratio
+                    h = bh * 0.9
+                    w = h * ratio
+                    # Safety check if w exceeds bw
+                    if w > bw:
+                        w = bw * 0.9
+                        h = w / ratio
+                else:
+                    # Bounds are taller than the selection ratio
+                    w = bw * 0.9
+                    h = w / ratio
+                    # Safety check if h exceeds bh
+                    if h > bh:
+                        h = bh * 0.9
+                        w = h * ratio
+                
+                cx, cy = bounds.center().x(), bounds.center().y()
                 self._rect = QRectF(cx - w/2, cy - h/2, w, h)
             else:
                 self._apply_ratio_constraint(self._rect, "TL")
@@ -76,8 +95,6 @@ class AdvancedSelectionOverlay(QWidget):
         """Maps scene selection rect to viewport rect."""
         if not self._rect.isValid() or not self._parent_view:
             return QRectF()
-        # mapFromScene can return QPolygon or QPolygonF. 
-        # For PyQt6 strict typing, we ensure QRectF.
         poly = self._parent_view.mapFromScene(self._rect)
         return QRectF(poly.boundingRect())
 
@@ -192,16 +209,6 @@ class AdvancedSelectionOverlay(QWidget):
                 elif h == 8: anchor = "TL"
                 self._apply_ratio_constraint(rect, anchor)
                 
-                # Re-constrain after ratio if it pushed it out
-                if self._image_bounds and not self._image_bounds.contains(rect):
-                    # Shrink to fit if ratio pushed it out
-                    if rect.left() < self._image_bounds.left():
-                        diff = self._image_bounds.left() - rect.left()
-                        rect.setLeft(self._image_bounds.left())
-                        rect.setHeight(rect.width() / self._aspect_ratio) # Maintain ratio from top? No, complex.
-                        # Simple approach: if it goes out, we just snap it back and re-apply ratio later or trust the next move
-                        # Better approach: _apply_ratio_constraint should handle bounds.
-                    
             new_rect = rect
 
         self._rect = new_rect
@@ -233,32 +240,28 @@ class AdvancedSelectionOverlay(QWidget):
         
         # Enforce image bounds after ratio scaling
         if self._image_bounds:
-             if rect.left() < self._image_bounds.left():
-                 rect.moveLeft(self._image_bounds.left())
-             if rect.top() < self._image_bounds.top():
-                 rect.moveTop(self._image_bounds.top())
-             if rect.right() > self._image_bounds.right():
-                 rect.moveRight(self._image_bounds.right())
-                 # If moving right pushed left out, shrink
-                 if rect.left() < self._image_bounds.left():
-                     rect.setLeft(self._image_bounds.left())
-                     rect.setHeight(rect.width() / ratio)
-             if rect.bottom() > self._image_bounds.bottom():
-                 rect.moveBottom(self._image_bounds.bottom())
-                 # If moving bottom pushed top out, shrink
-                 if rect.top() < self._image_bounds.top():
-                     rect.setTop(self._image_bounds.top())
-                     rect.setWidth(rect.height() * ratio)
-             
-             # Final check: if still out (e.g. too big for bounds), shrink
-             if rect.width() > self._image_bounds.width():
-                 rect.setWidth(self._image_bounds.width())
-                 rect.setHeight(rect.width() / ratio)
-                 rect.moveLeft(self._image_bounds.left())
-             if rect.height() > self._image_bounds.height():
-                 rect.setHeight(self._image_bounds.height())
-                 rect.setWidth(rect.height() * ratio)
-                 rect.moveTop(self._image_bounds.top())
+            # First, bring back into bounds by moving
+            if rect.left() < self._image_bounds.left():
+                rect.moveLeft(self._image_bounds.left())
+            if rect.top() < self._image_bounds.top():
+                rect.moveTop(self._image_bounds.top())
+            if rect.right() > self._image_bounds.right():
+                rect.moveRight(self._image_bounds.right())
+            if rect.bottom() > self._image_bounds.bottom():
+                rect.moveBottom(self._image_bounds.bottom())
+            
+            # If after moving it's still out of bounds (too large), shrink it
+            if rect.width() > self._image_bounds.width():
+                rect.setWidth(self._image_bounds.width())
+                rect.setHeight(rect.width() / ratio)
+                if rect.left() < self._image_bounds.left(): rect.moveLeft(self._image_bounds.left())
+                if rect.right() > self._image_bounds.right(): rect.moveRight(self._image_bounds.right())
+            
+            if rect.height() > self._image_bounds.height():
+                rect.setHeight(self._image_bounds.height())
+                rect.setWidth(rect.height() * ratio)
+                if rect.top() < self._image_bounds.top(): rect.moveTop(self._image_bounds.top())
+                if rect.bottom() > self._image_bounds.bottom(): rect.moveBottom(self._image_bounds.bottom())
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self._is_dragging:
