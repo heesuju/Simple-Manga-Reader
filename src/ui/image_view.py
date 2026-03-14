@@ -153,7 +153,21 @@ class ImageView(QGraphicsView):
         self.setCursor(Qt.CursorShape.CrossCursor)
         # Ensure overlay covers entire viewport
         self._selection_overlay.setGeometry(self.viewport().rect())
-        self._selection_overlay.start_selection()
+        
+        # Calculate image bounds in viewport coordinates
+        image_bounds = None
+        if self.scene().items():
+            # Get the combined rect of all pixmap items in the scene
+            scene_rect = QRectF()
+            for item in self.scene().items():
+                if isinstance(item, QGraphicsPixmapItem):
+                    scene_rect = scene_rect.united(item.sceneBoundingRect())
+            
+            if not scene_rect.isNull():
+                # Map to viewport
+                image_bounds = self.mapFromScene(scene_rect).boundingRect()
+        
+        self._selection_overlay.start_selection(image_bounds=image_bounds)
         if self.manga_reader:
             self.manga_reader._on_area_selection_started()
 
