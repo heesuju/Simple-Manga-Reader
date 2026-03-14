@@ -1,6 +1,8 @@
 from PyQt6.QtWidgets import QWidget, QPushButton, QSlider, QVBoxLayout, QFrame, QStyle
 from PyQt6.QtGui import QIcon, QMouseEvent
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSize
+from src.utils.resource_utils import resource_path
+from src.ui.styles import FLAT_BUTTON_STYLE
 
 class VolumeControl(QWidget):
     volume_changed = pyqtSignal(int)
@@ -15,14 +17,15 @@ class VolumeControl(QWidget):
         self._init_ui()
 
     def _init_ui(self):
-        style = self.style()
-        self.volume_icon = style.standardIcon(QStyle.StandardPixmap.SP_MediaVolume)
-        self.volume_muted_icon = style.standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted)
+        self.volume_icon = QIcon(resource_path("assets/icons/volume.svg"))
+        self.volume_muted_icon = QIcon(resource_path("assets/icons/mute.svg"))
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         self.mute_btn = QPushButton(self.volume_icon, "")
-        self.mute_btn.setFlat(True)
+        self.mute_btn.setIconSize(QSize(24, 24))
+        self.mute_btn.setFixedSize(32, 32)
+        self.mute_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.mute_btn.clicked.connect(self.toggle_mute)
         layout.addWidget(self.mute_btn)
         self.setLayout(layout)
