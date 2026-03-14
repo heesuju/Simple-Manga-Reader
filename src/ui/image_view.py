@@ -10,6 +10,7 @@ class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
     translate_requested = pyqtSignal(str)
     zoom_started = pyqtSignal()
+    ratio_changed = pyqtSignal(object)
 
     def __init__(self, manga_reader=None):
         super().__init__()
@@ -30,6 +31,7 @@ class ImageView(QGraphicsView):
 
         self._selection_mode = False
         self._selection_overlay = AdvancedSelectionOverlay(self.viewport(), parent_view=self)
+        self._selection_overlay.ratio_changed.connect(self.ratio_changed)
 
         # Smooth rendering
         hints = (

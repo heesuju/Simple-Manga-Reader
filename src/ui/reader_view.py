@@ -280,6 +280,7 @@ class ReaderView(QWidget):
         self.selection_panel.ratio_selected.connect(self.view.set_selection_ratio)
         self.selection_panel.apply_clicked.connect(self._apply_area_selection)
         self.selection_panel.cancel_clicked.connect(self._cancel_area_selection)
+        self.view.ratio_changed.connect(self.selection_panel.set_ratio)
 
         self.zoom_changed.connect(self.slider_panel.set_zoom_text)
 

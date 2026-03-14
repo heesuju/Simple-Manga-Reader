@@ -48,6 +48,7 @@ class SelectionPanel(QWidget):
         # Aspect Ratios
         self.ratios = [
             ("Free", None),
+            ("Full", "FULL"),
             ("1:1", 1.0),
             ("4:3", 4/3),
             ("3:4", 3/4),
@@ -136,10 +137,11 @@ class SelectionPanel(QWidget):
                 background-color: #0078d7;
                 border: none;
                 color: white;
-                padding: 8px 20px;
+                padding: 8px 15px;
                 border-radius: 4px;
                 font-weight: bold;
                 font-size: 13px;
+                min-width: 140px;
             }
             QPushButton:hover { background-color: #0086f0; }
             QPushButton:pressed { background-color: #006cc1; }
@@ -155,7 +157,33 @@ class SelectionPanel(QWidget):
         
         # Ensure it stays checked
         button.setChecked(True)
+        
+        # Update text if FULL
+        if value == "FULL":
+            self.apply_btn.setText("Save Full Image")
+        else:
+            self.apply_btn.setText("Save Selection")
+
         self.ratio_selected.emit(value)
+
+    def set_ratio(self, value):
+        """Sets the selected ratio button externally."""
+        target_btn = None
+        for i, (label, val) in enumerate(self.ratios):
+            if val == value:
+                target_btn = self.ratio_buttons[i]
+                break
+        
+        if target_btn:
+            # Uncheck all, check target
+            for btn in self.ratio_buttons:
+                btn.setChecked(False)
+            target_btn.setChecked(True)
+            
+            if value == "FULL":
+                self.apply_btn.setText("Save Full Image")
+            else:
+                self.apply_btn.setText("Save Selection")
 
     def _on_size_clicked(self, value, button):
         for btn in self.size_group:

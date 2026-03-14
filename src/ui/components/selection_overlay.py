@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QRect, QRectF, QSize, QSizeF, Q
 
 class AdvancedSelectionOverlay(QWidget):
     selection_finished = pyqtSignal(QRect)
+    ratio_changed = pyqtSignal(object) # float, None, or "FULL"
 
     def __init__(self, parent=None, parent_view=None):
         super().__init__(parent)
@@ -23,13 +24,16 @@ class AdvancedSelectionOverlay(QWidget):
         self._handle_size = 10
         self._handles = {} # type: QRectF
         
-        self._image_bounds = None # QRectF in viewport coordinates
+        self._image_bounds = None # QRectF in scene coordinates
         
         self.hide()
 
     def set_aspect_ratio(self, ratio):
         self._aspect_ratio = ratio
-        if ratio:
+        if ratio == "FULL":
+            if self._image_bounds:
+                self._rect = QRectF(self._image_bounds)
+        elif ratio:
             if not self._rect.isValid() or self._rect.isEmpty():
                 # Create default centered rect in SCENE coordinates using image bounds
                 bounds = self._image_bounds
@@ -141,8 +145,16 @@ class AdvancedSelectionOverlay(QWidget):
                 self._active_handle = hit
                 self._drag_start_pos = scene_pos
                 self._rect_at_start = QRectF(self._rect)
+                
+                # If we were in FULL mode, breaking out of it now
+                if self._aspect_ratio == "FULL":
+                    self._aspect_ratio = None
+                    self.ratio_changed.emit(None)
             else:
                 # Clicked outside - start new selection
+                self._aspect_ratio = None
+                self.ratio_changed.emit(None)
+                
                 self._rect = QRectF(scene_pos, QSizeF(0, 0))
                 self._is_dragging = True
                 self._active_handle = 8 # Bottom Right
