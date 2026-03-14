@@ -637,3 +637,46 @@ class ImageInfoWorker(QRunnable):
         final_info = "  +  ".join(info_parts)
         self.signals.finished.emit(final_info)
 
+class VideoBatchFrameExtractorSignals(QObject):
+    finished = pyqtSignal(str, dict, int, int) # path, {index: QImage}, start_idx, end_idx
+
+class VideoBatchFrameExtractorWorker(QRunnable):
+    def __init__(self, path: str, frame_indices: list[int], thumb_w=120, thumb_h=160):
+        super().__init__()
+        self.path = path
+        self.frame_indices = frame_indices
+        self.thumb_w = thumb_w
+        self.thumb_h = thumb_h
+        self.signals = VideoBatchFrameExtractorSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            import cv2
+            cap = cv2.VideoCapture(self.path)
+            if not cap.isOpened():
+                return
+
+            results = {}
+            for idx in self.frame_indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if ret:
+                    # Resize while still in numpy/cv2 for performance
+                    h, w = frame.shape[:2]
+                    scale = min(self.thumb_w / w, self.thumb_h / h)
+                    nw, nh = int(w * scale), int(h * scale)
+                    resized = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
+                    
+                    # Convert BGR to RGB
+                    rgb_frame = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                    rh, rw, rch = rgb_frame.shape
+                    bytes_per_line = rgb_frame.strides[0]
+                    q_image = QImage(rgb_frame.data, rw, rh, bytes_per_line, QImage.Format.Format_RGB888)
+                    results[idx] = q_image.copy()
+            
+            cap.release()
+            if results:
+                self.signals.finished.emit(self.path, results, min(self.frame_indices), max(self.frame_indices))
+        except Exception as e:
+            print(f"Error in batch video extraction: {e}")

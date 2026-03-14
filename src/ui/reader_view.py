@@ -22,6 +22,7 @@ from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
 from src.ui.video_control_panel import VideoControlPanel
 from src.ui.image_view import ImageView
+from src.ui.frame_panel import FramePanel
 from src.enums import Language
 from src.ui.components.selection_panel import SelectionPanel
 
@@ -90,6 +91,10 @@ class ReaderView(QWidget):
         self.video_viewer = VideoViewer(self)
         self.strip_viewer = StripViewer(self)
         self.current_viewer = self.image_viewer
+        
+        # Connect signals that depend on viewers
+        self.video_control_panel.mode_changed.connect(self._on_video_mode_changed)
+        self.frame_panel.seek_requested.connect(self.video_viewer._seek_to_frame)
         
         
         TranslationService.instance().task_status_changed.connect(self._on_translation_status_changed_global)
@@ -228,6 +233,7 @@ class ReaderView(QWidget):
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
         self.alt_panel = AltPanel(self, model=self.model)
+        self.frame_panel = FramePanel(self, thread_pool=self.thread_pool)
         self.selection_panel = SelectionPanel(self)
 
         # Add panels to the layout
@@ -249,9 +255,9 @@ class ReaderView(QWidget):
         main_layout.addWidget(self.selection_panel, 0, 0, Qt.AlignmentFlag.AlignBottom)
         self.selection_panel.hide()
 
-        # Alt panel is NOT added to the layout manager so we can manually control its geometry
-        # as a floating overlay that doesn't trigger grid layout shifts.
+        # Panels NOT added to layout manager for manual geometry control
         self.alt_panel.setParent(self)
+        self.frame_panel.setParent(self)
 
 
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
@@ -291,8 +297,8 @@ class ReaderView(QWidget):
         self.page_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.page_panel, expanded))
         self.chapter_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.chapter_panel, expanded))
         
-        self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_alt_panel_height))
-        self.chapter_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_alt_panel_height))
+        self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_side_panels_geometry))
+        self.chapter_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_side_panels_geometry))
 
         self.original_view_mouse_press = self.view.mousePressEvent
         self.original_view_mouse_release = self.view.mouseReleaseEvent
@@ -322,8 +328,8 @@ class ReaderView(QWidget):
         elif self.chapter_panel.is_expanded:
             self._update_expanded_panel_height(self.chapter_panel)
 
-        # Update alt panel height to fill available vertical space
-        self._update_alt_panel_height()
+        # Update alt and frame panel height to fill available vertical space
+        self._update_side_panels_geometry()
 
         QTimer.singleShot(0, self.apply_last_zoom)
 
@@ -367,7 +373,47 @@ class ReaderView(QWidget):
             panel.setMaximumHeight(16777215)
             panel.updateGeometry()
         
-        QTimer.singleShot(100, self._update_alt_panel_height)
+        QTimer.singleShot(100, self._update_side_panels_geometry)
+
+    def _update_side_panels_geometry(self):
+        self._update_alt_panel_height()
+        self._update_frame_panel_geometry()
+
+    def _update_frame_panel_geometry(self):
+        if not hasattr(self, 'frame_panel') or not self.frame_panel.isVisible():
+            return
+            
+        if self.layout():
+            self.layout().activate()
+            
+        total_h = self.height()
+        top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
+        bottom_h = self.bottom_container.height() if self.bottom_container.isVisible() else 0
+        
+        available_h = total_h - top_h - bottom_h
+        if available_h < 100:
+            available_h = 100
+            
+        # Position on the right side
+        panel_w = self.frame_panel.width()
+        self.frame_panel.setGeometry(self.width() - panel_w, top_h, panel_w, available_h)
+        
+        self.frame_panel.raise_()
+        self.top_panel.raise_()
+        self.bottom_container.raise_()
+
+    def _on_video_mode_changed(self, mode: str):
+        # We now show frame panel for all videos, so mode change just ensures it's refreshed
+        if self.current_viewer == self.video_viewer:
+            path = self.video_viewer.video_item.data(0)
+            total_frames = self.video_control_panel.total_frames
+            if path and total_frames > 0:
+                self.frame_panel.set_video(path, total_frames)
+                if self.panels_visible:
+                    self.frame_panel.show()
+                    self._update_side_panels_geometry()
+                else:
+                    self.frame_panel.hide()
 
     def _update_expanded_panel_height(self, panel):
         total_h = self.height()
@@ -562,15 +608,19 @@ class ReaderView(QWidget):
         if self.panels_visible:
             self.top_panel.show()
             self.slider_panel.show()
-            # Re-trigger alt panel visibility check
             if self.alt_panel:
                 self.alt_panel._update_panel(self.model.current_index)
-                QTimer.singleShot(100, self._update_alt_panel_height)
+            
+            if self.current_viewer == self.video_viewer:
+                self.frame_panel.show()
+                
+            QTimer.singleShot(100, self._update_side_panels_geometry)
         else:
             self.top_panel.hide()
             self.slider_panel.hide()
             if self.alt_panel:
                 self.alt_panel.hide()
+            self.frame_panel.hide()
 
             if self.page_panel.content_area.isVisible():
                 self.page_panel.hide_content()
@@ -689,34 +739,46 @@ class ReaderView(QWidget):
         target_viewer = self.video_viewer if is_video else self.image_viewer
         
         if self.model.view_mode != ViewMode.STRIP:
-             if self.current_viewer != target_viewer:
-                 self.current_viewer.set_active(False)
-                 self.current_viewer = target_viewer
-                 self.current_viewer.set_active(True)
-                 if hasattr(self.view, '_update_overlay_bounds'):
-                     self.view._update_overlay_bounds()
+            if self.current_viewer != target_viewer:
+                self.current_viewer.set_active(False)
+                self.current_viewer = target_viewer
+                self.current_viewer.set_active(True)
+                if hasattr(self.view, '_update_overlay_bounds'):
+                    self.view._update_overlay_bounds()
         
         if self.current_viewer == self.strip_viewer:
-             # Refresh current index just in case, though on_page_updated handles specific updates
-             self.strip_viewer.refresh(self.model.current_index)
+            # Refresh current index just in case, though on_page_updated handles specific updates
+            self.strip_viewer.refresh(self.model.current_index)
         else:
-             self.current_viewer.load(resolved_path)
+            self.current_viewer.load(resolved_path)
+
+        if self.current_viewer == self.video_viewer:
+             total_frames = getattr(self.video_control_panel, 'total_frames', 0)
+             if total_frames > 0:
+                self.frame_panel.set_video(resolved_path, total_frames)
+                if self.panels_visible:
+                    self.frame_panel.show()
+                else:
+                    self.frame_panel.hide()
+                self._update_side_panels_geometry()
+        else:
+            self.frame_panel.hide()
 
         self.page_panel._update_page_selection(self.model.current_index)
         
         if self.model.view_mode == ViewMode.DOUBLE:
-             self.slider_panel.set_value(self.model._get_current_layout_index())
+            self.slider_panel.set_value(self.model._get_current_layout_index())
         else:
-             self.slider_panel.set_value(self.model.current_index)
+            self.slider_panel.set_value(self.model.current_index)
              
         self.update_top_panel()
         self._update_image_info([resolved_path])
 
     def _load_double_images(self, image1_path, image2_path):
         if self.current_viewer != self.image_viewer:
-             self.current_viewer.set_active(False)
-             self.current_viewer = self.image_viewer
-             self.current_viewer.set_active(True)
+            self.current_viewer.set_active(False)
+            self.current_viewer = self.image_viewer
+            self.current_viewer.set_active(True)
              
         self.image_viewer.load((image1_path, image2_path))
         self.page_panel._update_page_selection(self.model.current_index)

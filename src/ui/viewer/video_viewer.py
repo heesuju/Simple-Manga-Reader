@@ -153,12 +153,19 @@ class VideoViewer(BaseViewer):
             self.last_frame_pixmap = pixmap
             # Pass metadata to panel
             self.reader_view.video_control_panel.set_video_metadata(total_frames, fps)
+            self.reader_view.frame_panel.set_video(path, total_frames)
+            self.reader_view.frame_panel.show()
+            self.reader_view._update_frame_panel_geometry()
 
     def _seek_to_frame(self, frame_index):
         panel = self.reader_view.video_control_panel
         if panel.fps > 0:
+            self.media_player.pause() # Pause when clicking a frame
             timestamp_ms = int(frame_index * 1000 / panel.fps)
             self._set_video_position(timestamp_ms)
+            
+            # Ensure FramePanel knows we might be seeking to a different range
+            # but usually it's already showing the frame we clicked.
 
     def _set_video_position(self, position):
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
