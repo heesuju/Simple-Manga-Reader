@@ -294,6 +294,10 @@ class VideoViewer(BaseViewer):
         save_video_action.triggered.connect(self._save_current_video)
         menu.addAction(save_video_action)
         
+        save_area_action = QAction("Save Area As...", self.reader_view)
+        save_area_action.triggered.connect(self.reader_view.start_area_selection)
+        menu.addAction(save_area_action)
+        
         menu.addSeparator()
 
         add_file_action = QAction("Add Alternate from File...", self.reader_view)
