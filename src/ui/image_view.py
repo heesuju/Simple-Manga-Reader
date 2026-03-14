@@ -1,8 +1,70 @@
 import os
 import shutil
-from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem
-from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform
-from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal
+from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem, QWidget
+from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform, QCursor, QColor, QPainterPath
+from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QPoint, QRect, QSize, QRectF
+
+class SelectionOverlay(QWidget):
+    selection_finished = pyqtSignal(QRect)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.setMouseTracking(True)
+        self._start_pos = QPoint()
+        self._current_pos = QPoint()
+        self._is_selecting = False
+        self.hide()
+
+    def start_selection(self, pos):
+        self._start_pos = pos
+        self._current_pos = pos
+        self._is_selecting = True
+        self.show()
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._start_pos = event.pos()
+            self._current_pos = event.pos()
+            self._is_selecting = True
+            self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._is_selecting:
+            self._current_pos = event.pos()
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self._is_selecting:
+            self._is_selecting = False
+            rect = QRect(self._start_pos, self._current_pos).normalized()
+            self.hide()
+            self.selection_finished.emit(rect)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Background dimming
+        full_rect = self.rect()
+        path = QPainterPath()
+        path.addRect(QRectF(full_rect))
+
+        if self._is_selecting:
+            selection_rect = QRect(self._start_pos, self._current_pos).normalized()
+            if selection_rect.isValid():
+                # Cutout
+                path.addRect(QRectF(selection_rect))
+                
+        painter.fillPath(path, QColor(0, 0, 0, 150)) # Semi-transparent black
+
+        # Selection border
+        if self._is_selecting:
+            selection_rect = QRect(self._start_pos, self._current_pos).normalized()
+            if selection_rect.isValid():
+                painter.setPen(QColor(255, 255, 255, 200)) # subtle white border
+                painter.drawRect(selection_rect)
 
 class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
@@ -25,6 +87,10 @@ class ImageView(QGraphicsView):
         self._user_scaled = False
         self._zoom_steps = 0
         self._zoom_factor = 1.0  # 1.0 = fit to screen
+
+        self._selection_mode = False
+        self._selection_overlay = SelectionOverlay(self.viewport())
+        self._selection_overlay.selection_finished.connect(self._on_selection_finished)
 
         # Smooth rendering
         hints = (
@@ -62,6 +128,10 @@ class ImageView(QGraphicsView):
          save_action = QAction("Save As...", self)
          save_action.triggered.connect(lambda: self._save_image(path))
          menu.addAction(save_action)
+
+         save_area_action = QAction("Save Area As...", self)
+         save_area_action.triggered.connect(self._start_area_selection)
+         menu.addAction(save_area_action)
          
          export_action = QAction("Export in Lower Quality...", self)
          export_action.triggered.connect(lambda: self._export_lower_quality(path))
@@ -137,6 +207,28 @@ class ImageView(QGraphicsView):
                 shutil.copy2(path, file_path)
             except Exception as e:
                 print(f"Error copying image: {e}")
+
+    def _start_area_selection(self):
+        self._selection_mode = True
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        # Ensure overlay covers entire viewport
+        self._selection_overlay.setGeometry(self.viewport().rect())
+        self._selection_overlay.show()
+
+    def _on_selection_finished(self, selection_rect):
+        self._selection_mode = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        
+        if selection_rect.width() > 5 and selection_rect.height() > 5:
+            # Map viewport rect to scene rect
+            scene_rect = self.mapToScene(selection_rect).boundingRect()
+            if self.manga_reader:
+                self.manga_reader.save_area(scene_rect)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, '_selection_overlay'):
+            self._selection_overlay.setGeometry(self.viewport().rect())
 
     def _export_lower_quality(self, path):
         from PyQt6.QtWidgets import QInputDialog, QMessageBox

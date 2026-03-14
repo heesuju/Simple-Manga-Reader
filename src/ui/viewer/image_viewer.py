@@ -435,6 +435,43 @@ class ImageViewer(BaseViewer):
     def show_next(self):
         pass
 
+    def save_area(self, scene_rect):
+        if not self.original_pixmap and not self.pixmap_item:
+            return
+
+        source_pixmap = self.original_pixmap if self.original_pixmap else self.pixmap_item.pixmap()
+        if source_pixmap.isNull():
+            return
+
+        # Ensure scene_rect is within source_pixmap bounds and valid
+        img_rect = source_pixmap.rect()
+        intersected = scene_rect.toRect().intersected(img_rect)
+        
+        if intersected.width() <= 0 or intersected.height() <= 0:
+            return
+
+        cropped = source_pixmap.copy(intersected)
+        
+        # Save via dialog
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        initial_path = os.path.join(downloads_dir, f"crop_{timestamp}.png")
+        
+        from PyQt6.QtWidgets import QFileDialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.reader_view,
+            "Save Cropped Image As",
+            initial_path,
+            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+        )
+        
+        if file_path:
+            try:
+                cropped.save(file_path)
+            except Exception as e:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self.reader_view, "Error", f"Failed to save cropped image:\n{e}")
+
     def cleanup(self):
         self._stop_movie()
         self.resize_timer.stop()

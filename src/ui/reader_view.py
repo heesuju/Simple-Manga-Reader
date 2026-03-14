@@ -742,6 +742,10 @@ class ReaderView(QWidget):
         self.last_zoom_mode = mode
         self.current_viewer.zoom(mode)
 
+    def save_area(self, scene_rect: QRectF):
+        if self.current_viewer:
+            self.current_viewer.save_area(scene_rect)
+
     def reset_zoom(self):
         self.set_zoom_mode("Fit Page")
 
