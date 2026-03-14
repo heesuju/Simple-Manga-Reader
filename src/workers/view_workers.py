@@ -391,6 +391,14 @@ class VideoTimestampFrameExtractorWorker(QRunnable):
                 # Seek to specific timestamp
                 cap.set(cv2.CAP_PROP_POS_MSEC, self.timestamp_ms)
                 ret, frame = cap.read()
+                
+                if not ret:
+                    # Fallback: maybe we are at the very end or seek failed. Try grabbing the last frame.
+                    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    if frame_count > 0:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
+                        ret, frame = cap.read()
+                
                 if ret:
                     # Convert BGR to RGB
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
