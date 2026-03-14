@@ -51,6 +51,7 @@ class VideoViewer(BaseViewer):
         panel.speed_clicked.connect(self._change_playback_speed)
         panel.repeat_clicked.connect(self._set_video_repeat)
         panel.auto_play_toggled.connect(self._set_auto_play)
+        panel.seek_frame.connect(self._seek_to_frame)
 
     def set_active(self, active: bool):
         if active:
@@ -138,7 +139,7 @@ class VideoViewer(BaseViewer):
         if self.video_item:
             self.video_item.setData(0, None)
 
-    def _on_last_frame_extracted(self, path, q_image):
+    def _on_last_frame_extracted(self, path, q_image, total_frames, fps):
         if not self.media_player.source().toLocalFile():
             return
             
@@ -149,6 +150,19 @@ class VideoViewer(BaseViewer):
         if path_norm == current_norm:
             pixmap = QPixmap.fromImage(q_image)
             self.last_frame_pixmap = pixmap
+            # Pass metadata to panel
+            self.reader_view.video_control_panel.set_video_metadata(total_frames, fps)
+
+    def _seek_to_frame(self, frame_index):
+        panel = self.reader_view.video_control_panel
+        if panel.fps > 0:
+            timestamp_ms = int(frame_index * 1000 / panel.fps)
+            self._set_video_position(timestamp_ms)
+
+    def _set_video_position(self, position):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
+            self.media_player.pause()
+        self.media_player.setPosition(position)
 
     def _check_underlay_visibility(self, position):
         if (self.video_last_frame_item and 
@@ -243,6 +257,11 @@ class VideoViewer(BaseViewer):
                 self.media_player.play()
             elif self.auto_play:
                 self._play_next_video()
+            else:
+                # Stay at end, but ensure we keep the frame visible for seeking
+                # some backends clear the buffer on stop, so we stay in paused state at end
+                self.media_player.pause()
+                self.media_player.setPosition(self.media_player.duration())
 
     def _play_next_video(self):
         # Logic extracted from ReaderView._on_media_playback_state_changed

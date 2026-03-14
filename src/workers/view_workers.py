@@ -337,7 +337,7 @@ class PixmapLoader(QRunnable):
         self.signals.finished.emit(self.index, pixmap, self.generation_id)
 
 class VideoFrameExtractorSignals(QObject):
-    finished = pyqtSignal(str, QImage)
+    finished = pyqtSignal(str, QImage, int, float) # path, image, total_frames, fps
 
 class VideoFrameExtractorWorker(QRunnable):
     def __init__(self, path: str):
@@ -352,6 +352,7 @@ class VideoFrameExtractorWorker(QRunnable):
             cap = cv2.VideoCapture(self.path)
             if cap.isOpened():
                 frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                fps = float(cap.get(cv2.CAP_PROP_FPS))
                 # Grab the last frame
                 cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
                 ret, frame = cap.read()
@@ -364,8 +365,8 @@ class VideoFrameExtractorWorker(QRunnable):
                     q_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
                     # We must make a copy of the data, because 'frame' (numpy array) will be garbage collected
                     q_image = q_image.copy()
-                    pass
-                    self.signals.finished.emit(self.path, q_image)
+                    
+                    self.signals.finished.emit(self.path, q_image, frame_count, fps)
                 cap.release()
         except Exception as e:
             print(f"Error in async video extraction: {e}")
