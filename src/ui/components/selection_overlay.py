@@ -179,37 +179,52 @@ class AdvancedSelectionOverlay(QWidget):
         else:
             # Resize
             h = self._active_handle
-            left, top, right, bottom = new_rect.left(), new_rect.top(), new_rect.right(), new_rect.bottom()
             
-            if h in [1, 4, 6]: left += delta.x()
-            if h in [3, 5, 8]: right += delta.x()
-            if h in [1, 2, 3]: top += delta.y()
-            if h in [6, 7, 8]: bottom += delta.y()
-            
-            # Normalize and apply ratio
-            rect = QRectF(left, top, right - left, bottom - top).normalized()
-            
-            # Constrain to image bounds if available (before ratio)
-            if self._image_bounds:
-                left = max(rect.left(), self._image_bounds.left())
-                top = max(rect.top(), self._image_bounds.top())
-                right = min(rect.right(), self._image_bounds.right())
-                bottom = min(rect.bottom(), self._image_bounds.bottom())
-                rect = QRectF(left, top, right - left, bottom - top).normalized()
-
-            if self._aspect_ratio:
-                anchor = ""
-                if h == 1: anchor = "BR"
-                elif h == 2: anchor = "B"
-                elif h == 3: anchor = "BL"
-                elif h == 4: anchor = "R"
-                elif h == 5: anchor = "L"
-                elif h == 6: anchor = "TR"
-                elif h == 7: anchor = "T"
-                elif h == 8: anchor = "TL"
-                self._apply_ratio_constraint(rect, anchor)
+            if self._aspect_ratio and h in [2, 4, 5, 7]:
+                # Centered resize for side handles
+                center = self._rect_at_start.center()
+                if h in [2, 7]: # Top/Bottom
+                    h_val = max(10, abs(scene_pos.y() - center.y()) * 2)
+                    w_val = h_val * self._aspect_ratio
+                else: # Left/Right
+                    w_val = max(10, abs(scene_pos.x() - center.x()) * 2)
+                    h_val = w_val / self._aspect_ratio
                 
-            new_rect = rect
+                rect = QRectF(center.x() - w_val/2, center.y() - h_val/2, w_val, h_val)
+                self._apply_ratio_constraint(rect, "CENTER")
+                new_rect = rect
+            else:
+                left, top, right, bottom = new_rect.left(), new_rect.top(), new_rect.right(), new_rect.bottom()
+                
+                if h in [1, 4, 6]: left += delta.x()
+                if h in [3, 5, 8]: right += delta.x()
+                if h in [1, 2, 3]: top += delta.y()
+                if h in [6, 7, 8]: bottom += delta.y()
+                
+                # Normalize and apply ratio
+                rect = QRectF(left, top, right - left, bottom - top).normalized()
+                
+                # Constrain to image bounds if available (before ratio)
+                if self._image_bounds:
+                    left = max(rect.left(), self._image_bounds.left())
+                    top = max(rect.top(), self._image_bounds.top())
+                    right = min(rect.right(), self._image_bounds.right())
+                    bottom = min(rect.bottom(), self._image_bounds.bottom())
+                    rect = QRectF(left, top, right - left, bottom - top).normalized()
+
+                if self._aspect_ratio:
+                    anchor = ""
+                    if h == 1: anchor = "BR"
+                    elif h == 2: anchor = "B"
+                    elif h == 3: anchor = "BL"
+                    elif h == 4: anchor = "R"
+                    elif h == 5: anchor = "L"
+                    elif h == 6: anchor = "TR"
+                    elif h == 7: anchor = "T"
+                    elif h == 8: anchor = "TL"
+                    self._apply_ratio_constraint(rect, anchor)
+                    
+                new_rect = rect
 
         self._rect = new_rect
         self.update()
@@ -231,14 +246,41 @@ class AdvancedSelectionOverlay(QWidget):
             
         # Reposition based on anchor
         left, top = rect.left(), rect.top()
-        if "R" in anchor: left = rect.right() - w
-        if "B" in anchor: top = rect.bottom() - h
-        if anchor == "T" or anchor == "B": left = rect.center().x() - w/2
-        if anchor == "L" or anchor == "R": top = rect.center().y() - h/2
+        if anchor == "CENTER":
+            left = rect.center().x() - w/2
+            top = rect.center().y() - h/2
+            rect.setRect(left, top, w, h)
+            
+            # Shift to fit within bounds, only shrink if it's strictly larger than image
+            if self._image_bounds:
+                # 1. Shrink to fit if box itself is larger than image
+                if w > self._image_bounds.width():
+                    w = self._image_bounds.width()
+                    h = w / ratio
+                if h > self._image_bounds.height():
+                    h = self._image_bounds.height()
+                    w = h * ratio
+                
+                # 2. Recalculate position relative to center
+                left = rect.center().x() - w/2
+                top = rect.center().y() - h/2
+                rect.setRect(left, top, w, h)
+                
+                # 3. Shift inward if leaking out
+                if rect.left() < self._image_bounds.left(): rect.moveLeft(self._image_bounds.left())
+                if rect.top() < self._image_bounds.top(): rect.moveTop(self._image_bounds.top())
+                if rect.right() > self._image_bounds.right(): rect.moveRight(self._image_bounds.right())
+                if rect.bottom() > self._image_bounds.bottom(): rect.moveBottom(self._image_bounds.bottom())
+            return
+        else:
+            if "R" in anchor: left = rect.right() - w
+            if "B" in anchor: top = rect.bottom() - h
+            if anchor == "T" or anchor == "B": left = rect.center().x() - w/2
+            if anchor == "L" or anchor == "R": top = rect.center().y() - h/2
         
         rect.setRect(left, top, w, h)
         
-        # Enforce image bounds after ratio scaling
+        # Enforce image bounds after ratio scaling for non-centered anchors
         if self._image_bounds:
             # First, bring back into bounds by moving
             if rect.left() < self._image_bounds.left():
