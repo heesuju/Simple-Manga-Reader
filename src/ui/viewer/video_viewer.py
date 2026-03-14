@@ -154,8 +154,11 @@ class VideoViewer(BaseViewer):
             # Pass metadata to panel
             self.reader_view.video_control_panel.set_video_metadata(total_frames, fps)
             self.reader_view.frame_panel.set_video(path, total_frames)
-            self.reader_view.frame_panel.show()
-            self.reader_view._update_frame_panel_geometry()
+            if self.reader_view.panels_visible:
+                self.reader_view.frame_panel.show()
+            else:
+                self.reader_view.frame_panel.hide()
+            self.reader_view._update_side_panels_geometry()
 
     def _seek_to_frame(self, frame_index):
         panel = self.reader_view.video_control_panel

@@ -299,8 +299,8 @@ class AltPanel(QWidget):
         if hasattr(self.parent(), "panels_visible"):
             if self.parent().panels_visible:
                 self.show()
-                if hasattr(self.parent(), '_update_alt_panel_height'):
-                    QTimer.singleShot(100, self.parent()._update_alt_panel_height)
+                if hasattr(self.parent(), '_update_side_panels_geometry'):
+                    QTimer.singleShot(100, self.parent()._update_side_panels_geometry)
             else:
                 self.hide()
         else:

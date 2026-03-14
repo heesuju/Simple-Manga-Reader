@@ -333,32 +333,44 @@ class ReaderView(QWidget):
 
         QTimer.singleShot(0, self.apply_last_zoom)
 
-    def _update_alt_panel_height(self):
-        if not hasattr(self, 'alt_panel') or not self.alt_panel.isVisible():
+    def _update_side_panels_geometry(self):
+        if not hasattr(self, 'alt_panel') or not hasattr(self, 'frame_panel'):
             return
-        
-        # Ensure layout has run
-        self.layout().activate()
+
+        # Force layout update to get accurate size hints
+        if self.layout():
+             self.layout().activate()
+        if self.bottom_container.layout():
+             self.bottom_container.layout().activate()
         
         total_h = self.height()
-        # top_panel.height() can be unreliable during layout transitions, sizeHint is more stable
+        total_w = self.width()
+        
+        # Use sizeHint for reliability during transition
         top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
-        bottom_h = self.bottom_container.height() if self.bottom_container.isVisible() else 0
+        bottom_h = self.bottom_container.sizeHint().height() if self.bottom_container.isVisible() else 0
         
         available_h = total_h - top_h - bottom_h
         if available_h < 100:
             available_h = 100
         
-        # Position exactly below top_panel
-        self.alt_panel.setGeometry(0, top_h, self.alt_panel.width(), available_h)
+        y_pos = top_h
 
-        # Ensure top_panel and bottom_container are always on top of alt_panel 
-        # to prevent it from covering our interactive controls.
-        self.alt_panel.raise_()
+        # Update Alt Panel (Left)
+        if self.alt_panel.isVisible():
+            self.alt_panel.setGeometry(0, y_pos, self.alt_panel.width(), available_h)
+            self.alt_panel.raise_()
+
+        # Update Frame Panel (Right)
+        if self.frame_panel.isVisible():
+            panel_w = self.frame_panel.width()
+            self.frame_panel.setGeometry(total_w - panel_w, y_pos, panel_w, available_h)
+            self.frame_panel.raise_()
+
+        # Keep UI controls on top
         self.top_panel.raise_()
         self.bottom_container.raise_()
 
-        
     def _on_panel_expand_toggled(self, panel, expanded: bool):
         if expanded:
             if panel == self.page_panel and self.chapter_panel.content_area.isVisible():
@@ -374,33 +386,6 @@ class ReaderView(QWidget):
             panel.updateGeometry()
         
         QTimer.singleShot(100, self._update_side_panels_geometry)
-
-    def _update_side_panels_geometry(self):
-        self._update_alt_panel_height()
-        self._update_frame_panel_geometry()
-
-    def _update_frame_panel_geometry(self):
-        if not hasattr(self, 'frame_panel') or not self.frame_panel.isVisible():
-            return
-            
-        if self.layout():
-            self.layout().activate()
-            
-        total_h = self.height()
-        top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
-        bottom_h = self.bottom_container.height() if self.bottom_container.isVisible() else 0
-        
-        available_h = total_h - top_h - bottom_h
-        if available_h < 100:
-            available_h = 100
-            
-        # Position on the right side
-        panel_w = self.frame_panel.width()
-        self.frame_panel.setGeometry(self.width() - panel_w, top_h, panel_w, available_h)
-        
-        self.frame_panel.raise_()
-        self.top_panel.raise_()
-        self.bottom_container.raise_()
 
     def _on_video_mode_changed(self, mode: str):
         # We now show frame panel for all videos, so mode change just ensures it's refreshed
@@ -985,13 +970,13 @@ class ReaderView(QWidget):
         if self.chapter_panel.content_area.isVisible():
             self.chapter_panel.hide_content()
         self.page_panel.show_content()
-        QTimer.singleShot(100, self._update_alt_panel_height)
+        QTimer.singleShot(100, self._update_side_panels_geometry)
 
     def _show_chapter_panel(self):
         if self.page_panel.content_area.isVisible():
             self.page_panel.hide_content()
         self.chapter_panel.show_content()
-        QTimer.singleShot(100, self._update_alt_panel_height)
+        QTimer.singleShot(100, self._update_side_panels_geometry)
 
     def set_chapter(self, chapter:int):
         if self.model.set_chapter(chapter):
