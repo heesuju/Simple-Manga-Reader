@@ -130,7 +130,7 @@ class ImageView(QGraphicsView):
          menu.addAction(save_action)
 
          save_area_action = QAction("Save Area As...", self)
-         save_area_action.triggered.connect(self._start_area_selection)
+         save_area_action.triggered.connect(self.start_area_selection)
          menu.addAction(save_area_action)
          
          export_action = QAction("Export in Lower Quality...", self)
@@ -208,7 +208,7 @@ class ImageView(QGraphicsView):
             except Exception as e:
                 print(f"Error copying image: {e}")
 
-    def _start_area_selection(self):
+    def start_area_selection(self):
         self._selection_mode = True
         self.setCursor(Qt.CursorShape.CrossCursor)
         # Ensure overlay covers entire viewport

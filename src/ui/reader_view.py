@@ -189,6 +189,7 @@ class ReaderView(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_Paste), self, activated=self._paste_as_alternate_action)
         # Also handle Ctrl+V just in case QKeySequence.StandardKey.Paste is picky
         QShortcut(QKeySequence("Ctrl+V"), self, activated=self._paste_as_alternate_action)
+        QShortcut(QKeySequence("Ctrl+S"), self, activated=self.start_area_selection)
 
         main_layout = QGridLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -745,6 +746,11 @@ class ReaderView(QWidget):
     def save_area(self, scene_rect: QRectF):
         if self.current_viewer:
             self.current_viewer.save_area(scene_rect)
+
+    def start_area_selection(self):
+        """Triggers the area selection UI on the current view."""
+        if hasattr(self.view, 'start_area_selection'):
+            self.view.start_area_selection()
 
     def reset_zoom(self):
         self.set_zoom_mode("Fit Page")
