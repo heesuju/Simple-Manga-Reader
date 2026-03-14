@@ -590,10 +590,28 @@ class ImageInfoWorker(QRunnable):
                 size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
                 
             # Getting dimensions and ratio
+            w, h = 0, 0
+            
+            # Try QImageReader first (works for images)
             reader = QImageReader(resolved)
             img_size = reader.size()
             if img_size.isValid():
                 w, h = img_size.width(), img_size.height()
+            else:
+                # Try cv2 for videos
+                ext = Path(resolved).suffix.lower()
+                if ext in VIDEO_EXTS:
+                    try:
+                        import cv2
+                        cap = cv2.VideoCapture(resolved)
+                        if cap.isOpened():
+                            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            cap.release()
+                    except Exception as e:
+                        print(f"Error getting video info: {e}")
+
+            if w > 0 and h > 0:
                 from fractions import Fraction
                 dim_str = f"{w}x{h}"
                 # Find a simple fraction approximation (max denominator 12)
