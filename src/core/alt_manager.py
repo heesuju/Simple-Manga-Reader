@@ -19,6 +19,9 @@ class AltManager:
         path_map = {Path(p).name: p for p in image_paths}
 
         for main_file_name, entry in alt_config.items():
+            # Skip sentinel metadata key
+            if main_file_name == '__meta__':
+                continue
             # Support both exact path match (legacy) and filename match
             # If main_file_name is absolute path in config (legacy bug), try to match by name
             main_name_key = Path(main_file_name).name
@@ -363,6 +366,44 @@ class AltManager:
             data[chapter_name][main_img] = entry
             AltManager.save_alts(series_path, data)
             return
+
+    @staticmethod
+    def get_chapter_sort(series_path: str, chapter_name: str) -> str:
+        """
+        Return the saved sort mode for a chapter, or 'name' if not set.
+        Sort mode is stored as info[chapter_name]['__meta__']['sort'].
+        """
+        data = AltManager.load_alts(series_path)
+        meta = data.get(chapter_name, {}).get('__meta__', {})
+        return meta.get('sort', 'name')
+
+    @staticmethod
+    def save_chapter_sort(series_path: str, chapter_name: str, sort_mode: str):
+        """
+        Save the sort mode for a chapter to info.json.
+        Uses the sentinel key '__meta__' inside the chapter entry.
+        If sort_mode is 'name' (the default), removes the stored sort to keep the file clean.
+        """
+        data = AltManager.load_alts(series_path)
+        if chapter_name not in data:
+            data[chapter_name] = {}
+
+        if sort_mode == 'name':
+            # Remove custom sort — default behaviour needs no stored value
+            if '__meta__' in data[chapter_name]:
+                meta = data[chapter_name]['__meta__']
+                meta.pop('sort', None)
+                if not meta:
+                    del data[chapter_name]['__meta__']
+            # Remove chapter entry entirely if it is now empty
+            if not data[chapter_name]:
+                del data[chapter_name]
+        else:
+            if '__meta__' not in data[chapter_name]:
+                data[chapter_name]['__meta__'] = {}
+            data[chapter_name]['__meta__']['sort'] = sort_mode
+
+        AltManager.save_alts(series_path, data)
 
     @staticmethod
     def save_spread_states(series_path: str, chapter_name: str, updates: Dict[str, bool]):

@@ -20,6 +20,7 @@ from src.ui.add_translation_dialog import AddTranslationDialog
 from src.utils.img_utils import get_chapter_number, crop_pixmap
 from src.ui.styles import FLAT_BUTTON_STYLE
 from src.utils.resource_utils import resource_path
+from src.core.alt_manager import AltManager
 
 class ChapterListLoaderSignals(QObject):
     chapter_processed = pyqtSignal(object, int, int)  # chapter, page_count, index
@@ -174,7 +175,37 @@ class ChapterListItemWidget(QWidget):
             trans_action.triggered.connect(lambda: self.add_translation_requested.emit(self.chapter, self))
             menu.addAction(trans_action)
 
+        sort_menu = menu.addMenu("Sort Pages...")
+        series_path = str(self.series['path'])
+        
+        chapter_path = str(self.chapter['path'])
+        if '|' in chapter_path:
+            chapter_name = Path(chapter_path.split('|')[0]).stem
+        else:
+            chapter_name = Path(chapter_path).name
+
+        current_sort = AltManager.get_chapter_sort(series_path, chapter_name)
+
+        SORT_OPTIONS = [
+            ('name',  'Name (A→Z)'),
+            ('mtime', 'Modified Date'),
+            ('ctime', 'Created Date'),
+        ]
+
+        for mode, label in SORT_OPTIONS:
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(current_sort == mode)
+            # Use default argument capture for lambda
+            action.triggered.connect(lambda checked, m=mode: self._on_sort_changed(series_path, chapter_name, m))
+            sort_menu.addAction(action)
+
         menu.exec(event.globalPos())
+
+    def _on_sort_changed(self, series_path: str, chapter_name: str, sort_mode: str):
+        AltManager.save_chapter_sort(series_path, chapter_name, sort_mode)
+        # Note: changing sort here won't immediately refresh the page counts or alts
+        # but sort doesn't affect page counts anyway.
 
     def set_processing(self, processing: bool):
         self.is_processing = processing

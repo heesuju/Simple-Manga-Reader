@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox, QMenu
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QAction
 from src.utils.resource_utils import resource_path
 from src.enums import Language
 from src.ui.styles import FLAT_BUTTON_STYLE
@@ -12,6 +12,7 @@ class TopPanel(QWidget):
     repeat_changed = pyqtSignal(bool)
     translate_clicked = pyqtSignal(str) # Emits selected language code
     lang_changed = pyqtSignal(str)
+    sort_changed = pyqtSignal(str)  # Emits sort mode: 'name', 'mtime', 'ctime'
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,6 +35,8 @@ class TopPanel(QWidget):
         self.pause_icon = QIcon(resource_path("assets/icons/slideshow_pause.svg"))
         self.repeat_on_icon = QIcon(resource_path("assets/icons/repeat_on.svg"))
         self.repeat_off_icon = QIcon(resource_path("assets/icons/repeat_off.svg"))
+
+        self._current_sort_mode = 'name'
 
         button_size = QSize(32, 32)
         
@@ -90,6 +93,14 @@ class TopPanel(QWidget):
         self.layout.addWidget(self.speed_button)
         self.layout.addWidget(self.repeat_button)
 
+        # Sort button
+        self.sort_button = QPushButton("⇅")
+        self.sort_button.setFixedSize(button_size)
+        self.sort_button.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; font-size: 16px; }")
+        self.sort_button.setToolTip("Sort Pages")
+        self.sort_button.clicked.connect(self._on_sort_clicked)
+        self.layout.addWidget(self.sort_button)
+
     def add_back_button(self, button: QPushButton):
         self.back_button = button
         self.layout.insertWidget(0, self.back_button)
@@ -121,6 +132,35 @@ class TopPanel(QWidget):
         lang = Language(self.lang_combo.currentText())
         self.translate_clicked.emit(lang)
 
+    def _on_sort_clicked(self):
+        menu = QMenu(self)
+
+        SORT_OPTIONS = [
+            ('name',  'Name (A→Z)'),
+            ('mtime', 'Modified Date'),
+            ('ctime', 'Created Date'),
+        ]
+
+        for mode, label in SORT_OPTIONS:
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(self._current_sort_mode == mode)
+            action.triggered.connect(lambda checked, m=mode: self._select_sort(m))
+            menu.addAction(action)
+
+        menu.exec(self.sort_button.mapToGlobal(self.sort_button.rect().bottomLeft()))
+
+    def _select_sort(self, mode: str):
+        if mode == self._current_sort_mode:
+            return
+        self._current_sort_mode = mode
+        self.sort_changed.emit(mode)
+
+    def set_sort_mode(self, mode: str):
+        """Update the button to reflect the currently active sort mode."""
+        self._current_sort_mode = mode or 'name'
+        labels = {'name': 'Name', 'mtime': 'Mod. Date', 'ctime': 'Cre. Date'}
+        self.sort_button.setToolTip(f"Sort Pages: {labels.get(self._current_sort_mode, 'Name')}")
 
 
     def update_translate_button(self, state: str = 'TRANSLATE', lang: str = ""):

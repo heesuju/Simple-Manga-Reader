@@ -32,6 +32,7 @@ from src.utils.img_utils import get_chapter_number
 from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, ArchiveExtractionWorker, ImageInfoWorker
 # from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
+from src.core.alt_manager import AltManager
 
 from src.ui.viewer.image_viewer import ImageViewer
 from src.ui.viewer.video_viewer import VideoViewer
@@ -276,6 +277,7 @@ class ReaderView(QWidget):
         self.top_panel.repeat_changed.connect(self._on_slideshow_repeat_changed)
         self.top_panel.translate_clicked.connect(self.translate_page)
         self.top_panel.lang_changed.connect(self._on_lang_changed)
+        self.top_panel.sort_changed.connect(self._on_sort_changed)
         self.slider_panel.page_changed.connect(self.change_page_from_input)
         self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
@@ -1010,14 +1012,27 @@ class ReaderView(QWidget):
         
         self.scene.clear()
         
+        series_path = str(self.model.series['path'])
+        chapter_path = str(self.model.manga_dir) if self.model.manga_dir else ''
+        # Determine chapter name for sort lookup
+        if '|' in chapter_path:
+            _chapter_name = Path(chapter_path.split('|')[0]).stem
+        else:
+            _chapter_name = Path(chapter_path).name
+        sort_mode = AltManager.get_chapter_sort(series_path, _chapter_name)
+
         worker = ChapterLoaderWorker(
             manga_dir=self.model.manga_dir,
-            series_path=str(self.model.series['path']),
+            series_path=series_path,
             start_from_end=start_from_end,
-            load_pixmap_func=self.image_viewer._load_pixmap
+            load_pixmap_func=self.image_viewer._load_pixmap,
+            sort_mode=sort_mode
         )
         worker.signals.finished.connect(self._on_chapter_loaded)
         self.thread_pool.start(worker)
+
+        if hasattr(self, 'top_panel'):
+            self.top_panel.set_sort_mode(sort_mode)
 
         if self.model.manga_dir:
             path_str = str(self.model.manga_dir)
@@ -1108,6 +1123,18 @@ class ReaderView(QWidget):
                 
         # self.model.load_image() handled by set_preferred_language
         self.update_top_panel()
+
+    def _on_sort_changed(self, mode: str):
+        """Handle sort mode changes from TopPanel."""
+        series_path = str(self.model.series['path'])
+        chapter_path = str(self.model.manga_dir) if self.model.manga_dir else ''
+        if '|' in chapter_path:
+            _chapter_name = Path(chapter_path.split('|')[0]).stem
+        else:
+            _chapter_name = Path(chapter_path).name
+
+        AltManager.save_chapter_sort(series_path, _chapter_name, mode)
+        self.reload_chapter()
 
     def update_top_panel(self, _=None):
         """Update top panel translate button state based on current page."""

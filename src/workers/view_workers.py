@@ -89,12 +89,13 @@ class ChapterLoaderSignals(QObject):
     finished = pyqtSignal(dict)
 
 class ChapterLoaderWorker(QRunnable):
-    def __init__(self, manga_dir: str, series_path: str, start_from_end: bool, load_pixmap_func):
+    def __init__(self, manga_dir: str, series_path: str, start_from_end: bool, load_pixmap_func, sort_mode: str = 'name'):
         super().__init__()
         self.manga_dir = manga_dir
         self.series_path = series_path
         self.start_from_end = start_from_end
         self.load_pixmap = load_pixmap_func
+        self.sort_mode = sort_mode
         self.signals = ChapterLoaderSignals()
 
     @pyqtSlot()
@@ -111,7 +112,7 @@ class ChapterLoaderWorker(QRunnable):
 
         # Perform I/O and grouping in the worker thread
         image_list = self._get_image_list()
-        image_list = sorted(image_list, key=get_chapter_number)
+        image_list = self._sort_image_list(image_list)
 
         alt_config = AltManager.load_alts(self.series_path)
         chapter_name = Path(self.manga_dir).name
@@ -162,6 +163,40 @@ class ChapterLoaderWorker(QRunnable):
             return str(target)
             
         return path
+
+    def _sort_image_list(self, image_list: list) -> list:
+        """Sort image_list according to self.sort_mode.
+
+        Modes:
+          'name'  (default) — natural/alphanumeric sort via get_chapter_number
+          'mtime' — sort by file modification time, ascending
+          'ctime' — sort by file creation time (or mtime on Linux), ascending
+
+        For virtual (archive) paths the stat fields are not meaningful, so
+        those always fall back to name sort.
+        """
+        mode = self.sort_mode or 'name'
+
+        if mode == 'mtime':
+            def _mtime(p):
+                real = p.split('|')[0] if '|' in p else p
+                try:
+                    return os.path.getmtime(real)
+                except OSError:
+                    return 0.0
+            return sorted(image_list, key=_mtime)
+
+        if mode == 'ctime':
+            def _ctime(p):
+                real = p.split('|')[0] if '|' in p else p
+                try:
+                    return os.path.getctime(real)
+                except OSError:
+                    return 0.0
+            return sorted(image_list, key=_ctime)
+
+        # Default: natural/alphanumeric
+        return sorted(image_list, key=get_chapter_number)
 
     def _detect_spreads_in_background(self, pages):
         """Perform spread detection using extracted files or ZipFile data."""
