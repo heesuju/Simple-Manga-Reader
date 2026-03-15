@@ -200,8 +200,8 @@ class VideoControlPanel(QWidget):
             self.duration_label.setText(f"{minutes:02d}:{seconds:02d}")
             self.position_slider.setRange(0, duration_ms)
         else:
-            self.duration_label.setText(str(self.total_frames))
-            self.position_slider.setRange(0, self.total_frames)
+            self.duration_label.setText(str(max(0, self.total_frames - 1)))
+            self.position_slider.setRange(0, max(0, self.total_frames - 1))
 
     def set_position(self, position_ms):
         self.current_position_ms = position_ms
@@ -213,7 +213,9 @@ class VideoControlPanel(QWidget):
                 self.current_time_label.setText(f"{minutes:02d}:{seconds:02d}")
                 self.position_slider.setValue(position_ms)
             elif self.fps > 0:
+                # Use int() to find the current frame (0-indexed)
                 current_frame = int(position_ms * self.fps / 1000)
+                current_frame = max(0, min(current_frame, max(0, self.total_frames - 1)))
                 self.current_time_label.setText(f"F: {current_frame}")
                 self.position_slider.setValue(current_frame)
 
@@ -241,8 +243,8 @@ class VideoControlPanel(QWidget):
             self.set_duration(getattr(self, 'duration_ms', 0))
             self.set_position(getattr(self, 'current_position_ms', 0))
         else:
-            self.position_slider.setRange(0, self.total_frames)
-            self.duration_label.setText(str(self.total_frames))
+            self.position_slider.setRange(0, max(0, self.total_frames - 1))
+            self.duration_label.setText(str(max(0, self.total_frames - 1)))
             # Trigger refresh of current frame label
             self.set_position(getattr(self, 'current_position_ms', 0))
 

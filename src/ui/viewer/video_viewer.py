@@ -204,7 +204,8 @@ class VideoViewer(BaseViewer):
         panel = self.reader_view.video_control_panel
         if panel.fps > 0:
             self.media_player.pause() # Pause when clicking a frame
-            timestamp_ms = int(frame_index * 1000 / panel.fps)
+            # Seek to the MIDDLE of the frame to ensure the decoder hits it
+            timestamp_ms = int((frame_index + 0.5) * 1000 / panel.fps)
             self._set_video_position(timestamp_ms)
             
             # Ensure FramePanel knows we might be seeking to a different range
@@ -220,9 +221,9 @@ class VideoViewer(BaseViewer):
         if panel.fps <= 0: return
 
         current_pos = self.media_player.position()
-        # Use round to find the closest frame to the current reported position
-        current_frame = round(current_pos * panel.fps / 1000)
-        target_frame = max(0, min(panel.total_frames, current_frame + step))
+        # Use int() to find the correct 0-indexed frame we are currently in
+        current_frame = int(current_pos * panel.fps / 1000)
+        target_frame = max(0, min(max(0, panel.total_frames - 1), current_frame + step))
         
         # When stepping, seek to the MIDDLE of the target frame to avoid boundary precision issues
         # and ensure the decoder actually advances to the new frame.
