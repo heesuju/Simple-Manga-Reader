@@ -482,6 +482,15 @@ class ChapterListView(QWidget):
                     self.display_chapters.append(dummy_chapter)
 
         if self.display_chapters:
+            series_path = str(self.series['path'])
+            for chap in self.display_chapters:
+                chapter_path = str(chap['path'])
+                if '|' in chapter_path:
+                    chapter_name = Path(chapter_path.split('|')[0]).stem
+                else:
+                    chapter_name = Path(chapter_path).name
+                chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
+
             chapters_header_label = QLabel(f"Chapters ({len(self.display_chapters)})")
             chapters_header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: white; margin-top: 10px;")
             self.content_layout.addWidget(chapters_header_label)

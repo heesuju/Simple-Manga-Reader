@@ -79,7 +79,16 @@ class ItemLoader(QRunnable):
                         
                         if not thumbnail_path:
                             try:
-                                image_files = sorted([f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'}])
+                                image_files = [f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'}]
+                                
+                                sort_mode = item.get('_sort_mode', 'name')
+                                if sort_mode == 'mtime':
+                                    image_files.sort(key=lambda p: os.path.getmtime(str(p)))
+                                elif sort_mode == 'ctime':
+                                    image_files.sort(key=lambda p: os.path.getctime(str(p)))
+                                else:
+                                    image_files.sort(key=lambda p: get_chapter_number(str(p).lower()))
+
                                 for image_file in image_files:
                                     if not is_image_monotone(str(image_file)):
                                         thumbnail_path = str(image_file)

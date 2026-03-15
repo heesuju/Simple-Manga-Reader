@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import re
+from src.core.alt_manager import AltManager
 
 # prefer treating images and video separately for cover-selection vs listing
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif'}
@@ -268,13 +269,26 @@ class LibraryScanner:
 
         # If no explicit cover, prefer first image (not video) of first chapter
         if chapters:
-            first_chapter_path = Path(chapters[0]['path'])
+            first_chapter = chapters[0]
+            first_chapter_path = Path(first_chapter['path'])
             
             if first_chapter_path.is_dir():
-                for item in sorted(first_chapter_path.iterdir()):
+                chapter_name = first_chapter.get('name', first_chapter_path.name)
+                sort_mode = AltManager.get_chapter_sort(str(series_path), chapter_name)
+
+                items = list(first_chapter_path.iterdir())
+                if sort_mode == 'mtime':
+                    items.sort(key=lambda p: os.path.getmtime(str(p)))
+                elif sort_mode == 'ctime':
+                    items.sort(key=lambda p: os.path.getctime(str(p)))
+                else:
+                    # Default: sort by chapter path natural
+                    items.sort(key=lambda p: get_chapter_number(str(p).lower()))
+
+                for item in items:
                     if self.is_image_file(item):
                         return item
-                for item in sorted(first_chapter_path.iterdir()):
+                for item in items:
                     if self.is_media_file(item):
                         return item
             
