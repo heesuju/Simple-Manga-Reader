@@ -252,6 +252,7 @@ class GradientOverlay(QWidget):
 
 class FolderListItemWidget(QWidget):
     folder_selected = pyqtSignal(str)
+    sort_folder_requested = pyqtSignal(str, str)  # (folder_name, sort_mode)
 
     def __init__(self, folder_name, parent=None):
         super().__init__(parent)
@@ -261,6 +262,8 @@ class FolderListItemWidget(QWidget):
         self.pressed = False
 
         self.setAutoFillBackground(False)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
 
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(10)
@@ -277,6 +280,24 @@ class FolderListItemWidget(QWidget):
         self.layout.addWidget(self.icon_label)
         self.layout.addWidget(self.name_label)
         self.layout.addStretch()
+
+    def _show_context_menu(self, pos):
+        if self.folder_name == "..":
+            return
+        menu = QMenu(self)
+        sort_menu = menu.addMenu("Sort Pages (All Chapters)...")
+
+        SORT_OPTIONS = [
+            ('name',  'Name (A→Z)'),
+            ('mtime', 'Modified Date'),
+            ('ctime', 'Created Date'),
+        ]
+        for mode, label in SORT_OPTIONS:
+            action = QAction(label, self)
+            action.triggered.connect(lambda checked, m=mode: self.sort_folder_requested.emit(self.folder_name, m))
+            sort_menu.addAction(action)
+
+        menu.exec(self.mapToGlobal(pos))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -307,7 +328,8 @@ class FolderListItemWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
-        self.pressed = True
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.pressed = True
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -582,6 +604,22 @@ class ChapterListView(QWidget):
         
         self.render_current_level()
 
+    def on_sort_folder_requested(self, folder_name: str, sort_mode: str):
+        """Apply a page sort mode to all chapters inside a given subfolder."""
+        series_path = str(self.series['path'])
+        folder_prefix = self.current_rel_path + [folder_name]
+        
+        for chap in self.db_chapters:
+            chapter_path = str(chap['path'])
+            parts = self._get_rel_parts(chapter_path)
+            # Match chapters that live anywhere under this folder
+            if len(parts) >= len(folder_prefix) and parts[:len(folder_prefix)] == folder_prefix:
+                if '|' in chapter_path:
+                    chapter_name = Path(chapter_path.split('|')[0]).stem
+                else:
+                    chapter_name = Path(chapter_path).name
+                AltManager.save_chapter_sort(series_path, chapter_name, sort_mode)
+
     def render_current_level(self):
         for w in self.chapter_widgets:
             w.setParent(None)
@@ -660,6 +698,7 @@ class ChapterListView(QWidget):
             if item.get('is_folder'):
                 item_widget = FolderListItemWidget(item['name'], self)
                 item_widget.folder_selected.connect(self.on_folder_selected)
+                item_widget.sort_folder_requested.connect(self.on_sort_folder_requested)
                 self.content_layout.addWidget(item_widget)
                 self.chapter_widgets.append(item_widget)
             else:
