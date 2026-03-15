@@ -90,6 +90,23 @@ class FlowLayout(QLayout):
             widget = item.widget()
             size = item.sizeHint()
             
+            is_header = widget is not None and widget.property("is_header")
+            
+            if is_header and not self._single_row:
+                if lineHeight > 0:
+                    y += lineHeight + spacing
+                    x = effective_rect.x()
+                    lineHeight = 0
+                
+                size = QSize(effective_rect.width(), size.height())
+                
+                if not testOnly:
+                    item.setGeometry(QRect(QPoint(x, y), size))
+                
+                y += size.height() + spacing
+                x = effective_rect.x()
+                continue
+            
             nextX = x + size.width() + spacing
             
             # WRAP LOGIC

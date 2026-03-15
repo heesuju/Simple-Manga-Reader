@@ -250,6 +250,72 @@ class GradientOverlay(QWidget):
 
         painter.fillRect(self.rect(), gradient)
 
+class FolderListItemWidget(QWidget):
+    folder_selected = pyqtSignal(str)
+
+    def __init__(self, folder_name, parent=None):
+        super().__init__(parent)
+        self.folder_name = folder_name
+        self.is_highlighted = False
+        self.hovered = False
+        self.pressed = False
+
+        self.setAutoFillBackground(False)
+
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(10)
+        
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(38, 38)
+        self.icon_label.setText("📁")
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setStyleSheet("font-size: 24px; color: white; background: transparent;")
+        
+        self.name_label = QLabel(self.folder_name)
+        self.name_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent;")
+        
+        self.layout.addWidget(self.icon_label)
+        self.layout.addWidget(self.name_label)
+        self.layout.addStretch()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        
+        if self.pressed:
+            bg_color = QColor(255, 255, 255, 40)
+            border_color = QColor(255, 255, 255, 70)
+        elif self.hovered:
+            bg_color = QColor(255, 255, 255, 20)
+            border_color = QColor(255, 255, 255, 50)
+        else:
+            bg_color = Qt.GlobalColor.transparent
+            border_color = QColor(255, 255, 255, 30)
+
+        painter.setBrush(bg_color)
+        painter.setPen(border_color)
+        painter.drawRoundedRect(rect, 5, 5)
+
+    def enterEvent(self, event):
+        self.hovered = True
+        self.update()
+
+    def leaveEvent(self, event):
+        self.hovered = False
+        self.update()
+
+    def mousePressEvent(self, event):
+        self.pressed = True
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        self.pressed = False
+        self.update()
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
+            self.folder_selected.emit(self.folder_name)
+
 class ChapterListView(QWidget):
     back_to_library = pyqtSignal()
     open_reader = pyqtSignal(object, object)
@@ -261,13 +327,19 @@ class ChapterListView(QWidget):
         self.library_manager = library_manager
         self.chapter_widgets = []
         self.threadpool = QThreadPool()
-        self.threadpool.setMaxThreadCount(1) # Limit concurrency to avoid UI freeze
+        self.threadpool.setMaxThreadCount(1)
 
         self.BATCH_SIZE = 20
         self.current_batch_index = 0
         self.batch_timer = QTimer(self)
         self.batch_timer.setSingleShot(True)
         self.batch_timer.timeout.connect(self._add_next_batch)
+        
+        self.current_rel_path = []
+        self.db_chapters = []
+        self.display_items = []
+        self.display_chapters = []
+
 
         self.background_pixmap = QPixmap(self.series['cover_image'])
 
@@ -399,8 +471,26 @@ class ChapterListView(QWidget):
         self.content_layout.addWidget(tag_container)
 
     def on_chapter_page_count_loaded(self, chapter, page_count, index):
-        if index < len(self.chapter_widgets):
-            self.chapter_widgets[index].set_page_count(page_count)
+        widget = getattr(self, '_chapter_loader_map', {}).get(index)
+        if widget is not None:
+            widget.set_page_count(page_count)
+
+        self._create_tag_row("Formats", "format", self.series.get('formats', []), "#B2D8B2")
+
+    def _get_rel_parts(self, chapter_path: str) -> list[str]:
+        series_root_dir = str(self.series['path'])
+        if '|' in chapter_path:
+            rel = chapter_path.split('|')[1].strip('/')
+            parts = rel.split('/')
+            return parts[:-1] if len(parts) > 0 else []
+        else:
+            if series_root_dir and not chapter_path.endswith('.zip') and not chapter_path.endswith('.cbz'):
+                try:
+                    rel = Path(chapter_path).relative_to(Path(series_root_dir))
+                    return list(rel.parts)[:-1]
+                except ValueError:
+                    pass
+        return []
 
     def load_chapters_and_info(self):
         # --- Info and Buttons (in scroll area) ---
@@ -470,33 +560,84 @@ class ChapterListView(QWidget):
         self._create_tag_row("Formats", "format", self.series.get('formats', []), "#B2D8B2")
 
         # --- Chapters Header ---
-        db_chapters = self.series.get('chapters', [])
-        self.display_chapters = list(db_chapters)
+        self.db_chapters = list(self.series.get('chapters', []))
+        self.display_chapters = list(self.db_chapters)
 
-        if not self.display_chapters:
+        if not self.db_chapters:
             series_path = Path(self.series['path'])
             if series_path.is_dir():
                 images = [p for p in series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'}]
                 if images:
                     dummy_chapter = {'path': str(series_path), 'name': self.series['name']}
-                    self.display_chapters.append(dummy_chapter)
+                    self.db_chapters.append(dummy_chapter)
 
-        if self.display_chapters:
-            series_path = str(self.series['path'])
-            for chap in self.display_chapters:
-                chapter_path = str(chap['path'])
-                if '|' in chapter_path:
-                    chapter_name = Path(chapter_path.split('|')[0]).stem
+        self.render_current_level()
+
+    def on_folder_selected(self, folder_name: str):
+        if folder_name == "..":
+            if self.current_rel_path:
+                self.current_rel_path.pop()
+        else:
+            self.current_rel_path.append(folder_name)
+        
+        self.render_current_level()
+
+    def render_current_level(self):
+        for w in self.chapter_widgets:
+            w.setParent(None)
+            w.deleteLater()
+        self.chapter_widgets.clear()
+        
+        if hasattr(self, 'back_folder_widget') and self.back_folder_widget:
+            self.back_folder_widget.setParent(None)
+            self.back_folder_widget.deleteLater()
+            self.back_folder_widget = None
+
+        if hasattr(self, 'chapters_header_label') and self.chapters_header_label:
+            self.chapters_header_label.setParent(None)
+            self.chapters_header_label.deleteLater()
+            self.chapters_header_label = None
+
+        self.display_items = []
+        folders_at_level = set()
+        chapters_at_level = []
+
+        series_path = str(self.series['path'])
+
+        for chap in self.db_chapters:
+            chapter_path = str(chap['path'])
+            parts = self._get_rel_parts(chapter_path)
+            
+            if len(parts) >= len(self.current_rel_path) and parts[:len(self.current_rel_path)] == self.current_rel_path:
+                if len(parts) > len(self.current_rel_path):
+                    folders_at_level.add(parts[len(self.current_rel_path)])
                 else:
-                    chapter_name = Path(chapter_path).name
-                chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
+                    if '|' in chapter_path:
+                        chapter_name = Path(chapter_path.split('|')[0]).stem
+                    else:
+                        chapter_name = Path(chapter_path).name
+                    chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
+                    chapters_at_level.append(chap)
 
-            chapters_header_label = QLabel(f"Chapters ({len(self.display_chapters)})")
-            chapters_header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: white; margin-top: 10px;")
-            self.content_layout.addWidget(chapters_header_label)
+        for f in sorted(list(folders_at_level)):
+            self.display_items.append({'is_folder': True, 'name': f})
+        
+        self.display_items.extend(chapters_at_level)
+        self.display_chapters = chapters_at_level
 
-        # --- Chapter List (Placeholders) ---
-        last_read_chapter = self.series.get('last_read_chapter')
+        header_text = f"Chapters ({len(self.display_items)})"
+        if self.current_rel_path:
+            header_text = f"{'/'.join(self.current_rel_path)} ({len(self.display_items)})"
+            
+        self.chapters_header_label = QLabel(header_text)
+        self.chapters_header_label.setStyleSheet("font-size: 18px; font-weight: bold; color: white; margin-top: 10px;")
+        self.content_layout.addWidget(self.chapters_header_label)
+        
+        if self.current_rel_path:
+            self.back_folder_widget = FolderListItemWidget("..", self)
+            self.back_folder_widget.folder_selected.connect(self.on_folder_selected)
+            self.content_layout.addWidget(self.back_folder_widget)
+
         self._start_batch_loading()
 
     def _start_batch_loading(self):
@@ -509,38 +650,55 @@ class ChapterListView(QWidget):
 
     def _add_next_batch(self):
         start = self.current_batch_index
-        end = min(start + self.BATCH_SIZE, len(self.display_chapters))
+        end = min(start + self.BATCH_SIZE, len(self.display_items))
         
         last_read_chapter = self.series.get('last_read_chapter')
 
         for i in range(start, end):
-            chapter = self.display_chapters[i]
-            chapter_name = f"Ch {i+1}" if chapter.get('name') != self.series['name'] else self.series['name']
-            item_widget = ChapterListItemWidget(chapter, self.series, chapter_name, self.library_manager, self)
-            item_widget.chapter_selected.connect(self.on_chapter_selected)
-            item_widget.group_pages_requested.connect(self.on_group_pages_requested)
-            item_widget.add_translation_requested.connect(self.on_add_translation_requested)
-            self.content_layout.addWidget(item_widget)
-            self.chapter_widgets.append(item_widget)
+            item = self.display_items[i]
+            
+            if item.get('is_folder'):
+                item_widget = FolderListItemWidget(item['name'], self)
+                item_widget.folder_selected.connect(self.on_folder_selected)
+                self.content_layout.addWidget(item_widget)
+                self.chapter_widgets.append(item_widget)
+            else:
+                chapter = item
+                chapter_name = f"Ch {i+1}" if chapter.get('name') != self.series['name'] else self.series['name']
+                item_widget = ChapterListItemWidget(chapter, self.series, chapter_name, self.library_manager, self)
+                item_widget.chapter_selected.connect(self.on_chapter_selected)
+                item_widget.group_pages_requested.connect(self.on_group_pages_requested)
+                item_widget.add_translation_requested.connect(self.on_add_translation_requested)
+                self.content_layout.addWidget(item_widget)
+                self.chapter_widgets.append(item_widget)
 
-            if chapter['path'] == last_read_chapter:
-                item_widget.set_highlight(True)
+                if chapter['path'] == last_read_chapter:
+                    item_widget.set_highlight(True)
 
         self.current_batch_index = end
 
-        if self.current_batch_index < len(self.display_chapters):
+        if self.current_batch_index < len(self.display_items):
              self.batch_timer.start(10) # Schedule next batch
         else:
              # Finished adding widgets, NOW start the loaders to avoid fighting for Main Thread
              self._start_background_loaders()
 
     def _start_background_loaders(self):
+        # Build map of indices and filter out folders for the loaders
+        self._chapter_loader_map = {}
+        target_chapters = []
+        for widget in self.chapter_widgets:
+            if isinstance(widget, ChapterListItemWidget):
+                idx = len(target_chapters)
+                self._chapter_loader_map[idx] = widget
+                target_chapters.append(widget.chapter)
+
         # --- Background Loaders ---
-        page_count_loader = ChapterListLoader(self.display_chapters, str(self.series['path']))
+        page_count_loader = ChapterListLoader(target_chapters, str(self.series['path']))
         page_count_loader.signals.chapter_processed.connect(self.on_chapter_page_count_loaded)
         self.threadpool.start(page_count_loader)
 
-        thumb_loader = ItemLoader(self.display_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75, library_manager=self.library_manager)
+        thumb_loader = ItemLoader(target_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75, library_manager=self.library_manager)
         thumb_loader.signals.item_loaded.connect(self.on_thumbnail_loaded)
         self.threadpool.start(thumb_loader)
 
@@ -631,15 +789,15 @@ class ChapterListView(QWidget):
             QThreadPool.globalInstance().start(worker)
 
     def on_thumbnail_loaded(self, pixmap, item, index, generation, item_type):
-        if index < len(self.chapter_widgets):
-            self.chapter_widgets[index].set_pixmap(pixmap)
-
+        widget = getattr(self, '_chapter_loader_map', {}).get(index)
+        if pixmap and widget is not None:
+            widget.set_pixmap(pixmap)
     def go_back(self):
         self.back_to_library.emit()
 
     def start_reading(self):
-        if self.display_chapters:
-            first_chapter = self.display_chapters[0]
+        if self.db_chapters:
+            first_chapter = self.db_chapters[0]
             self.open_reader.emit(self.series, first_chapter)
 
     def continue_reading(self):
