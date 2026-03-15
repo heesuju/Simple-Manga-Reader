@@ -10,6 +10,7 @@ from src.enums import ViewMode
 from src.utils.resource_utils import resource_path
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.utils.str_utils import natural_sort_key
+from src.workers.thumbnail_worker import ThumbnailWorker
 
 THUMB_W = 120
 THUMB_H = 160
@@ -69,9 +70,10 @@ class AltThumbnail(QWidget):
 class AltPanel(QWidget):
     """Vertical panel showing alt thumbnails for the current page, organized by category."""
 
-    def __init__(self, parent=None, model=None):
+    def __init__(self, parent=None, model=None, thread_pool=None):
         super().__init__(parent)
         self.model = model
+        self.thread_pool = thread_pool
         self.active_categories = {}  # {page_index: category_name}
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -283,17 +285,16 @@ class AltPanel(QWidget):
             self.scroll_layout.addWidget(thumb)
             self.alt_widgets.append(thumb)
 
-            # Load thumbnail async-ish (synchronous for simplicity, could be threaded)
+            # Load thumbnail async (or synchronously if no thread pool)
             resolved = self._resolve_path(variant_path)
-            try:
-                if '|' in resolved:
-                    pixmap = load_thumbnail_from_virtual_path(resolved, THUMB_W, THUMB_H)
-                else:
-                    pixmap = load_thumbnail_from_path(resolved, THUMB_W, THUMB_H)
+            if self.thread_pool:
+                worker = ThumbnailWorker(len(self.alt_widgets) - 1, resolved, self._load_thumbnail)
+                worker.signals.finished.connect(self._on_thumbnail_loaded)
+                self.thread_pool.start(worker)
+            else:
+                pixmap = self._load_thumbnail(resolved)
                 if pixmap:
                     thumb.set_pixmap(pixmap)
-            except Exception:
-                pass
 
         # Show panel
         if hasattr(self.parent(), "panels_visible"):
@@ -305,6 +306,19 @@ class AltPanel(QWidget):
                 self.hide()
         else:
             self.show()
+
+    def _load_thumbnail(self, path: str):
+        try:
+            if '|' in path:
+                return load_thumbnail_from_virtual_path(path, THUMB_W, THUMB_H)
+            else:
+                return load_thumbnail_from_path(path, THUMB_W, THUMB_H)
+        except Exception:
+            return None
+
+    def _on_thumbnail_loaded(self, index, pixmap):
+        if index < len(self.alt_widgets):
+            self.alt_widgets[index].set_pixmap(pixmap)
 
     def _resolve_path(self, path_str):
         """Resolve relative path to absolute using model's manga_dir."""

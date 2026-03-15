@@ -232,7 +232,7 @@ class ReaderView(QWidget):
         self.video_control_panel.raise_()
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
-        self.alt_panel = AltPanel(self, model=self.model)
+        self.alt_panel = AltPanel(self, model=self.model, thread_pool=self.thread_pool)
         self.frame_panel = FramePanel(self, thread_pool=self.thread_pool)
         self.selection_panel = SelectionPanel(self)
 
