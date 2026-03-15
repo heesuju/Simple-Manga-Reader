@@ -105,6 +105,7 @@ class VideoViewer(BaseViewer):
             pass
 
         self.video_last_frame_item.setVisible(False)
+        self.video_last_frame_item.setPixmap(QPixmap()) # Clear stale content
         self.last_frame_pixmap = None
 
         # Fast: read frame_count + fps without decoding any frame.
@@ -197,6 +198,7 @@ class VideoViewer(BaseViewer):
         if path_norm == current_norm:
             pixmap = QPixmap.fromImage(q_image)
             self.last_frame_pixmap = pixmap
+            self._update_video_underlay_geometry() # Prime it in the background
 
     def _seek_to_frame(self, frame_index):
         panel = self.reader_view.video_control_panel
@@ -237,7 +239,7 @@ class VideoViewer(BaseViewer):
             self._update_video_underlay_geometry()
 
     def _update_video_underlay_geometry(self):
-        if not (self.video_last_frame_item and self.video_last_frame_item.isVisible() and self.last_frame_pixmap):
+        if not (self.video_last_frame_item and self.last_frame_pixmap):
             return
 
         # Use actual video item size for underlay, or scene rect since they match now
