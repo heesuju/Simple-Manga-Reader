@@ -99,6 +99,12 @@ class VideoViewer(BaseViewer):
     def _play_video(self, path: str):
         self._ensure_items_in_scene()
         
+        # Purge any stale pixmaps from other viewers (like ImageViewer)
+        to_remove = [item for item in self.reader_view.scene.items() 
+                     if isinstance(item, QGraphicsPixmapItem) and item != self.video_last_frame_item]
+        for item in to_remove:
+            self.reader_view.scene.removeItem(item)
+            
         try:
             self.media_player.stop()
         except Exception:

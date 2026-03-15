@@ -23,6 +23,7 @@ class ImageViewer(BaseViewer):
         self.movie_buffer = None # Keep reference to buffer
         self.original_pixmap = None # Stores the full resolution source
         self.current_request_id = 0
+        self.is_active = False # Flag to ignore late worker results
         
         # High Quality Scaling State
         self.scaled_pixmap_item = None # Separate item for high-quality scaled version
@@ -36,6 +37,7 @@ class ImageViewer(BaseViewer):
         self.resize_timer.timeout.connect(self._trigger_hq_rescale)
 
     def set_active(self, active: bool):
+        self.is_active = active
         if active:
             if self.pixmap_item:
                 self.pixmap_item.setVisible(True)
@@ -48,6 +50,7 @@ class ImageViewer(BaseViewer):
         else:
             self.resize_timer.stop()
             self.hq_generation_id += 1 # Invalidate any pending HQ workers
+            self.current_request_id += 1 # Invalidate any pending async loads
             
             # Hide ALL pixmap items in the scene to avoid overlapping videos/next pages
             if self.reader_view.scene:
@@ -59,17 +62,28 @@ class ImageViewer(BaseViewer):
                 self.movie.setPaused(True)
                 
             self.reader_view.layout_btn.hide()
+            self._purge_stale_pixmaps() # Purge when deactivating too
 
-    def _clear_scene_pixmaps(self):
-        if not self.reader_view.scene:
+    def _purge_stale_pixmaps(self):
+        """Removes ALL pixmap items from the scene except the video underlay."""
+        if not (self.reader_view and self.reader_view.scene):
             return
-        # Find all pixmap items and remove them
+            
+        video_underlay = None
+        if hasattr(self.reader_view, 'video_viewer') and self.reader_view.video_viewer:
+             video_underlay = self.reader_view.video_viewer.video_last_frame_item
+
         to_remove = [item for item in self.reader_view.scene.items() 
-                     if isinstance(item, QGraphicsPixmapItem)]
+                     if isinstance(item, QGraphicsPixmapItem) and item != video_underlay]
         for item in to_remove:
             self.reader_view.scene.removeItem(item)
+        
         self.pixmap_item = None
-        self.scaled_pixmap_item = False
+        self.scaled_pixmap_item = None
+        self.clear_overlays()
+
+    def _clear_scene_pixmaps(self):
+        self._purge_stale_pixmaps()
 
     def load(self, item):
         self._stop_movie()
@@ -102,7 +116,7 @@ class ImageViewer(BaseViewer):
         self.reader_view.thread_pool.start(worker)
 
     def _on_async_load_finished(self, request_id: int, results: dict):
-        if request_id != self.current_request_id:
+        if request_id != self.current_request_id or not self.is_active:
             return
         
         if len(results) == 0:
