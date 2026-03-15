@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QMenu, QFileDialog, QGraphicsPixmapItem
 from PyQt6.QtCore import QUrl, QSizeF, QRectF, Qt, pyqtSignal, QPointF
 
 from src.ui.viewer.base_viewer import BaseViewer
-from src.workers.view_workers import VideoFrameExtractorWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
+from src.workers.view_workers import VideoFrameExtractorWorker, VideoMetadataWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
 
 class VideoItem(QGraphicsVideoItem):
     context_menu_requested = pyqtSignal(object) # QPointF (scene pos)
@@ -101,13 +101,20 @@ class VideoViewer(BaseViewer):
         except Exception:
             pass
 
-        # Extract last frame
-        worker = VideoFrameExtractorWorker(path)
-        worker.signals.finished.connect(self._on_last_frame_extracted)
-        self.reader_view.thread_pool.start(worker)
-
         self.video_last_frame_item.setVisible(False)
         self.last_frame_pixmap = None
+
+        # Fast: read frame_count + fps without decoding any frame.
+        # This populates the frame panel almost immediately.
+        meta_worker = VideoMetadataWorker(path)
+        meta_worker.signals.finished.connect(self._on_video_metadata)
+        self.reader_view.thread_pool.start(meta_worker)
+
+        # Slow: seek to last frame for the end-of-video underlay pixmap.
+        # Runs independently; the frame panel doesn't wait for this.
+        last_frame_worker = VideoFrameExtractorWorker(path)
+        last_frame_worker.signals.finished.connect(self._on_last_frame_extracted)
+        self.reader_view.thread_pool.start(last_frame_worker)
 
         self.media_player.setVideoOutput(self.video_item)
         self.media_player.setSource(QUrl.fromLocalFile(path))
@@ -140,7 +147,26 @@ class VideoViewer(BaseViewer):
         if self.video_item:
             self.video_item.setData(0, None)
 
+    def _on_video_metadata(self, path, total_frames, fps):
+        """Called quickly after opening a video — no frame decode performed.
+        Sets up the frame panel and control panel metadata immediately."""
+        if not self.media_player.source().toLocalFile():
+            return
+
+        path_norm = os.path.normcase(os.path.normpath(path))
+        current_norm = os.path.normcase(os.path.normpath(self.media_player.source().toLocalFile()))
+
+        if path_norm == current_norm:
+            self.reader_view.video_control_panel.set_video_metadata(total_frames, fps)
+            self.reader_view.frame_panel.set_video(path, total_frames)
+            if self.reader_view.panels_visible:
+                self.reader_view.frame_panel.show()
+            else:
+                self.reader_view.frame_panel.hide()
+            self.reader_view._update_side_panels_geometry()
+
     def _on_last_frame_extracted(self, path, q_image, total_frames, fps):
+        """Called after the slow last-frame seek. Only updates the underlay pixmap."""
         if not self.media_player.source().toLocalFile():
             return
             
@@ -151,14 +177,6 @@ class VideoViewer(BaseViewer):
         if path_norm == current_norm:
             pixmap = QPixmap.fromImage(q_image)
             self.last_frame_pixmap = pixmap
-            # Pass metadata to panel
-            self.reader_view.video_control_panel.set_video_metadata(total_frames, fps)
-            self.reader_view.frame_panel.set_video(path, total_frames)
-            if self.reader_view.panels_visible:
-                self.reader_view.frame_panel.show()
-            else:
-                self.reader_view.frame_panel.hide()
-            self.reader_view._update_side_panels_geometry()
 
     def _seek_to_frame(self, frame_index):
         panel = self.reader_view.video_control_panel

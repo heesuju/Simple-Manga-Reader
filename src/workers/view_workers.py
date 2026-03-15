@@ -406,6 +406,31 @@ class VideoFrameExtractorWorker(QRunnable):
         except Exception as e:
             print(f"Error in async video extraction: {e}")
 
+class VideoMetadataSignals(QObject):
+    finished = pyqtSignal(str, int, float)  # path, total_frames, fps
+
+class VideoMetadataWorker(QRunnable):
+    """Reads total_frames and fps from a video without decoding any frame.
+    Much faster than VideoFrameExtractorWorker for long videos."""
+    def __init__(self, path: str):
+        super().__init__()
+        self.path = path
+        self.signals = VideoMetadataSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            import cv2
+            cap = cv2.VideoCapture(self.path)
+            if cap.isOpened():
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                fps = float(cap.get(cv2.CAP_PROP_FPS))
+                cap.release()
+                self.signals.finished.emit(self.path, frame_count, fps)
+        except Exception as e:
+            print(f"Error in VideoMetadataWorker: {e}")
+
+
 class VideoTimestampFrameExtractorSignals(QObject):
     finished = pyqtSignal(str, QImage, str) # source_path, image, save_path
 
