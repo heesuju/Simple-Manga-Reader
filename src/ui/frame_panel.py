@@ -60,6 +60,7 @@ class FramePanel(QWidget):
         self.total_frames = 0
         self.current_page = 0
         self.thumbnails = {} # {frame_index: FrameThumbnail}
+        self.active_worker = None # Track currently running batch worker
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("""
@@ -146,11 +147,17 @@ class FramePanel(QWidget):
 
         # Trigger async extraction for this batch
         if self.thread_pool:
-            worker = VideoBatchFrameExtractorWorker(self.video_path, indices, THUMB_W, THUMB_H)
-            worker.signals.finished.connect(self._on_frames_extracted)
-            self.thread_pool.start(worker)
+            if self.active_worker:
+                self.active_worker.cancelled = True
+                
+            self.active_worker = VideoBatchFrameExtractorWorker(self.video_path, indices, THUMB_W, THUMB_H)
+            self.active_worker.signals.finished.connect(self._on_frames_extracted)
+            self.thread_pool.start(self.active_worker)
 
     def _on_frames_extracted(self, path, results, start_idx, end_idx):
+        if self.active_worker and getattr(self.active_worker, 'path', None) == path:
+            self.active_worker = None
+            
         if path != self.video_path:
             return
         

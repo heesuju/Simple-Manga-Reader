@@ -29,6 +29,9 @@ class VideoViewer(BaseViewer):
         self.video_last_frame_item: QGraphicsPixmapItem | None = None
         self.last_frame_pixmap: QPixmap | None = None
         
+        self.active_meta_worker = None
+        self.active_last_frame_worker = None
+        
         self.playback_speeds = [1.0, 1.25, 1.5, 1.75, 2.0, 0.5, 0.75]
         self.current_speed_index = 0
         self.video_repeat = True
@@ -106,15 +109,19 @@ class VideoViewer(BaseViewer):
 
         # Fast: read frame_count + fps without decoding any frame.
         # This populates the frame panel almost immediately.
-        meta_worker = VideoMetadataWorker(path)
-        meta_worker.signals.finished.connect(self._on_video_metadata)
-        self.reader_view.thread_pool.start(meta_worker)
+        if self.active_meta_worker:
+            self.active_meta_worker.cancelled = True
+        self.active_meta_worker = VideoMetadataWorker(path)
+        self.active_meta_worker.signals.finished.connect(self._on_video_metadata)
+        self.reader_view.thread_pool.start(self.active_meta_worker)
 
         # Slow: seek to last frame for the end-of-video underlay pixmap.
         # Runs independently; the frame panel doesn't wait for this.
-        last_frame_worker = VideoFrameExtractorWorker(path)
-        last_frame_worker.signals.finished.connect(self._on_last_frame_extracted)
-        self.reader_view.thread_pool.start(last_frame_worker)
+        if self.active_last_frame_worker:
+            self.active_last_frame_worker.cancelled = True
+        self.active_last_frame_worker = VideoFrameExtractorWorker(path)
+        self.active_last_frame_worker.signals.finished.connect(self._on_last_frame_extracted)
+        self.reader_view.thread_pool.start(self.active_last_frame_worker)
 
         self.media_player.setVideoOutput(self.video_item)
         self.media_player.setSource(QUrl.fromLocalFile(path))
@@ -146,10 +153,20 @@ class VideoViewer(BaseViewer):
         self.media_player.setVideoOutput(None)
         if self.video_item:
             self.video_item.setData(0, None)
+            
+        if self.active_meta_worker:
+            self.active_meta_worker.cancelled = True
+            self.active_meta_worker = None
+        if self.active_last_frame_worker:
+            self.active_last_frame_worker.cancelled = True
+            self.active_last_frame_worker = None
 
     def _on_video_metadata(self, path, total_frames, fps):
         """Called quickly after opening a video — no frame decode performed.
         Sets up the frame panel and control panel metadata immediately."""
+        if self.active_meta_worker and self.active_meta_worker.path == path:
+            self.active_meta_worker = None
+
         if not self.media_player.source().toLocalFile():
             return
 
@@ -167,6 +184,9 @@ class VideoViewer(BaseViewer):
 
     def _on_last_frame_extracted(self, path, q_image, total_frames, fps):
         """Called after the slow last-frame seek. Only updates the underlay pixmap."""
+        if self.active_last_frame_worker and self.active_last_frame_worker.path == path:
+            self.active_last_frame_worker = None
+
         if not self.media_player.source().toLocalFile():
             return
             

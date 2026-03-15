@@ -378,6 +378,7 @@ class VideoFrameExtractorWorker(QRunnable):
     def __init__(self, path: str):
         super().__init__()
         self.path = path
+        self.cancelled = False
         self.signals = VideoFrameExtractorSignals()
 
     @pyqtSlot()
@@ -391,7 +392,8 @@ class VideoFrameExtractorWorker(QRunnable):
                 # Grab the last frame
                 cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
                 ret, frame = cap.read()
-                if ret:
+                cap.release()
+                if ret and not self.cancelled:
                     # Convert BGR to RGB
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     h, w, ch = frame.shape
@@ -400,9 +402,7 @@ class VideoFrameExtractorWorker(QRunnable):
                     q_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
                     # We must make a copy of the data, because 'frame' (numpy array) will be garbage collected
                     q_image = q_image.copy()
-                    
                     self.signals.finished.emit(self.path, q_image, frame_count, fps)
-                cap.release()
         except Exception as e:
             print(f"Error in async video extraction: {e}")
 
@@ -415,6 +415,7 @@ class VideoMetadataWorker(QRunnable):
     def __init__(self, path: str):
         super().__init__()
         self.path = path
+        self.cancelled = False
         self.signals = VideoMetadataSignals()
 
     @pyqtSlot()
@@ -426,7 +427,8 @@ class VideoMetadataWorker(QRunnable):
                 frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 fps = float(cap.get(cv2.CAP_PROP_FPS))
                 cap.release()
-                self.signals.finished.emit(self.path, frame_count, fps)
+                if not self.cancelled:
+                    self.signals.finished.emit(self.path, frame_count, fps)
         except Exception as e:
             print(f"Error in VideoMetadataWorker: {e}")
 
@@ -707,6 +709,7 @@ class VideoBatchFrameExtractorWorker(QRunnable):
         self.frame_indices = frame_indices
         self.thumb_w = thumb_w
         self.thumb_h = thumb_h
+        self.cancelled = False
         self.signals = VideoBatchFrameExtractorSignals()
 
     @pyqtSlot()
@@ -719,6 +722,8 @@ class VideoBatchFrameExtractorWorker(QRunnable):
 
             results = {}
             for idx in self.frame_indices:
+                if self.cancelled:
+                    break
                 cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ret, frame = cap.read()
                 if ret:
@@ -736,7 +741,7 @@ class VideoBatchFrameExtractorWorker(QRunnable):
                     results[idx] = q_image.copy()
             
             cap.release()
-            if results:
+            if results and not self.cancelled:
                 self.signals.finished.emit(self.path, results, min(self.frame_indices), max(self.frame_indices))
         except Exception as e:
             print(f"Error in batch video extraction: {e}")
