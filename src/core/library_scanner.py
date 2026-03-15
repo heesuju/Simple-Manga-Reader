@@ -194,6 +194,8 @@ class LibraryScanner:
 
         # Recurse
         for child_name, child_node in node['children'].items():
+            if child_name.lower() in ('alts', 'translations'):
+                continue
             new_path = f"{current_path}/{child_name}" if current_path else child_name
             self._traverse_zip_tree(child_node, new_path, archive_path, chapters)
 
@@ -224,6 +226,9 @@ class LibraryScanner:
         # 2. Look for archives (chapters) and subfolders
         try:
             for item in folder.iterdir():
+                if item.is_dir() and item.name.lower() in ('alts', 'translations'):
+                    continue
+                
                 if self.is_archive(item):
                     # Check inside archive for structure
                     archive_chapters = self.scan_archive(item)

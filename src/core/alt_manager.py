@@ -43,6 +43,16 @@ class AltManager:
 
         for path in image_paths:
             name = Path(path).name
+            
+            if '|' in path:
+                internal_path = path.split('|', 1)[1]
+                internal_parts = [p.lower() for p in Path(internal_path).parts]
+                if 'alts' in internal_parts or 'translations' in internal_parts:
+                    continue
+            else:
+                parts = [p.lower() for p in Path(path).parts]
+                if 'alts' in parts or 'translations' in parts:
+                    continue
                 
             if name in processed_files:
                 continue
