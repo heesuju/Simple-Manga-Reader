@@ -13,7 +13,7 @@ from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
 from src.core.alt_manager import AltManager
 
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
-IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}
+IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'}
 
 class ArchiveExtractionSignals(QObject):
     finished = pyqtSignal(str, bool) # archive_path, success

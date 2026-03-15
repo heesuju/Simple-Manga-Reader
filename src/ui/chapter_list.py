@@ -42,7 +42,7 @@ class ChapterListLoader(QRunnable):
             full_chapter_path = Path(chapter['path'])
             if full_chapter_path.exists() and full_chapter_path.is_dir():
                 try:
-                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
                     images = sorted(images, key=get_chapter_number)
                     
                     chapter_name = full_chapter_path.name
@@ -445,7 +445,7 @@ class ChapterListView(QWidget):
         if not self.display_chapters:
             series_path = Path(self.series['path'])
             if series_path.is_dir():
-                images = [p for p in series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}]
+                images = [p for p in series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'}]
                 if images:
                     dummy_chapter = {'path': str(series_path), 'name': self.series['name']}
                     self.display_chapters.append(dummy_chapter)
@@ -524,7 +524,7 @@ class ChapterListView(QWidget):
                 alt_config = AltManager.load_alts(series_path)
                 
                 if full_chapter_path.exists() and full_chapter_path.is_dir():
-                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
                     
                     chapter_name = full_chapter_path.name
                     chapter_alts = alt_config.get(chapter_name, {})
@@ -570,7 +570,7 @@ class ChapterListView(QWidget):
                     alt_config = AltManager.load_alts(series_path)
                     
                     if full_chapter_path.exists() and full_chapter_path.is_dir():
-                        images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
+                        images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
                         
                         chapter_name = full_chapter_path.name
                         chapter_alts = alt_config.get(chapter_name, {})

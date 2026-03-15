@@ -22,7 +22,7 @@ class GroupPagesWorker(QRunnable):
                 return
 
             # 1. Scan images
-            valid_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
+            valid_exts = {'.jpg', '.jpeg', '.jpe', '.png', '.webp', '.bmp', '.gif'}
             images = [
                 p for p in self.chapter_path.iterdir() 
                 if p.is_file() and p.suffix.lower() in valid_exts and p.stem.lower() != 'cover'

@@ -398,7 +398,7 @@ class PagePanel(CollapsiblePanel):
             self, 
             "Select Images/Videos", 
             str(default_dir), 
-            "Media Files (*.png *.jpg *.jpeg *.webp *.gif *.mp4 *.webm *.mkv)"
+            "Media Files (*.png *.jpg *.jpeg *.jpe *.webp *.gif *.mp4 *.webm *.mkv)"
         )
         if file_paths:
             self._add_alts_logic(file_paths)

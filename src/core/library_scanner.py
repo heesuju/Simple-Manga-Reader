@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 
 # prefer treating images and video separately for cover-selection vs listing
-IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'}
+IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif'}
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
 ALL_MEDIA_EXTS = IMAGE_EXTS.union(VIDEO_EXTS)
 

@@ -121,7 +121,7 @@ class TranslationSlot(QFrame):
             if len(urls) == 1:
                 path = urls[0].toLocalFile()
                 if os.path.isfile(path):
-                    valid_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
+                    valid_exts = {'.jpg', '.jpeg', '.jpe', '.png', '.webp', '.bmp', '.gif'}
                     if Path(path).suffix.lower() in valid_exts:
                          self.set_image(path)
                          self.file_dropped.emit(path)
@@ -455,7 +455,7 @@ class AddTranslationDialog(QDialog):
         alt_config = AltManager.load_alts(self.series_path)
         chapter_alts = alt_config.get(self.chapter_path.name, {})
         
-        valid_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
+        valid_exts = {'.jpg', '.jpeg', '.jpe', '.png', '.webp', '.bmp', '.gif'}
         images = [str(p) for p in self.chapter_path.iterdir() 
                   if p.is_file() and p.suffix.lower() in valid_exts and p.stem.lower() != 'cover']
         
@@ -539,7 +539,7 @@ class AddTranslationDialog(QDialog):
 
     def _process_folder_drop(self, folder_path):
         """Auto-match files in folder to rows"""
-        valid_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}
+        valid_exts = {'.jpg', '.jpeg', '.jpe', '.png', '.webp', '.bmp', '.gif'}
         try:
             for f in os.listdir(folder_path):
                 full_path = os.path.join(folder_path, f)

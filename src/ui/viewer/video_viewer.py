@@ -408,7 +408,7 @@ class VideoViewer(BaseViewer):
             self.reader_view, 
             "Select Images/Videos", 
             str(default_dir), 
-            "Media Files (*.png *.jpg *.jpeg *.webp *.gif *.mp4 *.webm *.mkv)"
+            "Media Files (*.png *.jpg *.jpeg *.jpe *.webp *.gif *.mp4 *.webm *.mkv)"
         )
         if file_paths:
             self.reader_view._add_alts_from_files(file_paths)
@@ -457,7 +457,7 @@ class VideoViewer(BaseViewer):
                 self.reader_view,
                 "Save Current Frame",
                 initial_path,
-                "Images (*.png *.jpg *.webp)"
+                "Images (*.png *.jpg *.jpeg *.jpe *.webp)"
             )
             
             if file_path:
@@ -494,7 +494,7 @@ class VideoViewer(BaseViewer):
             self.reader_view,
             "Save Cropped Frame As",
             initial_path,
-            "JPEG Image (*.jpg);;PNG Image (*.png);;WebP Image (*.webp);;All Files (*)"
+            "JPEG Image (*.jpg *.jpeg *.jpe);;PNG Image (*.png);;WebP Image (*.webp);;All Files (*)"
         )
         
         if file_path:
@@ -513,7 +513,7 @@ class VideoViewer(BaseViewer):
         
         cropped = img.copy(intersected)
         ext = os.path.splitext(save_path)[1].lower()
-        if ext in [".jpg", ".jpeg"]: fmt = "JPEG"
+        if ext in [".jpg", ".jpeg", ".jpe"]: fmt = "JPEG"
         elif ext == ".webp": fmt = "WEBP"
         else: fmt = "PNG"
 

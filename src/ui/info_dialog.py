@@ -107,7 +107,7 @@ class InfoDialog(QDialog):
             self.cover_label.setPixmap(pixmap.scaled(200, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def browse_for_cover(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Cover Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Cover Image", "", "Images (*.png *.jpg *.jpeg *.jpe *.bmp *.gif)")
         if file_path:
             self.cover_path_input.setText(file_path)
             pixmap = QPixmap(file_path)

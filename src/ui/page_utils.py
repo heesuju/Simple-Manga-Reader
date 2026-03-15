@@ -431,7 +431,7 @@ def save_merged_pair_as(parent: QWidget, model: ReaderModel, layout_index: int):
         parent,
         "Save Merged Image As",
         initial_path,
-        f"Image (*{ext});;PNG (*.png);;JPG (*.jpg);;All Files (*)"
+        f"Image (*{ext});;PNG (*.png);;JPG (*.jpg *.jpeg *.jpe);;All Files (*)"
     )
     
     if file_path:

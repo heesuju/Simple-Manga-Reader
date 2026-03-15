@@ -78,7 +78,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                         try:
                             # Filter out cover images from being pages
                             for item in sorted(os.scandir(full_chapter_path), key=lambda e: get_chapter_number(e.path)):
-                                if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
+                                if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
                                     if item.name.lower() not in ['cover.jpg', 'cover.png']:
                                         images.append(item.path)
                                         if not thumbnail:

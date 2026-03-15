@@ -481,7 +481,7 @@ class ImageViewer(BaseViewer):
         source_ext = "jpg"
         if original_path:
             ext = os.path.splitext(original_path)[1].lower().replace(".", "")
-            if ext in ["jpg", "jpeg", "png", "webp"]:
+            if ext in ["jpg", "jpeg", "jpe", "png", "webp"]:
                 source_ext = ext
         
         if source_ext == "jpeg": source_ext = "jpg"
@@ -498,7 +498,7 @@ class ImageViewer(BaseViewer):
             self.reader_view,
             "Save Cropped Image As",
             initial_path,
-            "JPEG Image (*.jpg);;PNG Image (*.png);;WebP Image (*.webp);;All Files (*)"
+            "JPEG Image (*.jpg *.jpeg *.jpe);;PNG Image (*.png);;WebP Image (*.webp);;All Files (*)"
         )
         
         if not file_path:
@@ -506,7 +506,7 @@ class ImageViewer(BaseViewer):
 
         # Determine format from extension
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in [".jpg", ".jpeg"]: fmt = "JPEG"
+        if ext in [".jpg", ".jpeg", ".jpe"]: fmt = "JPEG"
         elif ext == ".webp": fmt = "WEBP"
         else: fmt = "PNG"
         
