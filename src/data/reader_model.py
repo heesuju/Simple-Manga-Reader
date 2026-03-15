@@ -39,8 +39,7 @@ class ReaderModel(QObject):
         self.manga_dir = self.chapters[self.chapter_index] if manga_dirs else None
         self.preferred_language = None 
 
-        if self.chapters:
-            self.chapters = sorted(self.chapters, key=lambda x: get_chapter_number(str(x)))
+        # Chapters are pre-sorted by the library manager; preserve DB order
 
         if images:
             self.set_images(images)

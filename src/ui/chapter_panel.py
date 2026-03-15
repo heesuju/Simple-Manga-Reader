@@ -91,28 +91,6 @@ class ChapterPanel(CollapsiblePanel):
                 series_root_dir = self.model.manga_dir if hasattr(self.model, 'manga_dir') else None
                 chapter_path = chapter['path'] if isinstance(chapter, dict) else str(chapter)
                 
-                subfolder_name = None
-                if '|' in chapter_path:
-                    parts = chapter_path.split('|')[1].strip('/').split('/')
-                    if len(parts) > 1:
-                        subfolder_name = parts[-2]
-                else:
-                    if series_root_dir and not chapter_path.endswith('.zip') and not chapter_path.endswith('.cbz'):
-                        try:
-                            rel = Path(chapter_path).relative_to(Path(series_root_dir))
-                            parts = rel.parts
-                            if len(parts) > 1:
-                                subfolder_name = parts[-2]
-                        except ValueError:
-                            pass
-                
-                if subfolder_name and subfolder_name != getattr(self, 'last_subfolder', None):
-                    self.last_subfolder = subfolder_name
-                    header = QLabel(subfolder_name)
-                    header.setProperty("is_header", True)
-                    header.setStyleSheet("color: white; font-size: 16px; font-weight: bold; margin-top: 5px; margin-bottom: 5px;")
-                    self.thumbnails_layout.insertWidget(self.thumbnails_layout.count(), header)
-
                 # Use index 'i' correctly
                 chapter_name = Path(str(chapter)).name if not isinstance(chapter, dict) else chapter.get('name', Path(chapter['path']).name)
                 widget = PageThumbnail(i, chapter_name)

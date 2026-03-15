@@ -487,7 +487,15 @@ class LibraryManager:
             
             # Sort chapters for each series
             for series in series_list:
-                series['chapters'].sort(key=lambda x: get_chapter_number(x['path']))
+                chapters = series['chapters']
+                def make_sort_key(x):
+                    path = x['path']
+                    if '|' in path:
+                        parent = str(Path(path.split('|')[1]).parent)
+                    else:
+                        parent = str(Path(path).parent)
+                    return (parent, x['name'].lower())
+                chapters.sort(key=make_sort_key)
 
             # Helper to fetch and map simple junctions
             def fetch_junction(table, join_table, value_col, join_id_col, target_field):

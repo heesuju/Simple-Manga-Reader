@@ -90,8 +90,18 @@ class LibraryScanner:
 
         series_name = item.name
         
-        # Sort chapters
-        sorted_chapters = sorted(chapters, key=lambda x: get_chapter_number(x['name']))
+        # Sort chapters by parent directory first, then alphabetically by name
+        def sort_key(x):
+            try:
+                if '|' in x['path']:
+                    parent = str(Path(x['path'].split('|')[1]).parent)
+                else:
+                    parent = str(Path(x['path']).relative_to(item).parent)
+                return (parent, x['name'].lower())
+            except ValueError:
+                return ('', x['name'].lower())
+
+        sorted_chapters = sorted(chapters, key=sort_key)
         
         cover_image = self.find_cover(item, sorted_chapters)
 
@@ -259,7 +269,12 @@ class LibraryScanner:
                 "name": name,
                 "path": str(item)
             })
-        return sorted(chapters, key=lambda x: get_chapter_number(x['name']))
+            
+        def sort_key(x):
+            parent = str(Path(x['path']).parent)
+            return (parent, x['name'].lower())
+
+        return sorted(chapters, key=sort_key)
 
     def find_cover(self, series_path: Path, chapters):
         # Look for cover.jpg or cover.png (image only)
