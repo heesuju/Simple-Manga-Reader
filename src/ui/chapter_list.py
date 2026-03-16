@@ -49,9 +49,46 @@ class ChapterListLoader(QRunnable):
             def scan_internal(zip_path, internal_path):
                 imgs = []
                 internal_path = internal_path.strip('/').replace('\\', '/')
+                lower_zip_path = zip_path.lower()
+                is_zip = lower_zip_path.endswith(('.zip', '.cbz'))
+                
                 try:
-                    # 7z preferred
-                    if SevenZipHandler.is_available():
+                    # 1. Try zipfile first for .zip/.cbz
+                    if is_zip:
+                        try:
+                            with zipfile.ZipFile(zip_path, 'r') as zf:
+                                for info in zf.infolist():
+                                    name = info.filename
+                                    if not (info.flag_bits & 0x800):
+                                        # Try multiple encodings for non-UTF-8 flagged entries
+                                        raw = name.encode('cp437')
+                                        try:
+                                            # Many zips are UTF-8 but lack the flag bit
+                                            name = raw.decode('utf-8')
+                                        except UnicodeDecodeError:
+                                            try:
+                                                # CP932 is more complete than shift-jis for Windows zips
+                                                name = raw.decode('cp932')
+                                            except UnicodeDecodeError:
+                                                # Fallback to original CP437
+                                                pass
+                                    name_norm = name.replace('\\', '/').strip('/')
+                                    if internal_path:
+                                        if name_norm.startswith(internal_path + '/'):
+                                            rel = name_norm[len(internal_path):].strip('/')
+                                            if rel and '/' not in rel:
+                                                if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                                    imgs.append(f"{zip_path}|{info.filename}")
+                                    else:
+                                        if '/' not in name_norm:
+                                            if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                                imgs.append(f"{zip_path}|{info.filename}")
+                        except (zipfile.BadZipFile, OSError, PermissionError, Exception) as e:
+                            print(f"Error scanning archive {zip_path}: {e}")
+                            pass
+
+                    # 2. Try 7-Zip as primary for non-zip, or fallback for zip
+                    if not imgs and SevenZipHandler.is_available():
                         all_files = SevenZipHandler.list_files(zip_path)
                         for f in all_files:
                             f_norm = f.replace('\\', '/').strip('/')
@@ -62,32 +99,12 @@ class ChapterListLoader(QRunnable):
                                         if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
                                             imgs.append(f"{zip_path}|{f}")
                             else:
-                                # Root of archive
                                 if '/' not in f_norm:
                                     if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
                                         imgs.append(f"{zip_path}|{f}")
-                    
-                    # zipfile fallback
-                    if not imgs and zip_path.lower().endswith(('.zip', '.cbz')):
-                        with zipfile.ZipFile(zip_path, 'r') as zf:
-                            for info in zf.infolist():
-                                name = info.filename
-                                if not (info.flag_bits & 0x800):
-                                    try: name = name.encode('cp437').decode('shift-jis')
-                                    except: pass
-                                name_norm = name.replace('\\', '/').strip('/')
-                                if internal_path:
-                                    if name_norm.startswith(internal_path + '/'):
-                                        rel = name_norm[len(internal_path):].strip('/')
-                                        if rel and '/' not in rel:
-                                            if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
-                                                imgs.append(f"{zip_path}|{info.filename}")
-                                else:
-                                    if '/' not in name_norm:
-                                        if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
-                                            imgs.append(f"{zip_path}|{info.filename}")
                     return imgs
-                except:
+                except Exception as e:
+                    print(f"Error in scan_internal: {e}")
                     return []
 
             if '|' in path_str:

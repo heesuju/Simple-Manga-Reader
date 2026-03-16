@@ -156,6 +156,7 @@ class SevenZipHandler:
             
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
+            # 1. Try 7-Zip extraction
             # 'x' extracts with full paths, '-y' assumes Yes on all queries
             cmd = [SEVEN_ZIP_PATH, "x", str(archive_path), f"-o{extract_dir}", internal_path, "-y"]
             
@@ -168,9 +169,44 @@ class SevenZipHandler:
             
             if target_path.exists():
                 return str(target_path)
+
+            # 2. Safety Fallback: Use zipfile for .zip/.cbz if 7-zip failed to find the file
+            # This handles cases where Python and 7x have different ideas about the internal filename
+            if archive_path.lower().endswith(('.zip', '.cbz')):
+                import zipfile
+                try:
+                    with zipfile.ZipFile(archive_path, 'r') as zf:
+                        # Find the entry that matches internal_path either exactly or via corrected encoding
+                        target_entry = None
+                        for info in zf.infolist():
+                            name = info.filename
+                            if name == internal_path:
+                                target_entry = info
+                                break
+                            
+                            # Try the corrected encoding to see if it matches
+                            if not (info.flag_bits & 0x800):
+                                raw = name.encode('cp437')
+                                for enc in ['utf-8', 'cp932', 'cp437']:
+                                    try:
+                                        if raw.decode(enc) == internal_path:
+                                            target_entry = info
+                                            break
+                                    except UnicodeDecodeError:
+                                        continue
+                            if target_entry: break
+                        
+                        if target_entry:
+                            # Extract using zipfile
+                            with zf.open(target_entry) as source, open(target_path, "wb") as target_file:
+                                shutil.copyfileobj(source, target_file)
+                            return str(target_path)
+                except Exception as e:
+                    print(f"Fallback zipfile extraction failed for {internal_path}: {e}")
+
         except subprocess.TimeoutExpired:
             print(f"7z Timeout extracting {internal_path} from {archive_path}")
-        except Exception as e:
+        except (PermissionError, OSError, Exception) as e:
             print(f"Error extracting {internal_path} from {archive_path}: {e}")
             
         return None

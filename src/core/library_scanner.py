@@ -177,30 +177,37 @@ class LibraryScanner:
         is_seven_zip = False
         
         ext = archive_path.suffix.lower()
+        is_zip = ext in {'.zip', '.cbz'}
         
-        # Try 7-Zip first for ALL archives if available, as it handles encoding better
-        if SevenZipHandler.is_available():
-            file_list = SevenZipHandler.list_files(str(archive_path))
-            if file_list:
-                is_seven_zip = True
-        
-        # Standard Zip fallback
-        if not file_list and ext in {'.zip', '.cbz'}:
+        # 1. Try zipfile with Shift-JIS correction first for .zip/.cbz
+        if is_zip:
             try:
                 with zipfile.ZipFile(archive_path, 'r') as zf:
                     for info in zf.infolist():
                         name = info.filename
-                        # If the name is encoded in CP437 (default for non-UTF8 zippers), 
-                        # it often breaks Japanese. Try to decode as Shift-JIS.
-                        if not (info.flag_bits & 0x800): # Not UTF-8
+                        if not (info.flag_bits & 0x800):
+                            # Try multiple encodings for non-UTF-8 flagged entries
+                            raw = name.encode('cp437')
                             try:
-                                # zipfile decodes CP437. Re-encode and decode as Shift-JIS.
-                                name = name.encode('cp437').decode('shift-jis')
-                            except (UnicodeEncodeError, UnicodeDecodeError):
-                                pass
+                                # Many zips are UTF-8 but lack the flag bit
+                                name = raw.decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    # CP932 is more complete than shift-jis for Windows zips
+                                    name = raw.decode('cp932')
+                                except UnicodeDecodeError:
+                                    # Fallback to CP437 if all else fails
+                                    pass
                         file_list.append(name)
-            except Exception:
+            except (zipfile.BadZipFile, PermissionError, OSError, Exception) as e:
+                print(f"Error scanning zip {archive_path}: {e}")
                 pass
+
+        # 2. Try 7-Zip as primary for non-zip, or fallback for zip
+        if not file_list and SevenZipHandler.is_available():
+            file_list = SevenZipHandler.list_files(str(archive_path))
+            if file_list:
+                is_seven_zip = True
         
         if not file_list:
             return []

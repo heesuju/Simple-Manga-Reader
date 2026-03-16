@@ -158,10 +158,6 @@ class SettingsDialog(QDialog):
         clear_cache_btn.clicked.connect(self.clear_all_cache)
         storage_layout.addWidget(clear_cache_btn)
         
-        cache_info = QLabel("Force re-extraction of all archives (fixes garbled names).")
-        cache_info.setStyleSheet("color: #888; font-size: 11px;")
-        storage_layout.addWidget(cache_info)
-        
         layout.addWidget(storage_container)
 
         layout.addStretch()

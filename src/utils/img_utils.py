@@ -255,8 +255,56 @@ def load_thumbnail_from_zip(path, width=150, height=200):
         
         path_obj = Path(path_str)
         ext = path_obj.suffix.lower()
+        is_zip = ext in {'.zip', '.cbz'}
         
-        # Try 7-Zip first for ALL archives if available
+        # 1. Try zipfile first for .zip/.cbz as it has proven encoding correction
+        if is_zip:
+            from src.utils.img_utils import ZIP_CACHE
+            zf = ZIP_CACHE.get_zip(path)
+            if zf:
+                try:
+                    with ZIP_CACHE.read_lock:
+                        # Get list of files with proper encoding fallback
+                        namelist = []
+                        for info in zf.infolist():
+                            name = info.filename
+                            if not (info.flag_bits & 0x800):
+                                # Multi-stage decoding for non-UTF-8 flagged entries
+                                raw = name.encode('cp437')
+                                try:
+                                    # Try UTF-8 first (many zips omit the bit)
+                                    name = raw.decode('utf-8')
+                                except UnicodeDecodeError:
+                                    try:
+                                        # Try CP932 (Windows-31J) for Japanese
+                                        name = raw.decode('cp932')
+                                    except UnicodeDecodeError:
+                                        # Fallback to original CP437
+                                        pass
+                            namelist.append((name, info.filename)) # Store (decoded, original)
+
+                        image_files = sorted([pair for pair in namelist if pair[0].lower().endswith(IMG_EXTS) and not pair[0].startswith('__MACOSX')])
+                        if image_files:
+                            decoded_name, original_name = image_files[0]
+                            with zf.open(original_name) as f:
+                                image_data = f.read()
+                            
+                            byte_array = QByteArray(image_data)
+                            buffer = QBuffer(byte_array)
+                            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+
+                            reader = QImageReader(buffer, QByteArray())
+                            pixmap = load_thumbnail(reader, width, height)
+
+                            if pixmap and not pixmap.isNull():
+                                pixmap.save(str(cached_thumb_path), "PNG")
+
+                            return pixmap
+                except (zipfile.BadZipFile, KeyError, RuntimeError, OSError, PermissionError, Exception) as e:
+                    print(f"Error reading zip for thumbnail {path}: {e}")
+                    pass
+
+        # 2. Try 7-Zip as primary for non-zip or fallback for zip
         if SevenZipHandler.is_available():
             files = SevenZipHandler.list_files(path_str)
             image_files = sorted([f for f in files if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
@@ -277,48 +325,6 @@ def load_thumbnail_from_zip(path, width=150, height=200):
                         pixmap.save(str(cached_thumb_path), "PNG")
                     
                     return pixmap
-
-        # Standard Zip fallback
-        if ext in {'.zip', '.cbz'}:
-            from src.utils.img_utils import ZIP_CACHE
-            zf = ZIP_CACHE.get_zip(path)
-            if not zf:
-                return None
-                
-            try:
-                with ZIP_CACHE.read_lock:
-                    # Get list of files with proper encoding fallback
-                    namelist = []
-                    for info in zf.infolist():
-                        name = info.filename
-                        if not (info.flag_bits & 0x800):
-                            try:
-                                name = name.encode('cp437').decode('shift-jis')
-                            except (UnicodeEncodeError, UnicodeDecodeError):
-                                pass
-                        namelist.append((name, info.filename)) # Store (decoded, original)
-
-                    image_files = sorted([pair for pair in namelist if pair[0].lower().endswith(IMG_EXTS) and not pair[0].startswith('__MACOSX')])
-                    if not image_files:
-                        return None
-
-                    decoded_name, original_name = image_files[0]
-                    with zf.open(original_name) as f:
-                        image_data = f.read()
-                    
-                byte_array = QByteArray(image_data)
-                buffer = QBuffer(byte_array)
-                buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-
-                reader = QImageReader(buffer, QByteArray())
-                pixmap = load_thumbnail(reader, width, height)
-
-                if pixmap and not pixmap.isNull():
-                    pixmap.save(str(cached_thumb_path), "PNG")
-
-                return pixmap
-            except (zipfile.BadZipFile, KeyError, RuntimeError):
-                return None
         return None
     except zipfile.BadZipFile:
         return None
@@ -416,20 +422,25 @@ def get_image_data_from_zip(virtual_path):
                 except (KeyError, ValueError, RuntimeError):
                     pass
 
-                # Fallback: find original name by decoding CP437 -> Shift-JIS
+                # Fallback: find original name by decoding CP437 -> CP932/UTF-8
                 for info in zf.infolist():
                     decoded = info.filename
                     if not (info.flag_bits & 0x800):
+                        raw = decoded.encode('cp437')
                         try:
-                            decoded = decoded.encode('cp437').decode('shift-jis')
-                        except (UnicodeEncodeError, UnicodeDecodeError):
-                            continue
+                            decoded = raw.decode('utf-8')
+                        except UnicodeDecodeError:
+                            try:
+                                decoded = raw.decode('cp932')
+                            except UnicodeDecodeError:
+                                pass
                     
                     if decoded == image_name or decoded.replace('\\', '/') == image_name_fixed:
                         with zf.open(info.filename) as f:
                             return f.read()
-    except Exception:
-        return None
+    except (zipfile.BadZipFile, OSError, PermissionError, Exception) as e:
+        print(f"Error reading image data from zip {zip_path_str}: {e}")
+        pass
     return None
 
 def load_pixmap_for_thumbnailing(path: str, target_width: int = 0) -> QPixmap | None:
@@ -500,26 +511,31 @@ def _get_first_image_path(chapter_dir):
     chapter_path = Path(chapter_dir)
     if isinstance(chapter_dir, str) and (chapter_dir.lower().endswith('.zip') or chapter_dir.lower().endswith('.cbz')):
         try:
-            # Prefer 7-Zip logic via load_thumbnail_from_zip as it's already robust
-            thumb = load_thumbnail_from_zip(chapter_dir)
-            if thumb:
-                # We need the path string... let's just use the ziplib logic for path extraction
-                # but with the encoding fix
-                with zipfile.ZipFile(chapter_dir, 'r') as zf:
-                    namelist = []
-                    for info in zf.infolist():
-                        name = info.filename
-                        if not (info.flag_bits & 0x800):
+            # Re-implementing correctly with encoding priority
+            with zipfile.ZipFile(chapter_dir, 'r') as zf:
+                namelist = []
+                for info in zf.infolist():
+                    name = info.filename
+                    if not (info.flag_bits & 0x800):
+                        # Multi-stage decoding for non-UTF-8 flagged entries
+                        raw = name.encode('cp437')
+                        try:
+                            # Try UTF-8 first (many zips omit the bit)
+                            name = raw.decode('utf-8')
+                        except UnicodeDecodeError:
                             try:
-                                name = name.encode('cp437').decode('shift-jis')
-                            except (UnicodeEncodeError, UnicodeDecodeError):
+                                # Try CP932 (Windows-31J) for Japanese
+                                name = raw.decode('cp932')
+                            except UnicodeDecodeError:
+                                # Fallback to original CP437
                                 pass
-                        namelist.append(name)
-                    
-                    image_files = sorted([f for f in namelist if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
-                    if image_files:
-                        return f"{chapter_dir}|{image_files[0]}"
-        except zipfile.BadZipFile:
+                    namelist.append(name)
+                
+                image_files = sorted([f for f in namelist if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
+                if image_files:
+                    return f"{chapter_dir}|{image_files[0]}"
+        except (zipfile.BadZipFile, OSError, PermissionError, Exception) as e:
+            print(f"Error reading zip {chapter_dir}: {e}")
             return None
     elif chapter_path.is_dir():
         exts = (".png", ".jpg", ".jpeg", ".jpe", ".webp", ".bmp", ".gif")
