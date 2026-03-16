@@ -518,6 +518,7 @@ class FolderGrid(QWidget):
 
         widget.remove_requested.connect(self.remove_series)
         widget.rescan_requested.connect(self.rescan_series)
+        widget.clear_cache_requested.connect(self.clear_series_cache)
         self.recent_layout.addWidget(widget)
 
     def scroll_left(self):
@@ -617,6 +618,7 @@ class FolderGrid(QWidget):
 
                 widget.remove_requested.connect(self.remove_series)
                 widget.rescan_requested.connect(self.rescan_series)
+                widget.clear_cache_requested.connect(self.clear_series_cache)
                 widget.checkbox.toggled.connect(self.update_selection_count)
                 self.items.append(widget)
                 
@@ -698,6 +700,14 @@ class FolderGrid(QWidget):
         self.library_manager.rescan_series_from_data(series_id, new_path, series_data)
         self.load_items()
         self.load_recent_items()
+
+    def clear_series_cache(self, series: object):
+        from src.utils.archive_utils import SevenZipHandler
+        SevenZipHandler.clear_cache(series['path'])
+        # Also rescan to clear any internal listing cache and refresh names
+        self.rescan_series(series)
+        self.show_info(f"Cache cleared for {series['name']}")
+        QTimer.singleShot(2000, self.hide_info)
 
     def display_chapters(self, chapters):
         self.loading_generation += 1

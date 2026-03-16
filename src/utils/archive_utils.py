@@ -215,3 +215,29 @@ class SevenZipHandler:
             return process.returncode == 0
         except Exception:
             return False
+
+    @staticmethod
+    def clear_cache(archive_path: str):
+        """Removes the extraction cache for a specific archive."""
+        extract_dir = SevenZipHandler.get_extract_dir(archive_path)
+        if extract_dir.exists() and extract_dir.is_dir():
+            try:
+                shutil.rmtree(extract_dir)
+            except Exception as e:
+                print(f"Error clearing cache for {archive_path}: {e}")
+
+    @staticmethod
+    def clear_all_cache():
+        """Removes all archived extractions from the cache directory."""
+        if ARCHIVE_CACHE_DIR.exists():
+            try:
+                # Instead of rmtree on the root, we remove children to keep the directory itself
+                for item in ARCHIVE_CACHE_DIR.iterdir():
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                    else:
+                        item.unlink()
+                # Also clear the listing cache
+                SevenZipHandler.LIST_CACHE.clear()
+            except Exception as e:
+                print(f"Error clearing all archive cache: {e}")

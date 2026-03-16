@@ -133,6 +133,37 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(config_container)
 
+        # Storage Section
+        storage_container = QFrame()
+        storage_container.setStyleSheet("background-color: #2b2b2b; border-radius: 5px; padding: 10px; margin-top: 10px;")
+        storage_layout = QVBoxLayout(storage_container)
+        
+        storage_title = QLabel("Storage & Maintenance")
+        storage_title.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
+        storage_layout.addWidget(storage_title)
+        
+        clear_cache_btn = QPushButton("Clear All Extraction Cache")
+        clear_cache_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #555; 
+                color: white; 
+                border: none; 
+                padding: 8px; 
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #777;
+            }
+        """)
+        clear_cache_btn.clicked.connect(self.clear_all_cache)
+        storage_layout.addWidget(clear_cache_btn)
+        
+        cache_info = QLabel("Force re-extraction of all archives (fixes garbled names).")
+        cache_info.setStyleSheet("color: #888; font-size: 11px;")
+        storage_layout.addWidget(cache_info)
+        
+        layout.addWidget(storage_container)
+
         layout.addStretch()
         
         close_btn = QPushButton("Close")
@@ -243,3 +274,17 @@ class SettingsDialog(QDialog):
 
     def on_action_clicked(self):
         pass
+
+    def clear_all_cache(self):
+        reply = QMessageBox.question(
+            self, 
+            "Clear All Cache", 
+            "Are you sure you want to clear all archive extraction caches?\n\nThis will force the app to re-extract any ZIP/7z file the next time you open it. This is recommended if you see garbled filenames.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            from src.utils.archive_utils import SevenZipHandler
+            SevenZipHandler.clear_all_cache()
+            QMessageBox.information(self, "Cache Cleared", "All extraction caches have been cleared.")
