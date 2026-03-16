@@ -127,11 +127,18 @@ class ChapterListItemWidget(QWidget):
         painter.drawRoundedRect(rect, 5, 5)
 
     def set_page_count(self, count):
-        self.page_count_label.setText(f'{count} pages')
+        try:
+            self.page_count_label.setText(f'{count} pages')
+        except RuntimeError:
+            pass
 
     def set_pixmap(self, pixmap):
-        cropped_pixmap = crop_pixmap(pixmap, 75, 38)
-        self.thumbnail_label.setPixmap(cropped_pixmap)
+        try:
+            cropped_pixmap = crop_pixmap(pixmap, 75, 38)
+            self.thumbnail_label.setPixmap(cropped_pixmap)
+        except RuntimeError:
+            # Widget or label was likely deleted
+            pass
 
     def enterEvent(self, event):
         self.hovered = True
@@ -208,17 +215,23 @@ class ChapterListItemWidget(QWidget):
         # but sort doesn't affect page counts anyway.
 
     def set_processing(self, processing: bool):
-        self.is_processing = processing
-        self.setEnabled(not processing)
-        if processing:
-            self.page_count_label.setText("Grouping...")
-        else:
-            # Page count will be updated by the caller
+        try:
+            self.is_processing = processing
+            self.setEnabled(not processing)
+            if processing:
+                self.page_count_label.setText("Grouping...")
+            else:
+                # Page count will be updated by the caller
+                pass
+        except RuntimeError:
             pass
 
     def set_highlight(self, is_highlighted):
-        self.is_highlighted = is_highlighted
-        self.update()
+        try:
+            self.is_highlighted = is_highlighted
+            self.update()
+        except RuntimeError:
+            pass
 
 class GradientOverlay(QWidget):
     def __init__(self, parent=None):
@@ -495,7 +508,10 @@ class ChapterListView(QWidget):
     def on_chapter_page_count_loaded(self, chapter, page_count, index):
         widget = getattr(self, '_chapter_loader_map', {}).get(index)
         if widget is not None:
-            widget.set_page_count(page_count)
+            try:
+                widget.set_page_count(page_count)
+            except RuntimeError:
+                pass
 
         self._create_tag_row("Formats", "format", self.series.get('formats', []), "#B2D8B2")
 
@@ -829,8 +845,12 @@ class ChapterListView(QWidget):
 
     def on_thumbnail_loaded(self, pixmap, item, index, generation, item_type):
         widget = getattr(self, '_chapter_loader_map', {}).get(index)
-        if pixmap and widget is not None:
-            widget.set_pixmap(pixmap)
+        if pixmap and not pixmap.isNull() and widget is not None:
+            try:
+                widget.set_pixmap(pixmap)
+            except RuntimeError:
+                # Widget was likely deleted
+                pass
     def go_back(self):
         self.back_to_library.emit()
 
