@@ -33,9 +33,23 @@ class ReaderModel(QObject):
         self._layout_pairs = [] 
         self._page_to_layout_index = {} # Maps Real Page Index -> Layout Index
 
-        self.current_index = 0
+        from src.utils.str_utils import natural_sort_key
+        
+        # Preserve currently selected chapter
+        original_chapter = manga_dirs[index] if manga_dirs and 0 <= index < len(manga_dirs) else None
+        
         self.chapters = manga_dirs if manga_dirs else []
-        self.chapter_index = index if manga_dirs else 0
+        # Ensure chapters are naturally sorted (e.g., Season 1, 2, 10 instead of 1, 10, 2)
+        self.chapters.sort(key=lambda x: natural_sort_key(x.get('name', '')) if isinstance(x, dict) else natural_sort_key(Path(str(x)).name))
+        
+        # Restore selection
+        if original_chapter:
+            try:
+                self.chapter_index = self.chapters.index(original_chapter)
+            except ValueError:
+                self.chapter_index = index
+        else:
+            self.chapter_index = index if manga_dirs else 0
         self.manga_dir = self.chapters[self.chapter_index] if manga_dirs else None
         self.preferred_language = None 
 
