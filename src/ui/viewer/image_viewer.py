@@ -103,11 +103,12 @@ class ImageViewer(BaseViewer):
         else:
             return
 
-        # Keep animated images on main thread for QMovie
-        if len(paths) == 1:
+        # Move animation loading to background for virtual paths to avoid UI freeze
+        if len(paths) == 1 and '|' in paths[0]:
+            # Always use worker for virtual paths
+            pass
+        elif len(paths) == 1:
             if paths[0].lower().endswith((".gif", ".webp")):
-                # Check for actual animation done in _load_single_image
-                # We can just delegate.
                 self._load_single_image_sync(paths[0])
                 return
 
@@ -129,20 +130,53 @@ class ImageViewer(BaseViewer):
         if len(loaded_keys) == 1:
             # Single
             path = loaded_keys[0]
-            q_img = results[path]
-            pixmap = QPixmap.fromImage(q_img)
-            self.original_pixmap = pixmap
-            self._set_pixmap(pixmap, path)
+            result = results[path]
+            # Handle new (image, data) format
+            q_img, data = result if isinstance(result, tuple) else (result, None)
+            
+            self._clear_scene_pixmaps()
+            
+            if data:
+                # This is an animation loaded from background
+                self.movie = QMovie()
+                self.movie.setCacheMode(QMovie.CacheMode.CacheAll)
+                self.movie_buffer = QBuffer()
+                self.movie_buffer.setData(QByteArray(data))
+                self.movie_buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+                self.movie.setDevice(self.movie_buffer)
+                
+                if self.movie.isValid():
+                    self.movie.frameChanged.connect(self._on_movie_frame_changed)
+                    self.movie.start()
+                    pixmap = self.movie.currentPixmap()
+                    self.original_pixmap = pixmap
+                    self._set_pixmap(pixmap, path)
+                else:
+                    pixmap = QPixmap.fromImage(q_img)
+                    self.original_pixmap = pixmap
+                    self._set_pixmap(pixmap, path)
+            else:
+                pixmap = QPixmap.fromImage(q_img)
+                self.original_pixmap = pixmap
+                self._set_pixmap(pixmap, path)
+                
             self.resize_timer.start() # Attempt to load HQ version after UI stabilizes
             
         elif len(loaded_keys) >= 2:
-            imgs = list(results.values())
+            res_items = list(results.values())
             paths = list(results.keys())
+            
+            # Extract images from possibly (image, data) tuples
+            imgs = []
+            for item in res_items:
+                imgs.append(item[0] if isinstance(item, tuple) else item)
             
             img1 = imgs[0]
             img2 = imgs[1]
             path1 = paths[0]
             path2 = paths[1]
+            
+            self._clear_scene_pixmaps()
             
             # Handle placeholder sizing (match the other page)
             if path1 == "placeholder" and path2 != "placeholder":

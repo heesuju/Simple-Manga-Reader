@@ -503,10 +503,14 @@ class AsyncLoaderWorker(QRunnable):
                         path_str = path[:-6]
                         crop = "right"
 
+                is_anim = path_str.lower().endswith((".gif", ".webp"))
+                
                 if '|' in path_str:
                     image_data = get_image_data_from_zip(path_str)
                 elif os.path.exists(path_str):
-                    pass # load directly
+                    if is_anim:
+                        with open(path_str, 'rb') as f:
+                            image_data = f.read()
                 
                 q_image = QImage()
                 if image_data:
@@ -523,7 +527,8 @@ class AsyncLoaderWorker(QRunnable):
                         q_image = q_image.copy(w // 2, 0, w // 2, h)
 
                 if not q_image.isNull():
-                    results[path] = q_image
+                    # Return (Image, Data) - data only needed for animations
+                    results[path] = (q_image, image_data if is_anim else None)
                     
             except Exception as e:
                 print(f"Error loading image async {path}: {e}")
@@ -638,13 +643,24 @@ class ImageInfoWorker(QRunnable):
     @pyqtSlot()
     def run(self):
         info_parts = []
+        from src.utils.img_utils import get_image_data_from_zip
         
         for name, resolved in self.items:
-            if not os.path.exists(resolved):
+            image_data = None
+            size_bytes = 0
+            
+            if '|' in resolved:
+                image_data = get_image_data_from_zip(resolved)
+                if image_data:
+                    size_bytes = len(image_data)
+            elif os.path.exists(resolved):
+                size_bytes = os.path.getsize(resolved)
+            else:
                 continue
                 
-            size_bytes = os.path.getsize(resolved)
-            
+            if size_bytes == 0:
+                continue
+                
             # Formatting size
             if size_bytes < 1024:
                 size_str = f"{size_bytes} B"
@@ -656,24 +672,33 @@ class ImageInfoWorker(QRunnable):
             # Getting dimensions and ratio
             w, h = 0, 0
             
-            # Try QImageReader first (works for images)
-            reader = QImageReader(resolved)
+            # Try QImageReader
+            from PyQt6.QtCore import QBuffer, QByteArray
+            if image_data:
+                buffer = QBuffer()
+                buffer.setData(QByteArray(image_data))
+                buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+                reader = QImageReader(buffer)
+            else:
+                reader = QImageReader(resolved)
+                
             img_size = reader.size()
             if img_size.isValid():
                 w, h = img_size.width(), img_size.height()
             else:
-                # Try cv2 for videos
-                ext = Path(resolved).suffix.lower()
-                if ext in VIDEO_EXTS:
-                    try:
-                        import cv2
-                        cap = cv2.VideoCapture(resolved)
-                        if cap.isOpened():
-                            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                            cap.release()
-                    except Exception as e:
-                        print(f"Error getting video info: {e}")
+                # Try cv2 for videos (only if resolved is a real path)
+                if not image_data and os.path.exists(resolved):
+                    ext = Path(resolved).suffix.lower()
+                    if ext in VIDEO_EXTS:
+                        try:
+                            import cv2
+                            cap = cv2.VideoCapture(resolved)
+                            if cap.isOpened():
+                                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                                cap.release()
+                        except Exception as e:
+                            print(f"Error getting video info: {e}")
 
             if w > 0 and h > 0:
                 from fractions import Fraction

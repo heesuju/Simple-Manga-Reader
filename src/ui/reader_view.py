@@ -713,10 +713,6 @@ class ReaderView(QWidget):
             
             if target.exists():
                 return str(target)
-            
-            SevenZipHandler.read_file(archive_path, internal)
-            if target.exists():
-                return str(target)
                 
         return path
 

@@ -52,13 +52,25 @@ class SevenZipHandler:
     def is_available():
         return SEVEN_ZIP_PATH is not None
 
+    LIST_CACHE = {}
+
     @staticmethod
     def list_files(archive_path: str) -> List[str]:
         if not SEVEN_ZIP_PATH:
             return []
         
+        path_str = str(archive_path)
         try:
-            cmd = [SEVEN_ZIP_PATH, "l", "-slt", str(archive_path), "-sccUTF-8"]
+            mtime = os.path.getmtime(path_str)
+        except Exception:
+            mtime = 0
+            
+        cache_key = (path_str, mtime)
+        if cache_key in SevenZipHandler.LIST_CACHE:
+            return SevenZipHandler.LIST_CACHE[cache_key]
+
+        try:
+            cmd = [SEVEN_ZIP_PATH, "l", "-slt", path_str, "-sccUTF-8"]
             
             startupinfo = None
             if platform.system() == 'Windows':
@@ -99,6 +111,7 @@ class SevenZipHandler:
             if current_path and not is_folder:
                 files.append(current_path)
                 
+            SevenZipHandler.LIST_CACHE[cache_key] = files
             return files
             
         except Exception as e:
