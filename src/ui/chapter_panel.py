@@ -2,7 +2,7 @@ from typing import List
 from pathlib import Path
 from PyQt6.QtWidgets import QLabel
 
-from PyQt6.QtCore import QThreadPool, QTimer
+from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.workers.thumbnail_worker import ThumbnailWorker

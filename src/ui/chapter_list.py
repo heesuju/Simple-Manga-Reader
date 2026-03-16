@@ -37,22 +37,88 @@ class ChapterListLoader(QRunnable):
 
     def run(self):
         alt_config = AltManager.load_alts(self.series_path)
+        from src.utils.img_utils import IMG_EXTS
+        import zipfile
+        from src.utils.archive_utils import SevenZipHandler
 
         for i, chapter in enumerate(self.chapters):
             page_count = 0
-            full_chapter_path = Path(chapter['path'])
-            if full_chapter_path.exists() and full_chapter_path.is_dir():
+            path_str = chapter['path']
+            
+            # Helper to scan archive internal path
+            def scan_internal(zip_path, internal_path):
+                imgs = []
+                internal_path = internal_path.strip('/').replace('\\', '/')
                 try:
-                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'} and p.stem.lower() != 'cover']
-                    images = sorted(images, key=get_chapter_number)
+                    # 7z preferred
+                    if SevenZipHandler.is_available():
+                        all_files = SevenZipHandler.list_files(zip_path)
+                        for f in all_files:
+                            f_norm = f.replace('\\', '/').strip('/')
+                            if internal_path:
+                                if f_norm.startswith(internal_path + '/'):
+                                    rel = f_norm[len(internal_path):].strip('/')
+                                    if rel and '/' not in rel:
+                                        if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
+                                            imgs.append(f"{zip_path}|{f}")
+                            else:
+                                # Root of archive
+                                if '/' not in f_norm:
+                                    if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
+                                        imgs.append(f"{zip_path}|{f}")
                     
-                    chapter_name = full_chapter_path.name
+                    # zipfile fallback
+                    if not imgs and zip_path.lower().endswith(('.zip', '.cbz')):
+                        with zipfile.ZipFile(zip_path, 'r') as zf:
+                            for info in zf.infolist():
+                                name = info.filename
+                                if not (info.flag_bits & 0x800):
+                                    try: name = name.encode('cp437').decode('shift-jis')
+                                    except: pass
+                                name_norm = name.replace('\\', '/').strip('/')
+                                if internal_path:
+                                    if name_norm.startswith(internal_path + '/'):
+                                        rel = name_norm[len(internal_path):].strip('/')
+                                        if rel and '/' not in rel:
+                                            if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                                imgs.append(f"{zip_path}|{info.filename}")
+                                else:
+                                    if '/' not in name_norm:
+                                        if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                            imgs.append(f"{zip_path}|{info.filename}")
+                    return imgs
+                except:
+                    return []
+
+            if '|' in path_str:
+                zip_path, internal_path = path_str.split('|', 1)
+                images = scan_internal(zip_path, internal_path)
+                images = sorted(images, key=get_chapter_number)
+                chapter_name = Path(internal_path).name if internal_path else Path(zip_path).stem
+                chapter_alts = alt_config.get(chapter_name, {})
+                grouped_pages = AltManager.group_images(images, chapter_alts)
+                page_count = len(grouped_pages)
+            else:
+                full_path = Path(path_str)
+                if full_path.is_file() and full_path.suffix.lower() in ('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'):
+                    # Oneshot archive
+                    images = scan_internal(path_str, "")
+                    images = sorted(images, key=get_chapter_number)
+                    chapter_name = full_path.stem
                     chapter_alts = alt_config.get(chapter_name, {})
                     grouped_pages = AltManager.group_images(images, chapter_alts)
-                    
                     page_count = len(grouped_pages)
-                except OSError:
-                    page_count = 0
+                elif full_path.is_dir():
+                    try:
+                        images = [str(p) for p in full_path.iterdir() if p.is_file() and p.suffix.lower() in IMG_EXTS and p.stem.lower() != 'cover']
+                        images = sorted(images, key=get_chapter_number)
+                        chapter_name = full_path.name
+                        chapter_alts = alt_config.get(chapter_name, {})
+                        grouped_pages = AltManager.group_images(images, chapter_alts)
+                        page_count = len(grouped_pages)
+                    except OSError:
+                        page_count = 0
+            
             self.signals.chapter_processed.emit(chapter, page_count, i)
         self.signals.finished.emit()
 
@@ -283,7 +349,11 @@ class FolderListItemWidget(QWidget):
         
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(38, 38)
-        self.icon_label.setText("📁")
+        
+        # Distinguish between folders and archives
+        is_archive = folder_name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+        self.icon_label.setText("📦" if is_archive else "📁")
+        
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon_label.setStyleSheet("font-size: 24px; color: white; background: transparent;")
         
@@ -517,12 +587,30 @@ class ChapterListView(QWidget):
 
     def _get_rel_parts(self, chapter_path: str) -> list[str]:
         series_root_dir = str(self.series['path'])
+        
+        # If the series itself is an archive, we shouldn't treat the archive filename as a folder
+        is_series_archive = series_root_dir.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+
         if '|' in chapter_path:
-            rel = chapter_path.split('|')[1].strip('/')
-            parts = rel.split('/')
-            return parts[:-1] if len(parts) > 0 else []
+            archive_path, internal_rel = chapter_path.split('|', 1)
+            internal_parts = [p for p in internal_rel.strip('/').split('/') if p]
+            
+            if is_series_archive:
+                # If series is the archive, we only care about internal hierarchy
+                return internal_parts[:-1] if internal_parts else []
+            else:
+                # If it's an archive file INSIDE a series folder, 
+                # the archive filename should be the first part of the relative path.
+                try:
+                    # Get archive name relative to series root
+                    archive_rel = Path(archive_path).relative_to(Path(series_root_dir))
+                    # parts: ['Archive.zip', 'MaybeSubfolderInsideZip']
+                    return list(archive_rel.parts[:-1]) + [archive_rel.name] + internal_parts[:-1]
+                except ValueError:
+                    # Fallback if path logic fails
+                    return [Path(archive_path).name] + internal_parts[:-1]
         else:
-            if series_root_dir and not chapter_path.endswith('.zip') and not chapter_path.endswith('.cbz'):
+            if series_root_dir and not is_series_archive:
                 try:
                     rel = Path(chapter_path).relative_to(Path(series_root_dir))
                     return list(rel.parts)[:-1]

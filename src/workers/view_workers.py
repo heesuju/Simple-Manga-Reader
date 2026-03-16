@@ -274,79 +274,72 @@ class ChapterLoaderWorker(QRunnable):
                 page.is_spread = is_spread
 
     def _get_image_list(self):
-        """
-        Return list of media file paths (strings). For ZIPs we return "zip_path|entry"
-        so upstream can detect zip entries. Include both images and videos.
-        """
         if not self.manga_dir:
             return []
             
         path_str = str(self.manga_dir)
         valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS))
+        from src.utils.archive_utils import SevenZipHandler
+        import zipfile
 
-        # Case 0: Virtual path (zip|subfolder)
-        if '|' in path_str:
-            zip_path, internal_prefix = path_str.split('|', 1)
-            # Normalize internal prefix
-            internal_prefix = internal_prefix.replace('\\', '/')
-            if not internal_prefix.endswith('/'):
-                internal_prefix += '/'
-            
-            files = []
-            
-            # Check extension
-            ext = Path(zip_path).suffix.lower()
-            if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
-                from src.utils.archive_utils import SevenZipHandler
+        # Helper to scan archive internal path
+        def scan_archive_internal(zip_path, internal_path):
+            imgs = []
+            internal_path = internal_path.replace('\\', '/').strip('/')
+            try:
+                # 7z preferred
                 if SevenZipHandler.is_available():
                     all_files = SevenZipHandler.list_files(zip_path)
-                    files = [f for f in all_files if f.replace('\\', '/').startswith(internal_prefix)]
-            else:
-                try:
+                    for f in all_files:
+                        f_norm = f.replace('\\', '/').strip('/')
+                        if internal_path:
+                            if f_norm.startswith(internal_path + '/'):
+                                rel = f_norm[len(internal_path):].strip('/')
+                                if rel and '/' not in rel:
+                                    if f_norm.lower().endswith(valid_exts) and Path(f_norm).stem.lower() != 'cover':
+                                        imgs.append(f"{zip_path}|{f}")
+                        else:
+                            # Root
+                            if '/' not in f_norm:
+                                if f_norm.lower().endswith(valid_exts) and Path(f_norm).stem.lower() != 'cover':
+                                    imgs.append(f"{zip_path}|{f}")
+                
+                # zipfile fallback
+                if not imgs and zip_path.lower().endswith(('.zip', '.cbz')):
                     with zipfile.ZipFile(zip_path, 'r') as zf:
-                        files = [f for f in zf.namelist() if f.replace('\\', '/').startswith(internal_prefix)]
-                except Exception:
-                    files = []
+                        for info in zf.infolist():
+                            name = info.filename
+                            if not (info.flag_bits & 0x800):
+                                try: name = name.encode('cp437').decode('shift-jis')
+                                except: pass
+                            name_norm = name.replace('\\', '/').strip('/')
+                            if internal_path:
+                                if name_norm.startswith(internal_path + '/'):
+                                    rel = name_norm[len(internal_path):].strip('/')
+                                    if rel and '/' not in rel:
+                                        if name_norm.lower().endswith(valid_exts) and Path(name_norm).stem.lower() != 'cover':
+                                            imgs.append(f"{zip_path}|{info.filename}")
+                            else:
+                                if '/' not in name_norm:
+                                    if name_norm.lower().endswith(valid_exts) and Path(name_norm).stem.lower() != 'cover':
+                                        imgs.append(f"{zip_path}|{info.filename}")
+                return sorted(imgs, key=get_chapter_number)
+            except:
+                return []
 
-            image_files = sorted([
-                f for f in files
-                if f.lower().endswith(valid_exts) and 
-                   not f.startswith('__MACOSX') and 
-                   Path(f).stem.lower() != 'cover' and
-                   '/' not in f.replace('\\', '/')[len(internal_prefix):]
-            ])
-            # Return full virtual paths: zip_path|entry
-            return [f"{zip_path}|{name}" for name in image_files]
+        if '|' in path_str:
+            zip_path, internal_path = path_str.split('|', 1)
+            return scan_archive_internal(zip_path, internal_path)
 
-        # Case 1: Full ZIP/CBZ file as chapter
         if path_str.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')):
-            files = []
-            ext = Path(path_str).suffix.lower()
-            
-            if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
-                from src.utils.archive_utils import SevenZipHandler
-                if SevenZipHandler.is_available():
-                    files = SevenZipHandler.list_files(path_str)
-            else:
-                try:
-                    with zipfile.ZipFile(path_str, 'r') as zf:
-                        files = zf.namelist()
-                except zipfile.BadZipFile:
-                    files = []
-
-            image_files = sorted([
-                f for f in files
-                if f.lower().endswith(valid_exts) and not f.startswith('__MACOSX') and Path(f).stem.lower() != 'cover'
-            ])
-            return [f"{path_str}|{name}" for name in image_files]
+            return scan_archive_internal(path_str, "")
         
-        # Case 2: Directory chapter
         manga_path = Path(path_str)
         if manga_path.is_dir():
             files = []
             files.extend([str(p) for p in manga_path.iterdir() 
                           if p.suffix.lower() in valid_exts and p.is_file() and "_detached_" not in p.name and p.stem.lower() != 'cover'])
-            return sorted(files)
+            return sorted(files, key=get_chapter_number)
             
         return []
 

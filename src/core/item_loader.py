@@ -60,8 +60,10 @@ class ItemLoader(QRunnable):
                         pix = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
-                chapter_path = item['path']
-                if str(chapter_path).lower().endswith(('.zip', '.cbz')):
+                chapter_path = str(item['path'])
+                if '|' in chapter_path:
+                    pix = load_thumbnail_from_virtual_path(chapter_path, self.thumb_width, self.thumb_height)
+                elif chapter_path.lower().endswith(('.zip', '.cbz')):
                     pix = load_thumbnail_from_zip(chapter_path, self.thumb_width, self.thumb_height)
                 else:
                     thumbnail_path = item.get('cover_path')
