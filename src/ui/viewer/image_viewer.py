@@ -104,13 +104,14 @@ class ImageViewer(BaseViewer):
             return
 
         # Move animation loading to background for virtual paths to avoid UI freeze
-        if len(paths) == 1 and '|' in paths[0]:
-            # Always use worker for virtual paths
-            pass
-        elif len(paths) == 1:
+        if len(paths) == 1:
             if paths[0].lower().endswith((".gif", ".webp")):
-                self._load_single_image_sync(paths[0])
-                return
+                if '|' in paths[0]:
+                    # Virtual path animation - MUST use worker
+                    pass
+                else:
+                    self._load_single_image_sync(paths[0])
+                    return
 
         worker = AsyncLoaderWorker(req_id, paths)
         worker.signals.finished.connect(self._on_async_load_finished)

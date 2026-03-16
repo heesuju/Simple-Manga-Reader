@@ -58,7 +58,7 @@ class SevenZipHandler:
     LIST_CACHE = {}
 
     @staticmethod
-    def list_files(archive_path: str) -> List[str]:
+    def list_files(archive_path: str, timeout: int = 30) -> List[str]:
         if not SEVEN_ZIP_PATH:
             return []
         
@@ -89,7 +89,8 @@ class SevenZipHandler:
                     text=True, 
                     encoding='utf-8',
                     errors='replace',
-                    startupinfo=startupinfo
+                    startupinfo=startupinfo,
+                    timeout=timeout
                 )
                 
                 if result.returncode != 0:
@@ -119,6 +120,9 @@ class SevenZipHandler:
                     
                 SevenZipHandler.LIST_CACHE[cache_key] = files
                 return files
+            except subprocess.TimeoutExpired:
+                print(f"7z Timeout listing {archive_path}")
+                return []
             except Exception as e:
                 print(f"Error listing archive {archive_path}: {e}")
                 return []
@@ -139,7 +143,7 @@ class SevenZipHandler:
         return ARCHIVE_CACHE_DIR / archive_id
 
     @staticmethod
-    def ensure_extracted(archive_path: str, internal_path: str) -> Optional[str]:
+    def ensure_extracted(archive_path: str, internal_path: str, timeout: int = 30) -> Optional[str]:
         """Ensure a specific file from an archive is extracted to disk and return its path."""
         if not SEVEN_ZIP_PATH:
             return None
@@ -160,10 +164,12 @@ class SevenZipHandler:
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 
-            subprocess.run(cmd, capture_output=True, startupinfo=startupinfo)
+            subprocess.run(cmd, capture_output=True, startupinfo=startupinfo, timeout=timeout)
             
             if target_path.exists():
                 return str(target_path)
+        except subprocess.TimeoutExpired:
+            print(f"7z Timeout extracting {internal_path} from {archive_path}")
         except Exception as e:
             print(f"Error extracting {internal_path} from {archive_path}: {e}")
             
