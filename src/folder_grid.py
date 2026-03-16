@@ -22,7 +22,7 @@ from src.utils.img_utils import get_chapter_number
 from src.enums import ViewMode
 import math
 import json
-from src.core.library_scanner import LibraryScanner
+from src.core.library_scanner import LibraryScanner, ScannerWorker, BatchScannerWorker
 from src.core.library_manager import LibraryManager
 from src.ui.filter_token import FilterToken
 from src.ui.batch_metadata_dialog import BatchMetadataDialog
@@ -99,6 +99,7 @@ class FolderGrid(QWidget):
         self.recent_loader = None
         
         self.threadpool = QThreadPool()
+        self.scanner = LibraryScanner()
         self.web_server_process = None
 
         self.is_in_selection_mode = False
@@ -641,9 +642,20 @@ class FolderGrid(QWidget):
     def change_series_directory(self, series):
         new_path = QFileDialog.getExistingDirectory(self, "Select New Folder for " + series['name'])
         if new_path:
-            self.library_manager.rescan_series_path(series['id'], new_path)
-            self.load_items()
-            self.load_recent_items()
+            self.show_info("Rescanning series...")
+            worker = ScannerWorker(self.scanner, new_path)
+            worker.signals.finished.connect(lambda data: self._on_rescan_finished(series['id'], new_path, data))
+            worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Rescan Error", err))
+            self.threadpool.start(worker)
+
+    def _on_rescan_finished(self, series_id, new_path, series_data):
+        if not series_data:
+            QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
+            return
+            
+        self.library_manager.rescan_series_from_data(series_id, new_path, series_data)
+        self.load_items()
+        self.load_recent_items()
 
     def remove_series(self, series: object):
         confirm_msg = f"Are you sure you want to remove '{series['name']}' from the library? This will not delete the files."
@@ -726,6 +738,8 @@ class FolderGrid(QWidget):
 
         # Generate QR code
         qr_image = qrcode.make(url)
+        
+        # Convert PIL image to QPixmap
         img_byte_array = io.BytesIO()
         qr_image.save(img_byte_array, format='PNG')
         pixmap = QPixmap()
@@ -789,64 +803,69 @@ class FolderGrid(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Select Manga Series Folder")
         if folder:
             normalized_path = str(Path(folder))
-            # 1. Scan manually first
-            scanner = LibraryScanner()
-            series_data = scanner.scan_series(normalized_path)
+            self.show_info("Scanning folder...")
             
-            if not series_data:
-                QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
-                return
+            worker = ScannerWorker(self.scanner, normalized_path)
+            worker.signals.finished.connect(lambda data: self.on_scan_finished(data, normalized_path))
+            worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Scan Error", err))
+            self.threadpool.start(worker)
 
-            # 2. If chapters exist, prompt user
-            if series_data.get('chapters'):
-                dialog = ChapterSelectionDialog(series_data['chapters'], self)
-                if dialog.exec():
-                    selected_chapters = dialog.get_selected_chapters()
-                    # Update series_data with selected chapters
-                    series_data['chapters'] = selected_chapters
-                else:
-                    return # User cancelled
+    def on_scan_finished(self, series_data, original_path):
+        if not series_data:
+            QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
+            return
 
-            # Use root if no chapters selected
-            if not series_data.get('chapters'):
-                series_data['chapters'] = [{
-                    "name": series_data['name'],
-                    "path": series_data['path']
-                }]
+        # 2. If chapters exist, prompt user
+        if series_data.get('chapters'):
+            dialog = ChapterSelectionDialog(series_data['chapters'], self)
+            if dialog.exec():
+                selected_chapters = dialog.get_selected_chapters()
+                series_data['chapters'] = selected_chapters
+            else:
+                return # User cancelled
 
-            # 3. Add to library using the (potentially modified) series data
-            self.library_manager.add_series_from_data(series_data)
-            
-            # 4. Show info dialog
-            # Need to refetch from DB to get the ID and full object
-            new_series = self.library_manager.get_series_by_path(folder)
-            if new_series:
-                info_dialog = InfoDialog(new_series, self.library_manager, self)
-                info_dialog.exec()
-            
-            self.load_recent_items()
-            self.load_items()
+        # Use root if no chapters selected
+        if not series_data.get('chapters'):
+            series_data['chapters'] = [{
+                "name": series_data['name'],
+                "path": series_data['path']
+            }]
+
+        self.library_manager.add_series_from_data(series_data)
+        
+        new_series = self.library_manager.get_series_by_path(original_path)
+        if new_series:
+            info_dialog = InfoDialog(new_series, self.library_manager, self)
+            info_dialog.exec()
+        
+        self.load_recent_items()
+        self.load_items()
 
     def add_archive_series(self):
         file, _ = QFileDialog.getOpenFileName(self, "Select Archive", filter="Archives (*.zip *.cbz *.7z *.rar *.cbr *.cb7)")
         if file:
             normalized_path = str(Path(file))
-            scanner = LibraryScanner()
-            series_data = scanner.scan_series(normalized_path)
+            self.show_info("Scanning archive...")
             
-            if not series_data:
-                QMessageBox.warning(self, "Invalid Archive", "Could not process the selected archive.")
-                return
+            worker = ScannerWorker(self.scanner, normalized_path)
+            worker.signals.finished.connect(lambda data: self._on_archive_scan_finished(data, normalized_path))
+            worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Scan Error", err))
+            self.threadpool.start(worker)
 
-            self.library_manager.add_series_from_data(series_data)
-            
-            new_series = self.library_manager.get_series_by_path(file)
-            if new_series:
-                info_dialog = InfoDialog(new_series, self.library_manager, self)
-                info_dialog.exec()
-            
-            self.load_recent_items()
-            self.load_items()
+    def _on_archive_scan_finished(self, series_data, original_path):
+        if not series_data:
+            QMessageBox.warning(self, "Invalid Archive", "Could not process the selected archive.")
+            return
+
+        self.library_manager.add_series_from_data(series_data)
+        
+        new_series = self.library_manager.get_series_by_path(original_path)
+        if new_series:
+            info_dialog = InfoDialog(new_series, self.library_manager, self)
+            info_dialog.exec()
+        
+        self.load_recent_items()
+        self.load_items()
 
     def add_multiple_series(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder with Manga Series")
@@ -860,9 +879,31 @@ class FolderGrid(QWidget):
                         subfolders.append(f.path)
                     elif f.is_file() and f.name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')):
                         subfolders.append(f.path)
-                self.library_manager.add_series_batch(subfolders, metadata)
-                self.load_recent_items()
-                self.load_items()
+                
+                if not subfolders:
+                    return
+
+                self.show_info(f"Scanning {len(subfolders)} items...")
+                
+                worker = BatchScannerWorker(self.scanner, subfolders)
+                
+                def on_series_scanned(series_data):
+                    self.library_manager.add_series_from_data(series_data, metadata)
+
+                def on_progress(current, total, path):
+                    self.show_info(f"Scanning ({current}/{total}): {Path(path).name}")
+
+                def on_finished():
+                    self.show_info("Batch addition finished.")
+                    self.load_recent_items()
+                    self.load_items()
+
+                worker.signals.series_scanned.connect(on_series_scanned)
+                worker.signals.progress.connect(on_progress)
+                worker.signals.finished.connect(on_finished)
+                worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Batch Scan Error", err))
+                
+                self.threadpool.start(worker)
 
     def show_info(self, message):
         self.info_label.setText(message)
@@ -891,51 +932,39 @@ class FolderGrid(QWidget):
 
     def add_single(self, path):
         normalized_path = str(Path(path))
-        # 1. Scan manually first
-        scanner = LibraryScanner()
-        series_data = scanner.scan_series(normalized_path)
+        self.show_info("Scanning...")
         
-        if not series_data:
-             # For drag and drop, maybe just log or ignore if invalid, or show small warning?
-             # Showing warning is consistent
-            QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
-            return
-
-        # 2. If chapters exist, prompt user
-        if series_data.get('chapters'):
-            dialog = ChapterSelectionDialog(series_data['chapters'], self)
-            if dialog.exec():
-                selected_chapters = dialog.get_selected_chapters()
-                # Update series_data with selected chapters
-                series_data['chapters'] = selected_chapters
-            else:
-                return # User cancelled
-
-        # 2a. If NO chapters selected (or none found initially but logic implies finding none?),
-        # If user deselected ALL chapters, treat root as the single chapter
-        if not series_data.get('chapters'):
-            # Construct a single chapter pointing to series root
-            series_data['chapters'] = [{
-                "name": series_data['name'],
-                "path": series_data['path']
-            }]
-        self.library_manager.add_series_from_data(series_data)
-        
-        # 4. Show info dialog
-        new_series = self.library_manager.get_series_by_path(path)
-        if new_series:
-            info_dialog = InfoDialog(new_series, self.library_manager, self)
-            info_dialog.exec()
-        self.load_recent_items()
-        self.load_items()
+        worker = ScannerWorker(self.scanner, normalized_path)
+        worker.signals.finished.connect(lambda data: self.on_scan_finished(data, normalized_path))
+        worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Scan Error", err))
+        self.threadpool.start(worker)
 
     def add_multiple(self, paths):
         dialog = BatchMetadataDialog(self.library_manager, self)
         if dialog.exec():
             metadata = dialog.get_metadata()
-            self.library_manager.add_series_batch(paths, metadata)
-            self.load_recent_items()
-            self.load_items()
+            
+            self.show_info(f"Scanning {len(paths)} items...")
+            
+            worker = BatchScannerWorker(self.scanner, paths)
+            
+            def on_series_scanned(series_data):
+                self.library_manager.add_series_from_data(series_data, metadata)
+
+            def on_progress(current, total, path):
+                self.show_info(f"Scanning ({current}/{total}): {Path(path).name}")
+
+            def on_finished():
+                self.show_info("Batch addition finished.")
+                self.load_recent_items()
+                self.load_items()
+
+            worker.signals.series_scanned.connect(on_series_scanned)
+            worker.signals.progress.connect(on_progress)
+            worker.signals.finished.connect(on_finished)
+            worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Batch Scan Error", err))
+            
+            self.threadpool.start(worker)
 
     def toggle_selection_mode(self, enabled):
         self.is_in_selection_mode = enabled

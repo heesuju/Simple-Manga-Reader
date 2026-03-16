@@ -120,7 +120,7 @@ def is_image_monotone(image_path: str, threshold: float = 10.0) -> bool:
         return True
 
 def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
-    if pixmap.isNull():
+    if pixmap.isNull() or pixmap.width() == 0 or pixmap.height() == 0:
         return pixmap
     
     scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)

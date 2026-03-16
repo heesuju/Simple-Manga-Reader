@@ -29,7 +29,7 @@ from src.ui.components.selection_panel import SelectionPanel
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, ArchiveExtractionWorker, ImageInfoWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, ArchiveExtractionWorker, ImageInfoWorker, VideoExtractionWorker
 # from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
 from src.core.alt_manager import AltManager
@@ -719,6 +719,20 @@ class ReaderView(QWidget):
     def _load_image(self, path: str):
         ext = os.path.splitext(path)[1].lower()
         is_video = ext in VIDEO_EXTS
+        
+        if is_video and '|' in path:
+            # Check if already extracted
+            resolved = self.resolve_path(path)
+            if resolved != path and os.path.exists(resolved):
+                self._on_video_extracted_finished(path, resolved, True)
+            else:
+                self.loading_label.setText("Extracting Video...")
+                self.loading_label.show()
+                worker = VideoExtractionWorker(path)
+                worker.signals.finished.connect(self._on_video_extracted_finished)
+                self.thread_pool.start(worker)
+            return
+
         resolved_path = self.resolve_path(path)
         
         target_viewer = self.video_viewer if is_video else self.image_viewer
@@ -760,6 +774,56 @@ class ReaderView(QWidget):
         self.update_top_panel()
         self._update_image_info([resolved_path])
 
+    def _on_video_extracted_finished(self, original_path, extracted_path, success):
+        self.loading_label.hide()
+        if not success:
+            QMessageBox.warning(self, "Extraction Error", f"Failed to extract video from archive:\n{original_path}")
+            return
+            
+        # Ensure it's still the path we want (user might have navigated away)
+        # However, _load_image is usually called for current page.
+        # If model.current_index changed, we might be loading wrong thing.
+        # Simple check:
+        if not self.model.images or self.model.current_index >= len(self.model.images):
+            return
+        
+        current_page_path = self.model.images[self.model.current_index].path
+        if original_path != current_page_path:
+            # User navigated away
+            return
+
+        # Proceed with load using extracted path
+        target_viewer = self.video_viewer
+        if self.model.view_mode != ViewMode.STRIP:
+            if self.current_viewer != target_viewer or not self.current_viewer.is_active:
+                if self.current_viewer:
+                    self.current_viewer.set_active(False)
+                self.current_viewer = target_viewer
+                self.current_viewer.set_active(True)
+                if hasattr(self.view, '_update_overlay_bounds'):
+                    self.view._update_overlay_bounds()
+
+        self.current_viewer.load(extracted_path)
+        
+        total_frames = getattr(self.video_control_panel, 'total_frames', 0)
+        if total_frames > 0:
+            self.frame_panel.set_video(extracted_path, total_frames)
+            if self.panels_visible:
+                self.frame_panel.show()
+            else:
+                self.frame_panel.hide()
+            self._update_side_panels_geometry()
+
+        self.page_panel._update_page_selection(self.model.current_index)
+        
+        if self.model.view_mode == ViewMode.DOUBLE:
+            self.slider_panel.set_value(self.model._get_current_layout_index())
+        else:
+            self.slider_panel.set_value(self.model.current_index)
+             
+        self.update_top_panel()
+        self._update_image_info([extracted_path])
+
     def _load_double_images(self, image1_path, image2_path):
         if self.current_viewer != self.image_viewer or not self.current_viewer.is_active:
             if self.current_viewer:
@@ -767,7 +831,7 @@ class ReaderView(QWidget):
             self.current_viewer = self.image_viewer
             self.current_viewer.set_active(True)
              
-        self.image_viewer.load((image1_path, image2_path))
+        self.image_viewer.load((self.resolve_path(image1_path), self.resolve_path(image2_path)))
         self.page_panel._update_page_selection(self.model.current_index)
         self.slider_panel.set_value(self.model._get_current_layout_index())
         

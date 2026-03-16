@@ -69,9 +69,6 @@ class ReaderModel(QObject):
         
         # Build Map
         self._rebuild_map()
-
-        # Auto-detect spreads
-        self.auto_detect_spreads()
         
         # Build Layout (Initial)
         self._build_double_layout()

@@ -202,20 +202,6 @@ class LibraryManager:
         
         return chapters
 
-    def add_series(self, path, metadata=None):
-        normalized_path = str(Path(path))
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM series WHERE path = ?", (normalized_path,))
-        if cursor.fetchone():
-            conn.close()
-            return  # Series already exists
-        conn.close()
-
-        scanner = LibraryScanner()
-        series_data = scanner.scan_series(normalized_path)
-        if series_data:
-            self.add_series_from_data(series_data, metadata)
 
     def add_series_from_data(self, series_data, metadata=None):
         conn = get_db_connection()
@@ -296,9 +282,6 @@ class LibraryManager:
         finally:
             conn.close()
 
-    def add_series_batch(self, paths, metadata=None):
-        for path in paths:
-            self.add_series(path, metadata)
 
     def update_series_batch(self, series_list, metadata):
         for series in series_list:
@@ -416,16 +399,9 @@ class LibraryManager:
         finally:
             conn.close()
 
-    def rescan_series_path(self, series_id, new_path):
+    def rescan_series_from_data(self, series_id, new_path, series_data):
         normalized_path = str(Path(new_path))
         
-        scanner = LibraryScanner()
-        series_data = scanner.scan_series(normalized_path)
-
-        if not series_data:
-            print(f"New path {new_path} does not seem to be a valid series folder.")
-            return
-
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -447,10 +423,11 @@ class LibraryManager:
             
             conn.commit()
         except Exception as e:
-            print(f"Error rescanning series path: {e}")
+            print(f"Error rescanning series path from data: {e}")
             conn.rollback()
         finally:
             conn.close()
+
 
     def _populate_metadata(self, series_list):
         if not series_list:

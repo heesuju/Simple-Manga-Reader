@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import re
+from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 from src.core.alt_manager import AltManager
 
 # prefer treating images and video separately for cover-selection vs listing
@@ -24,6 +25,56 @@ def get_chapter_number(path):
         return float(match.group(1))
     else:
         return find_number(name)
+
+class ScannerSignals(QObject):
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+class ScannerWorker(QRunnable):
+    def __init__(self, scanner: 'LibraryScanner', series_path: str):
+        super().__init__()
+        self.scanner = scanner
+        self.series_path = series_path
+        self.signals = ScannerSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            result = self.scanner.scan_series(self.series_path)
+            if result:
+                self.signals.finished.emit(result)
+            else:
+                self.signals.error.emit(f"Failed to scan series at {self.series_path}")
+        except Exception as e:
+            self.signals.error.emit(str(e))
+
+class BatchScannerSignals(QObject):
+    progress = pyqtSignal(int, int, str) # current, total, path
+    series_scanned = pyqtSignal(dict)
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+class BatchScannerWorker(QRunnable):
+    def __init__(self, scanner: 'LibraryScanner', paths: list):
+        super().__init__()
+        self.scanner = scanner
+        self.paths = paths
+        self.signals = BatchScannerSignals()
+
+    @pyqtSlot()
+    def run(self):
+        total = len(self.paths)
+        for i, path in enumerate(self.paths):
+            try:
+                self.signals.progress.emit(i + 1, total, str(path))
+                result = self.scanner.scan_series(path)
+                if result:
+                    self.signals.series_scanned.emit(result)
+            except Exception as e:
+                print(f"Error scanning {path}: {e}")
+                # Continue with others
+        
+        self.signals.finished.emit()
 
 class LibraryScanner:
     def is_archive(self, path: Path):
@@ -79,7 +130,7 @@ class LibraryScanner:
             return None
 
         # Recursive scan for chapters
-        chapters = self._scan_chapters_recursive(item, depth=0, max_depth=3)
+        chapters = self._scan_chapters_recursive(item, depth=0, max_depth=10)
         
         is_simple_series = False
         if len(chapters) == 1 and chapters[0]['path'] == str(item):

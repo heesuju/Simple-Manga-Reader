@@ -1,11 +1,13 @@
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Dict, List
 
 from src.data.page import Page
 class AltManager:
     INFO_FILE_NAME = "info.json"
+    _file_lock = threading.Lock()
 
     @staticmethod
     def group_images(image_paths: List[str], alt_config: Dict[str, Dict[str, List[str]]]) -> List[Page]:
@@ -151,38 +153,29 @@ class AltManager:
     def load_alts(series_path: str) -> Dict[str, Dict[str, List[str]]]:
         """
         Load the alt configuration from info.json.
-        Returns a structure:
-        {
-            "Chapter Name": {
-                "main_image.jpg": {
-                    "alts": ["alt1.jpg"],
-                    "translations": {"ENG": "eng.jpg"}
-                }
-            }
-        }
-        Legacy format (config value is list) is also supported during read, 
-        but writes should migrate to new format.
         """
         info_path = AltManager._get_info_path(series_path)
         if not info_path.exists():
             return {}
 
-        try:
-            with open(info_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return data
-        except (json.JSONDecodeError, OSError):
-            return {}
+        with AltManager._file_lock:
+            try:
+                with open(info_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data
+            except (json.JSONDecodeError, OSError):
+                return {}
 
     @staticmethod
     def save_alts(series_path: str, data: Dict[str, Dict[str, List[str]]]):
         """Save the alt configuration to info.json."""
         info_path = AltManager._get_info_path(series_path)
-        try:
-            with open(info_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except OSError as e:
-            print(f"Error saving info.json: {e}")
+        with AltManager._file_lock:
+            try:
+                with open(info_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+            except OSError as e:
+                print(f"Error saving info.json: {e}")
 
     @staticmethod
     def _ensure_entry_structure(entry):

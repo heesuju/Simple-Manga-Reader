@@ -30,6 +30,28 @@ class ArchiveExtractionWorker(QRunnable):
         success = SevenZipHandler.extract_all(self.archive_path)
         self.signals.finished.emit(self.archive_path, success)
 
+class VideoExtractionSignals(QObject):
+    finished = pyqtSignal(str, str, bool) # original_path, extracted_path, success
+
+class VideoExtractionWorker(QRunnable):
+    def __init__(self, original_path: str):
+        super().__init__()
+        self.original_path = original_path # archive.zip|video.mp4
+        self.signals = VideoExtractionSignals()
+
+    @pyqtSlot()
+    def run(self):
+        from src.utils.archive_utils import SevenZipHandler
+        if '|' not in self.original_path:
+            self.signals.finished.emit(self.original_path, self.original_path, True)
+            return
+
+        archive_path, internal = self.original_path.split('|', 1)
+        extracted_path = SevenZipHandler.ensure_extracted(archive_path, internal)
+        
+        success = extracted_path is not None and os.path.exists(extracted_path)
+        self.signals.finished.emit(self.original_path, extracted_path if success else "", success)
+
 class AnimationFrameLoaderSignals(QObject):
     finished = pyqtSignal(dict)
 
@@ -268,7 +290,16 @@ class ChapterLoaderWorker(QRunnable):
                 if size.isValid() and size.height() > 0:
                     is_spread = (size.width() / size.height()) > spread_threshold
             else:
-                pass
+                image_data = get_image_data_from_zip(resolved)
+                if image_data:
+                    from PyQt6.QtCore import QBuffer, QByteArray
+                    byte_array = QByteArray(image_data)
+                    buffer = QBuffer(byte_array)
+                    buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+                    reader = QImageReader(buffer)
+                    size = reader.size()
+                    if size.isValid() and size.height() > 0:
+                        is_spread = (size.width() / size.height()) > spread_threshold
             
             if is_spread != page.is_spread:
                 page.is_spread = is_spread
