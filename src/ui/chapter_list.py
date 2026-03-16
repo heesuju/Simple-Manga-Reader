@@ -141,21 +141,37 @@ class ChapterListItemWidget(QWidget):
         self.setAutoFillBackground(False)
 
         self.layout = QHBoxLayout(self)
-        self.layout.setSpacing(10)
         self.chapter_number_label = QLabel()
+        self.layout.addWidget(self.chapter_number_label)
+        
+        self.thumbnail_container = QWidget()
+        self.thumbnail_container.setFixedSize(75, 38)
+        self.thumb_layout = QVBoxLayout(self.thumbnail_container)
+        self.thumb_layout.setContentsMargins(0,0,0,0)
+
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setFixedSize(75, 38)
+        self.thumb_layout.addWidget(self.thumbnail_label)
+
+        self.archive_overlay = QLabel(self.thumbnail_container)
+        self.archive_overlay.setText("📦")
+        self.archive_overlay.setStyleSheet("background: rgba(0,0,0,150); border-radius: 4px; font-size: 10px; padding: 1px;")
+        self.archive_overlay.adjustSize()
+        self.archive_overlay.move(75 - self.archive_overlay.width() - 2, 38 - self.archive_overlay.height() - 2)
+        
+        is_archive = str(chapter['path']).lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+        self.archive_overlay.setVisible(is_archive)
+
         self.name_label = QLabel()
         self.page_count_label = QLabel()
 
-        self.layout.addWidget(self.chapter_number_label)
-        self.layout.addWidget(self.thumbnail_label)
+        self.layout.addWidget(self.thumbnail_container)
         self.layout.addWidget(self.name_label)
         self.layout.addStretch()
         self.layout.addWidget(self.page_count_label)
 
         try:
-            if len(self.series.get("chapters")) > 0:
+            if len(self.series.get("chapters", [])) > 0:
                 chapter_number = int(get_chapter_number(chapter_name))
                 self.chapter_number_label.setText(f'{chapter_number:02}')
             else:
@@ -347,22 +363,49 @@ class FolderListItemWidget(QWidget):
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(10)
         
-        self.icon_label = QLabel()
-        self.icon_label.setFixedSize(38, 38)
+        # Spacer to align with ChapterListItemWidget's chapter number
+        self.layout.addSpacing(25)
+
+        self.thumbnail_container = QWidget()
+        self.thumbnail_container.setFixedSize(75, 38)
+        self.thumb_layout = QVBoxLayout(self.thumbnail_container)
+        self.thumb_layout.setContentsMargins(0,0,0,0)
+
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setFixedSize(75, 38)
+        self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Distinguish between folders and archives
-        is_archive = folder_name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
-        self.icon_label.setText("📦" if is_archive else "📁")
+        # Distinguish between folders and archives for default icon
+        self.is_archive = folder_name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+        self.thumbnail_label.setText("📦" if self.is_archive else "📁")
+        self.thumbnail_label.setStyleSheet("font-size: 18px; color: white; background: rgba(255,255,255,20); border-radius: 4px;")
         
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet("font-size: 24px; color: white; background: transparent;")
-        
+        self.thumb_layout.addWidget(self.thumbnail_label)
+
+        self.archive_overlay = QLabel(self.thumbnail_container)
+        self.archive_overlay.setText("📦")
+        self.archive_overlay.setStyleSheet("background: rgba(0,0,0,150); border-radius: 4px; font-size: 10px; padding: 1px;")
+        self.archive_overlay.adjustSize()
+        self.archive_overlay.move(75 - self.archive_overlay.width() - 2, 38 - self.archive_overlay.height() - 2)
+        self.archive_overlay.setVisible(False) # Only show if we have a real thumbnail
+
         self.name_label = QLabel(self.folder_name)
         self.name_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent;")
         
-        self.layout.addWidget(self.icon_label)
+        self.layout.addWidget(self.thumbnail_container)
         self.layout.addWidget(self.name_label)
         self.layout.addStretch()
+
+    def set_pixmap(self, pixmap):
+        try:
+            cropped_pixmap = crop_pixmap(pixmap, 75, 38)
+            self.thumbnail_label.setPixmap(cropped_pixmap)
+            self.thumbnail_label.setText("") # Clear emoji
+            if self.is_archive:
+                self.archive_overlay.show()
+                self.archive_overlay.raise_()
+        except RuntimeError:
+            pass
 
     def _show_context_menu(self, pos):
         if self.folder_name == "..":
@@ -835,6 +878,16 @@ class ChapterListView(QWidget):
                 idx = len(target_chapters)
                 self._chapter_loader_map[idx] = widget
                 target_chapters.append(widget.chapter)
+            elif isinstance(widget, FolderListItemWidget) and widget.is_archive:
+                # Find the archive path for this folder entry
+                # A folder widget in ChapterList representing an archive usually 
+                # corresponds to a zip file in the series root
+                series_root = Path(self.series['path'])
+                archive_path = series_root / widget.folder_name
+                if archive_path.exists():
+                    idx = len(target_chapters)
+                    self._chapter_loader_map[idx] = widget
+                    target_chapters.append({'path': str(archive_path), 'name': widget.folder_name})
 
         # --- Background Loaders ---
         page_count_loader = ChapterListLoader(target_chapters, str(self.series['path']))
