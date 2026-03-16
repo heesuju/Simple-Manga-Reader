@@ -80,6 +80,7 @@ class ShineLabel(QLabel):
 class ThumbnailWidget(QWidget):
     clicked = pyqtSignal(object)
     remove_requested = pyqtSignal(object)
+    rescan_requested = pyqtSignal(object)
 
     def __init__(self, series, library_manager, parent=None, show_chapter_number=False):
         super().__init__(parent)
@@ -212,12 +213,15 @@ class ThumbnailWidget(QWidget):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         open_action = menu.addAction("Open Folder")
+        rescan_action = menu.addAction("Rescan Series")
         remove_action = menu.addAction("Remove")
         get_info_action = menu.addAction("Get Info")
         action = menu.exec(event.globalPos())
 
         if action == open_action:
             self.open_folder()
+        elif action == rescan_action:
+            self.rescan_requested.emit(self.series)
         elif action == remove_action:
             self.remove_requested.emit(self.series)
         elif action == get_info_action:

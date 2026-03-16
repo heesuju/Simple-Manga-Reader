@@ -517,6 +517,7 @@ class FolderGrid(QWidget):
             widget.clicked.connect(self.recent_series_selected)
 
         widget.remove_requested.connect(self.remove_series)
+        widget.rescan_requested.connect(self.rescan_series)
         self.recent_layout.addWidget(widget)
 
     def scroll_left(self):
@@ -615,6 +616,7 @@ class FolderGrid(QWidget):
                     widget.clicked.connect(self.item_selected)
 
                 widget.remove_requested.connect(self.remove_series)
+                widget.rescan_requested.connect(self.rescan_series)
                 widget.checkbox.toggled.connect(self.update_selection_count)
                 self.items.append(widget)
                 
@@ -665,6 +667,37 @@ class FolderGrid(QWidget):
             self.library_manager.remove_series(series)
             self.load_recent_items()
             self.load_items()
+
+    def rescan_series(self, series: object):
+        path = series['path']
+        self.show_info(f"Rescanning {series['name']}...")
+        worker = ScannerWorker(self.scanner, path)
+        worker.signals.finished.connect(lambda data: self._on_rescan_finished(series['id'], path, data))
+        worker.signals.error.connect(lambda err: [self.hide_info(), QMessageBox.warning(self, "Rescan Error", err)])
+        self.threadpool.start(worker)
+
+    def show_info(self, text):
+        self.info_label.setText(text)
+        self.info_label.adjustSize()
+        self.info_label.move(
+            (self.width() - self.info_label.width()) // 2,
+            (self.height() - self.info_label.height()) // 2
+        )
+        self.info_label.show()
+        self.info_label.raise_()
+
+    def hide_info(self):
+        self.info_label.hide()
+
+    def _on_rescan_finished(self, series_id, new_path, series_data):
+        self.hide_info()
+        if not series_data:
+            QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
+            return
+            
+        self.library_manager.rescan_series_from_data(series_id, new_path, series_data)
+        self.load_items()
+        self.load_recent_items()
 
     def display_chapters(self, chapters):
         self.loading_generation += 1
