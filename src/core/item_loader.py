@@ -25,26 +25,14 @@ class ItemLoader(QRunnable):
 
     @staticmethod
     def _folder_is_valid(folder_path: Path) -> bool:
-        """Checks if a folder contains images or subfolders with images (1 level deep)."""
-        try:
-            # Check for images in the folder itself
-            if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov', '.zip', '.cbz'} for f in folder_path.iterdir()):
-                return True
-
-            # Check subfolders for images
-            for subfolder in folder_path.iterdir():
-                if subfolder.is_dir():
-                    try:
-                        if any(f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} for f in subfolder.iterdir()):
-                            return True
-                    except PermissionError:
-                        continue
-        except PermissionError:
-            return False
-        return False
+        """Checks if a folder contains any media files."""
+        from src.utils.img_utils import _get_first_media_path
+        return _get_first_media_path(str(folder_path)) is not None
 
     def run(self):
         from PyQt6.QtGui import QPixmap, QColor
+        from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path, _get_first_media_path
+        
         for idx, item in enumerate(self.items):
             item_type = ''
             pix = None
@@ -54,56 +42,29 @@ class ItemLoader(QRunnable):
                 item_type = 'series'
                 cover_image = item.get('cover_image')
                 if cover_image:
-                    if cover_image.lower().endswith(('.zip', '.cbz')):
-                        pix = load_thumbnail_from_zip(cover_image, self.thumb_width, self.thumb_height)
+                    if '|' in cover_image:
+                        pix = load_thumbnail_from_virtual_path(cover_image, self.thumb_width, self.thumb_height)
                     else:
                         pix = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
-                chapter_path = str(item['path'])
-                if '|' in chapter_path:
-                    pix = load_thumbnail_from_virtual_path(chapter_path, self.thumb_width, self.thumb_height)
-                elif chapter_path.lower().endswith(('.zip', '.cbz')):
-                    pix = load_thumbnail_from_zip(chapter_path, self.thumb_width, self.thumb_height)
-                else:
-                    thumbnail_path = item.get('cover_path')
-
-                    if thumbnail_path and Path(thumbnail_path).exists():
-                        pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                # 1. Try existing cover_path
+                thumbnail_path = item.get('cover_path')
+                
+                # 2. If no cover_path, discover it robustly (Video, ZIP, Dir)
+                if not thumbnail_path:
+                    thumbnail_path = _get_first_media_path(item)
+                
+                if thumbnail_path:
+                    if '|' in thumbnail_path:
+                        pix = load_thumbnail_from_virtual_path(thumbnail_path, self.thumb_width, self.thumb_height)
                     else:
-                        thumbnail_path = None
-
-                        for ext in ['jpg', 'png', 'webp']:
-                            cover_path = Path(chapter_path) / f'cover.{ext}'
-                            if cover_path.exists():
-                                thumbnail_path = str(cover_path)
-                                break
-                        
-                        if not thumbnail_path:
-                            try:
-                                image_files = [f for f in Path(chapter_path).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'}]
-                                
-                                sort_mode = item.get('_sort_mode', 'name')
-                                if sort_mode == 'mtime':
-                                    image_files.sort(key=lambda p: os.path.getmtime(str(p)))
-                                elif sort_mode == 'ctime':
-                                    image_files.sort(key=lambda p: os.path.getctime(str(p)))
-                                else:
-                                    image_files.sort(key=lambda p: get_chapter_number(str(p).lower()))
-
-                                for image_file in image_files:
-                                    if not is_image_monotone(str(image_file)):
-                                        thumbnail_path = str(image_file)
-                                        break
-                            except (StopIteration, PermissionError, FileNotFoundError, OSError):
-                                pass
-                        
-                        if thumbnail_path:
-                            pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
-                            
-                            if self.library_manager and 'id' in item:
-                                self.library_manager.set_chapter_cover_path(item['id'], thumbnail_path)
-                            item['cover_path'] = thumbnail_path
+                        pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                    
+                    if pix and not pix.isNull():
+                        if self.library_manager and 'id' in item:
+                            self.library_manager.set_chapter_cover_path(item['id'], thumbnail_path)
+                        item['cover_path'] = thumbnail_path
             else:
                 path_str = str(item_path)
                 crop = None
@@ -114,30 +75,23 @@ class ItemLoader(QRunnable):
                     path_str = path_str[:-6]
                     crop = "right"
 
-                if '|' in path_str:
-                    # Handle virtual paths
-                    item_type = 'image'
-                    pix = load_thumbnail_from_virtual_path(path_str, self.thumb_width, self.thumb_height, crop)
-                elif Path(path_str).is_dir():
-                    if not ItemLoader._folder_is_valid(Path(path_str)):
-                        self.signals.item_invalid.emit(idx, self.generation)
-                        continue
-                    item_type = 'folder'
-                    try:
-                        first_image = next(f for f in Path(path_str).iterdir() if f.is_file() and f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'})
-                        if first_image:
-                            pix = load_thumbnail_from_path(str(first_image), self.thumb_width, self.thumb_height)
-                    except (StopIteration, PermissionError):
-                        pass
-                elif Path(path_str).is_file():
-                    if Path(path_str).suffix.lower() == '.zip':
-                        item_type = 'zip'
-                        pix = load_thumbnail_from_zip(path_str, self.thumb_width, self.thumb_height)
+                # Discover media recursively/robustly for files/folders
+                media_path = _get_first_media_path(path_str)
+                if media_path:
+                    if '|' in media_path:
+                        item_type = 'archive' if media_path.split('|')[0].lower().endswith(('.zip', '.cbz', '.7z', '.rar')) else 'image'
+                        pix = load_thumbnail_from_virtual_path(media_path, self.thumb_width, self.thumb_height, crop)
+                    elif Path(media_path).is_dir():
+                        item_type = 'folder'
+                        pix = None # Should not happen with _get_first_media_path returning a file
                     else:
                         item_type = 'image'
-                        pix = load_thumbnail_from_path(path_str, self.thumb_width, self.thumb_height, crop)
+                        pix = load_thumbnail_from_path(media_path, self.thumb_width, self.thumb_height, crop)
+                else:
+                    self.signals.item_invalid.emit(idx, self.generation)
+                    continue
 
-            if not pix:
+            if not pix or pix.isNull():
                 pix = QPixmap(self.thumb_width, self.thumb_height)
                 pix.fill(QColor("gray"))
 

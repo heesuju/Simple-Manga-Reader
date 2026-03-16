@@ -97,6 +97,10 @@ def is_image_monotone(image_path: str, threshold: float = 10.0) -> bool:
     Check if an image is largely monotone (e.g., all white or all black).
     It does this by resizing to a small image and checking the standard deviation.
     """
+    # SKIP monotone check for videos as they can't be decoded easily this way
+    if any(image_path.lower().endswith(ext) for ext in VIDEO_EXTS):
+        return False
+
     try:
         # Read file into a numpy array to handle non-ASCII paths correctly
         with open(image_path, 'rb') as f:
@@ -507,45 +511,100 @@ def extract_page_number(filename: str) -> int:
 
 VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
 
-def _get_first_media_path(chapter_dir):
-    if not chapter_dir:
+def _get_first_media_path(chapter_input):
+    if not chapter_input:
         return None
-    chapter_path = Path(chapter_dir)
-    if isinstance(chapter_dir, str) and (chapter_dir.lower().endswith('.zip') or chapter_dir.lower().endswith('.cbz')):
+        
+    # Handle dict input from Library Scanner
+    if isinstance(chapter_input, dict):
+        path_str = chapter_input.get('path', '')
+    else:
+        path_str = str(chapter_input)
+        
+    if not path_str:
+        return None
+        
+    # Handle Virtual Paths (archive.zip|subfolder)
+    if '|' in path_str:
+        archive_path, internal_path = path_str.split('|', 1)
+        internal_path = internal_path.strip('/').replace('\\', '/')
+        archive_ext = Path(archive_path).suffix.lower()
+        
         try:
-            # Re-implementing correctly with encoding priority
-            with zipfile.ZipFile(chapter_dir, 'r') as zf:
-                namelist = []
-                for info in zf.infolist():
-                    name = info.filename
-                    if not (info.flag_bits & 0x800):
-                        # Multi-stage decoding for non-UTF-8 flagged entries
-                        raw = name.encode('cp437')
-                        try:
-                            # Try UTF-8 first (many zips omit the bit)
-                            name = raw.decode('utf-8')
-                        except UnicodeDecodeError:
+            # 1. Handle Zip/CBZ with encoding support
+            if archive_ext in {'.zip', '.cbz'}:
+                with zipfile.ZipFile(archive_path, 'r') as zf:
+                    namelist = []
+                    for info in zf.infolist():
+                        name = info.filename
+                        if not (info.flag_bits & 0x800):
+                            raw = name.encode('cp437')
                             try:
-                                # Try CP932 (Windows-31J) for Japanese
-                                name = raw.decode('cp932')
+                                name = raw.decode('utf-8')
                             except UnicodeDecodeError:
-                                # Fallback to original CP437
-                                pass
-                    namelist.append(name)
-                
-                    # Target both images and videos
-                    valid_files = sorted([f for f in namelist if (f.lower().endswith(IMG_EXTS) or f.lower().endswith(tuple(VIDEO_EXTS))) and not f.startswith('__MACOSX')])
+                                try:
+                                    name = raw.decode('cp932')
+                                except UnicodeDecodeError:
+                                    pass
+                        namelist.append((name, info.filename))
+                    
+                    # Filter for files within the internal_path
+                    valid_files = []
+                    for decoded_name, original_name in namelist:
+                        decoded_norm = decoded_name.strip('/').replace('\\', '/')
+                        if not internal_path or decoded_norm.startswith(internal_path + '/'):
+                            rel = decoded_norm[len(internal_path):].strip('/') if internal_path else decoded_norm
+                            if rel and '/' not in rel: # Direct child
+                                if (decoded_norm.lower().endswith(IMG_EXTS) or decoded_norm.lower().endswith(tuple(VIDEO_EXTS))) and not decoded_norm.startswith('__MACOSX'):
+                                    valid_files.append(decoded_name)
+                    
+                    valid_files.sort()
                     if valid_files:
-                        return f"{chapter_dir}|{valid_files[0]}"
-        except (zipfile.BadZipFile, OSError, PermissionError, Exception) as e:
-            print(f"Error reading zip {chapter_dir}: {e}")
+                        return f"{archive_path}|{valid_files[0]}"
+
+            # 2. Fallback to SevenZipHandler
+            from src.utils.archive_utils import SevenZipHandler
+            if SevenZipHandler.is_available():
+                files = SevenZipHandler.list_files(archive_path)
+                valid_files = []
+                for f in files:
+                    f_norm = f.strip('/').replace('\\', '/')
+                    if not internal_path or f_norm.startswith(internal_path + '/'):
+                        rel = f_norm[len(internal_path):].strip('/') if internal_path else f_norm
+                        if rel and '/' not in rel:
+                            if (f_norm.lower().endswith(IMG_EXTS) or f_norm.lower().endswith(tuple(VIDEO_EXTS))) and not f_norm.startswith('__MACOSX'):
+                                valid_files.append(f)
+                
+                valid_files.sort()
+                if valid_files:
+                    return f"{archive_path}|{valid_files[0]}"
+        except Exception as e:
+            print(f"Error resolving virtual path {path_str}: {e}")
             return None
-    elif chapter_path.is_dir():
-        # Include videos in directory scan
+
+    # Handle Normal Paths
+    path_obj = Path(path_str)
+    archive_exts = {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}
+    
+    # 1. Handle Archives (Root)
+    if path_obj.suffix.lower() in archive_exts:
+        # Re-use the virtual path logic for the root
+        return _get_first_media_path(f"{path_str}|")
+            
+    # 2. Handle Directories
+    elif path_obj.is_dir():
         valid_exts = IMG_EXTS + tuple(VIDEO_EXTS)
-        media_files = [p for p in sorted(chapter_path.iterdir()) if p.suffix.lower() in valid_exts and p.is_file()]
-        if media_files:
-            return str(media_files[0])
+        try:
+            media_files = [p for p in sorted(path_obj.iterdir()) if p.suffix.lower() in valid_exts and p.is_file()]
+            if media_files:
+                return str(media_files[0])
+        except Exception as e:
+            print(f"Error scanning directory {path_str}: {e}")
+            
+    # 3. Handle Direct Video/Image Files
+    elif path_obj.suffix.lower() in (IMG_EXTS + tuple(VIDEO_EXTS)):
+        return path_str
+
     return None
 
 def segment_image_by_black_lines(image_path: str) -> List[dict]:
