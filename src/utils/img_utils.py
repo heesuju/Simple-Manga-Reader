@@ -505,7 +505,9 @@ def extract_page_number(filename: str) -> int:
     return -1
     
 
-def _get_first_image_path(chapter_dir):
+VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
+
+def _get_first_media_path(chapter_dir):
     if not chapter_dir:
         return None
     chapter_path = Path(chapter_dir)
@@ -531,17 +533,19 @@ def _get_first_image_path(chapter_dir):
                                 pass
                     namelist.append(name)
                 
-                image_files = sorted([f for f in namelist if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
-                if image_files:
-                    return f"{chapter_dir}|{image_files[0]}"
+                    # Target both images and videos
+                    valid_files = sorted([f for f in namelist if (f.lower().endswith(IMG_EXTS) or f.lower().endswith(tuple(VIDEO_EXTS))) and not f.startswith('__MACOSX')])
+                    if valid_files:
+                        return f"{chapter_dir}|{valid_files[0]}"
         except (zipfile.BadZipFile, OSError, PermissionError, Exception) as e:
             print(f"Error reading zip {chapter_dir}: {e}")
             return None
     elif chapter_path.is_dir():
-        exts = (".png", ".jpg", ".jpeg", ".jpe", ".webp", ".bmp", ".gif")
-        image_files = [p for p in sorted(chapter_path.iterdir()) if p.suffix.lower() in exts and p.is_file()]
-        if image_files:
-            return str(image_files[0])
+        # Include videos in directory scan
+        valid_exts = IMG_EXTS + tuple(VIDEO_EXTS)
+        media_files = [p for p in sorted(chapter_path.iterdir()) if p.suffix.lower() in valid_exts and p.is_file()]
+        if media_files:
+            return str(media_files[0])
     return None
 
 def segment_image_by_black_lines(image_path: str) -> List[dict]:

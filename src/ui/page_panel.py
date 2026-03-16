@@ -215,6 +215,7 @@ class PagePanel(CollapsiblePanel):
                     widget = PageThumbnail(i, thumb_label, alt_count=alt_count)
                     widget.clicked.connect(self._on_thumbnail_clicked)
                     widget.right_clicked.connect(self._on_thumbnail_right_clicked)
+                    widget.set_media_type(page_obj.path)
                     
                     self.thumbnails_layout.insertWidget(i, widget)
                     self.page_thumbnail_widgets.append(widget)

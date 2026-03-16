@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.workers.thumbnail_worker import ThumbnailWorker
-from src.utils.img_utils import _get_first_image_path, draw_text_on_image, load_thumbnail_from_path, load_thumbnail_from_virtual_path
+from src.utils.img_utils import _get_first_media_path, draw_text_on_image, load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.data.reader_model import ReaderModel
 
 class ChapterPanel(CollapsiblePanel):
@@ -95,10 +95,11 @@ class ChapterPanel(CollapsiblePanel):
                 chapter_name = Path(str(chapter)).name if not isinstance(chapter, dict) else chapter.get('name', Path(chapter['path']).name)
                 widget = PageThumbnail(i, chapter_name)
                 widget.clicked.connect(self._change_chapter_by_thumbnail)
+                widget.set_media_type(chapter_path)
                 self.thumbnails_layout.insertWidget(self.thumbnails_layout.count(), widget)
                 self.chapter_thumbnail_widgets.append(widget)
 
-                first_image_path = _get_first_image_path(chapter)
+                first_image_path = _get_first_media_path(chapter)
                 if first_image_path:
                     worker = ThumbnailWorker(i, first_image_path, self._load_thumbnail)
                     worker.signals.finished.connect(self._on_chapter_thumbnail_loaded)

@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QMouseEvent
 from PyQt6.QtCore import Qt, pyqtSignal, QMargins
-from src.utils.img_utils import crop_pixmap
+from src.utils.img_utils import crop_pixmap, VIDEO_EXTS
 
 class PageThumbnail(QWidget):
     clicked = pyqtSignal(int)
@@ -42,6 +42,18 @@ class PageThumbnail(QWidget):
         self.alt_label.adjustSize()
         if alt_count <= 1:
             self.alt_label.hide()
+        
+        # Media Type Indicator
+        self.media_indicator = QLabel(self.image_container)
+        self.media_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.media_indicator.setStyleSheet("""
+            background-color: rgba(0, 0, 0, 160);
+            color: white;
+            border-radius: 4px;
+            font-size: 10px;
+            padding: 2px 4px;
+        """)
+        self.media_indicator.hide()
 
         if self.fixed_width is None:
             self.image_container.setFixedSize(100, 140)
@@ -49,6 +61,8 @@ class PageThumbnail(QWidget):
             self.text_label.setGeometry(0, 120, 100, 20)
             # Position alt label
             self.alt_label.move(100 - self.alt_label.width() - 5, 5)
+            # Position media indicator
+            self.media_indicator.move(5, 5)
 
         self._hover = False
         self._selected = False      # Active page (navigation)
@@ -127,6 +141,28 @@ class PageThumbnail(QWidget):
             cropped = crop_pixmap(pixmap, 100, 140)
             self.image_label.setPixmap(cropped)
             self.alt_label.raise_()
+            self.media_indicator.raise_()
+
+    def set_media_type(self, path: str):
+        if not path:
+            self.media_indicator.hide()
+            return
+            
+        path_lower = path.lower()
+        is_video = any(path_lower.endswith(ext) for ext in VIDEO_EXTS)
+        is_archive = any(path_lower.endswith(ext) for ext in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'})
+        
+        if is_video:
+            self.media_indicator.setText("🎬")
+            self.media_indicator.show()
+        elif is_archive:
+            self.media_indicator.setText("📦")
+            self.media_indicator.show()
+        else:
+            self.media_indicator.hide()
+            
+        self.media_indicator.adjustSize()
+        self.media_indicator.raise_()
 
     def set_selected(self, selected: bool):
         self._selected = selected
