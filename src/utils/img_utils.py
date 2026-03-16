@@ -123,35 +123,40 @@ def is_image_monotone(image_path: str, threshold: float = 10.0) -> bool:
         # If any error occurs, assume it's not a valid image for a thumbnail
         return True
 
-def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
-    if pixmap.isNull() or pixmap.width() == 0 or pixmap.height() == 0:
-        return pixmap
+def crop_qimage(image: QImage, width: int, height: int) -> QImage:
+    if image.isNull() or image.width() == 0 or image.height() == 0:
+        return image
     
-    scaled_pixmap = pixmap.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-    x = (scaled_pixmap.width() - width) // 2
-    y = (scaled_pixmap.height() - height) // 2
-    return scaled_pixmap.copy(x, y, width, height)
+    scaled_image = image.scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+    x = (scaled_image.width() - width) // 2
+    y = (scaled_image.height() - height) // 2
+    return scaled_image.copy(x, y, width, height)
 
-def create_thumbnail(image: QImage, width: int, height: int) -> QPixmap:
+def crop_pixmap(pixmap: QPixmap, width: int, height: int) -> QPixmap:
+    return QPixmap.fromImage(crop_qimage(pixmap.toImage(), width, height))
+
+def create_thumbnail(image: QImage, width: int, height: int) -> QImage:
     if image.isNull():
-        return empty_placeholder(width, height)
+        return empty_placeholder_qimage(width, height)
          
-    pixmap = QPixmap.fromImage(image)
-    return crop_pixmap(pixmap, width, height)
+    return crop_qimage(image, width, height)
+
+def empty_placeholder_qimage(width:int=150, height:int=200):
+    img = QImage(width, height, QImage.Format.Format_RGB32)
+    img.fill(QColor("black"))
+    return img
 
 def empty_placeholder(width:int=150, height:int=200):
-    pixmap = QPixmap(width, height)
-    pixmap.fill(QColor("black"))
-    return pixmap
+    return QPixmap.fromImage(empty_placeholder_qimage(width, height))
 
-def load_thumbnail(reader:QImageReader, width:int, height:int, quality:int=50, source_size:QSize=None):
+def load_thumbnail(reader:QImageReader, width:int, height:int, quality:int=50, source_size:QSize=None) -> QImage:
     if source_size:
         size = source_size
     else:
         size = reader.size()
     
     if size.isEmpty():
-        return empty_placeholder(width, height)
+        return empty_placeholder_qimage(width, height)
     
     src_w = size.width()
     src_h = size.height()
@@ -165,21 +170,20 @@ def load_thumbnail(reader:QImageReader, width:int, height:int, quality:int=50, s
     reader.setQuality(quality)  # Lower quality for faster loading
     image = reader.read()
     if image.isNull():
-        return empty_placeholder(width, height)
+        return empty_placeholder_qimage(width, height)
     
-    pixmap = QPixmap.fromImage(image)
-    return crop_pixmap(pixmap, width, height)
+    return crop_qimage(image, width, height)
 
-def load_thumbnail_from_path(path, width=150, height=200, crop=None):
+def load_thumbnail_from_path(path, width=150, height=200, crop=None) -> QImage:
     path_str = str(path)
     try:
         cache_key = get_cache_key(path_str, width, height, crop)
         cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
 
         if cached_thumb_path.exists():
-            pixmap = QPixmap()
-            if pixmap.load(str(cached_thumb_path)):
-                return pixmap
+            q_image = QImage()
+            if q_image.load(str(cached_thumb_path)):
+                return q_image
     except FileNotFoundError:
         return None # Original file not found
         
@@ -187,7 +191,7 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
     archive_extensions = {".zip", ".cbz", ".7z", ".rar", ".cbr", ".cb7"}
     file_ext = Path(path_str).suffix.lower()
 
-    pixmap = None
+    q_image = None
 
     if file_ext in archive_extensions:
         return load_thumbnail_from_zip(path, width, height)
@@ -209,12 +213,13 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     h, w, ch = rgb_frame.shape
                     bytes_per_line = ch * w
-                    q_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-                    pixmap = QPixmap.fromImage(q_image)
+                    q_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
+                    # Video frames are already cropped/scaled by cv2, so just return
+                    return q_image
             cap.release()
         except Exception as e:
             print(f"Error creating video thumbnail: {e}")
-            pixmap = None # Ensure pixmap is None on error
+            q_image = None # Ensure q_image is None on error
     else:
         # Existing image loading logic
         reader = QImageReader(path_str)
@@ -230,27 +235,27 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None):
                     effective_size = QSize(original_size.width() // 2, original_size.height())
                     reader.setClipRect(QRect(original_size.width() // 2, 0, original_size.width() // 2, original_size.height()))
 
-        pixmap = load_thumbnail(reader, width, height, source_size=effective_size)
+        q_image = load_thumbnail(reader, width, height, source_size=effective_size)
 
-    if pixmap and not pixmap.isNull():
+    if q_image and not q_image.isNull():
         # Scale (Crop) and save the thumbnail
-        scaled_pixmap = crop_pixmap(pixmap, width, height)
-        scaled_pixmap.save(str(cached_thumb_path), "PNG")
-        return scaled_pixmap
+        scaled_img = crop_qimage(q_image, width, height)
+        scaled_img.save(str(cached_thumb_path), "PNG")
+        return scaled_img
 
     # Return a placeholder if everything failed
-    return empty_placeholder(width, height)
+    return empty_placeholder_qimage(width, height)
 
-def load_thumbnail_from_zip(path, width=150, height=200):
+def load_thumbnail_from_zip(path, width=150, height=200) -> QImage:
     path_str = str(path)
     try:
         cache_key = get_cache_key(path_str, width, height)
         cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
 
         if cached_thumb_path.exists():
-            pixmap = QPixmap()
-            if pixmap.load(str(cached_thumb_path)):
-                return pixmap
+            img = QImage()
+            if img.load(str(cached_thumb_path)):
+                return img
     except FileNotFoundError:
         return None # Original file not found
 
@@ -298,12 +303,12 @@ def load_thumbnail_from_zip(path, width=150, height=200):
                             buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 
                             reader = QImageReader(buffer, QByteArray())
-                            pixmap = load_thumbnail(reader, width, height)
+                            q_image = load_thumbnail(reader, width, height)
 
-                            if pixmap and not pixmap.isNull():
-                                pixmap.save(str(cached_thumb_path), "PNG")
+                            if q_image and not q_image.isNull():
+                                q_image.save(str(cached_thumb_path), "PNG")
 
-                            return pixmap
+                            return q_image
                 except (zipfile.BadZipFile, KeyError, RuntimeError, OSError, PermissionError, Exception) as e:
                     print(f"Error reading zip for thumbnail {path}: {e}")
                     pass
@@ -323,26 +328,26 @@ def load_thumbnail_from_zip(path, width=150, height=200):
                     buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 
                     reader = QImageReader(buffer, QByteArray())
-                    pixmap = load_thumbnail(reader, width, height)
+                    q_image = load_thumbnail(reader, width, height)
 
-                    if pixmap and not pixmap.isNull():
-                        pixmap.save(str(cached_thumb_path), "PNG")
+                    if q_image and not q_image.isNull():
+                        q_image.save(str(cached_thumb_path), "PNG")
                     
-                    return pixmap
+                    return q_image
         return None
     except zipfile.BadZipFile:
         return None
         
-def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=None):
+def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=None) -> QImage:
     from src.utils.archive_utils import SevenZipHandler
     try:
         cache_key = get_virtual_path_cache_key(virtual_path, width, height, crop)
         cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
 
         if cached_thumb_path.exists():
-            pixmap = QPixmap()
-            if pixmap.load(str(cached_thumb_path)):
-                return pixmap
+            img = QImage()
+            if img.load(str(cached_thumb_path)):
+                return img
     except FileNotFoundError:
         return None # Original zip file not found
 
@@ -385,12 +390,12 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
             original_image = reader.read()
 
             if not original_image.isNull():
-                thumb_pixmap = create_thumbnail(original_image, width, height)
+                thumb_image = create_thumbnail(original_image, width, height)
                 # Save to cache
                 if not CACHE_DIR.exists():
                     CACHE_DIR.mkdir(parents=True)
-                thumb_pixmap.save(str(cached_thumb_path), "PNG")
-                return thumb_pixmap
+                thumb_image.save(str(cached_thumb_path), "PNG")
+                return thumb_image
                 
         return None
     except Exception as e:
@@ -447,7 +452,7 @@ def get_image_data_from_zip(virtual_path):
         pass
     return None
 
-def load_pixmap_for_thumbnailing(path: str, target_width: int = 0) -> QPixmap | None:
+def load_qimage_for_thumbnailing(path: str, target_width: int = 0) -> QImage | None:
     reader = None
     buffer = None # Keep buffer in scope
 
@@ -476,7 +481,7 @@ def load_pixmap_for_thumbnailing(path: str, target_width: int = 0) -> QPixmap | 
     if image.isNull():
         return None
 
-    return QPixmap.fromImage(image)
+    return image
 
 def get_chapter_number(path):
     """Extract a representative number for sorting from a filename or path."""

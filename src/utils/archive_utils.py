@@ -11,6 +11,16 @@ ARCHIVE_CACHE_DIR = Path('.cache/archives')
 ARCHIVE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 _LIST_LOCK = threading.Lock()
+_ARCHIVE_LOCKS = {}
+_LOCKS_LOCK = threading.Lock()
+_GLOBAL_7Z_SEMAPHORE = threading.Semaphore(4) # Limit concurrent 7z processes
+
+def get_archive_lock(archive_path: str) -> threading.Lock:
+    path_str = str(archive_path)
+    with _LOCKS_LOCK:
+        if path_str not in _ARCHIVE_LOCKS:
+            _ARCHIVE_LOCKS[path_str] = threading.Lock()
+        return _ARCHIVE_LOCKS[path_str]
 
 def find_executable(names: list[str], extra_paths: list[str] = []) -> Optional[str]:
     """
@@ -83,15 +93,16 @@ class SevenZipHandler:
                     startupinfo = subprocess.STARTUPINFO()
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     
-                result = subprocess.run(
-                    cmd, 
-                    capture_output=True, 
-                    text=True, 
-                    encoding='utf-8',
-                    errors='replace',
-                    startupinfo=startupinfo,
-                    timeout=timeout
-                )
+                with _GLOBAL_7Z_SEMAPHORE:
+                    result = subprocess.run(
+                        cmd, 
+                        capture_output=True, 
+                        text=True, 
+                        encoding='utf-8',
+                        errors='replace',
+                        startupinfo=startupinfo,
+                        timeout=timeout
+                    )
                 
                 if result.returncode != 0:
                     print(f"7z Error listing {archive_path}: {result.stderr}")
@@ -155,20 +166,26 @@ class SevenZipHandler:
             return str(target_path)
             
         try:
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            # 1. Try 7-Zip extraction
-            # 'x' extracts with full paths, '-y' assumes Yes on all queries
-            cmd = [SEVEN_ZIP_PATH, "x", str(archive_path), f"-o{extract_dir}", internal_path, "-y"]
-            
-            startupinfo = None
-            if platform.system() == 'Windows':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            with get_archive_lock(archive_path):
+                # Re-check existence inside lock
+                if target_path.exists():
+                    return str(target_path)
                 
-            subprocess.run(cmd, capture_output=True, startupinfo=startupinfo, timeout=timeout)
-            
-            if target_path.exists():
-                return str(target_path)
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                # 1. Try 7-Zip extraction
+                # 'x' extracts with full paths, '-y' assumes Yes on all queries
+                cmd = [SEVEN_ZIP_PATH, "x", str(archive_path), f"-o{extract_dir}", internal_path, "-y"]
+                
+                startupinfo = None
+                if platform.system() == 'Windows':
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                
+                with _GLOBAL_7Z_SEMAPHORE:
+                    subprocess.run(cmd, capture_output=True, startupinfo=startupinfo, timeout=timeout)
+                
+                if target_path.exists():
+                    return str(target_path)
 
             # 2. Safety Fallback: Use zipfile for .zip/.cbz if 7-zip failed to find the file
             # This handles cases where Python and 7x have different ideas about the internal filename
@@ -239,16 +256,16 @@ class SevenZipHandler:
             if platform.system() == 'Windows':
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                
-            process = subprocess.Popen(
-                cmd, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                startupinfo=startupinfo
-            )
             
-            process.wait()
-            return process.returncode == 0
+            with get_archive_lock(archive_path):
+                with _GLOBAL_7Z_SEMAPHORE:
+                    result = subprocess.run(
+                        cmd, 
+                        capture_output=True,
+                        startupinfo=startupinfo
+                    )
+            
+            return result.returncode == 0
         except Exception:
             return False
 

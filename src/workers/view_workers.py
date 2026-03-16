@@ -92,7 +92,7 @@ class AnimationFrameLoaderWorker(QRunnable):
                 for i in range(getattr(img, "n_frames", 1)):
                     try:
                         img.seek(i)
-                        q_image = ImageQt.toqpixmap(img)
+                        q_image = ImageQt.toqimage(img).copy()
                         frames.append(q_image)
                     except Exception:
                         # If a single frame fails, skip it and continue
@@ -108,15 +108,14 @@ class AnimationFrameLoaderWorker(QRunnable):
         self.signals.finished.emit(result)
 
 class ChapterLoaderSignals(QObject):
-    finished = pyqtSignal(dict)
+    finished = pyqtSignal(dict) # Contains initial_image: QImage
 
 class ChapterLoaderWorker(QRunnable):
-    def __init__(self, manga_dir: str, series_path: str, start_from_end: bool, load_pixmap_func, sort_mode: str = 'name'):
+    def __init__(self, manga_dir: str, series_path: str, start_from_end: bool, sort_mode: str = 'name'):
         super().__init__()
         self.manga_dir = manga_dir
         self.series_path = series_path
         self.start_from_end = start_from_end
-        self.load_pixmap = load_pixmap_func
         self.sort_mode = sort_mode
         self.signals = ChapterLoaderSignals()
 
@@ -127,7 +126,7 @@ class ChapterLoaderWorker(QRunnable):
                 "manga_dir": None,
                 "images": [],
                 "initial_index": 0,
-                "initial_pixmap": None,
+                "initial_image": None,
                 "start_from_end": False
             })
             return
@@ -145,7 +144,7 @@ class ChapterLoaderWorker(QRunnable):
         if self.start_from_end:
             initial_index = len(grouped_pages) - 1
 
-        initial_pixmap = None
+        initial_image = None
         if grouped_pages:
             if 0 <= initial_index < len(grouped_pages):
                 # Use the first variant of the page
@@ -155,9 +154,16 @@ class ChapterLoaderWorker(QRunnable):
                 if suffix in IMAGE_EXTS:
                     # Resolve path for extraction cache if needed
                     resolved = self._resolve_path(candidate)
-                    initial_pixmap = self.load_pixmap(resolved)
+                    
+                    if '|' not in resolved:
+                        reader = QImageReader(resolved)
+                        initial_image = reader.read()
+                    else:
+                        img_data = get_image_data_from_zip(resolved)
+                        if img_data:
+                            initial_image = QImage.fromData(img_data)
                 else:
-                    initial_pixmap = None
+                    initial_image = None
 
         # Background Spread Detection
         self._detect_spreads_in_background(grouped_pages)
@@ -166,7 +172,7 @@ class ChapterLoaderWorker(QRunnable):
             "manga_dir": self.manga_dir,
             "images": grouped_pages,
             "initial_index": initial_index,
-            "initial_pixmap": initial_pixmap,
+            "initial_image": initial_image,
             "start_from_end": self.start_from_end
         }
         self.signals.finished.emit(result)
@@ -375,7 +381,7 @@ class ChapterLoaderWorker(QRunnable):
         return []
 
 class WorkerSignals(QObject):
-    finished = pyqtSignal(int, QPixmap, int)
+    finished = pyqtSignal(int, QImage, int)
 
 class PixmapLoader(QRunnable):
     def __init__(self, path: str, index: int, load_func, generation_id: int):
@@ -388,12 +394,19 @@ class PixmapLoader(QRunnable):
 
     @pyqtSlot()
     def run(self):
-        """
-        For videos the load_func will likely return a null QPixmap.
-        That's expected — callers should handle the absence of a pixmap (e.g. play video instead).
-        """
-        pixmap = self.load_func(self.path)
-        self.signals.finished.emit(self.index, pixmap, self.generation_id)
+        # We now assume load_func returns QImage or bytes. 
+        # For simplicity in this project's current structure, we'll try to use QImageReader directly or wrapper
+        from src.utils.img_utils import get_image_data_from_zip
+        
+        q_image = QImage()
+        if '|' in self.path:
+            img_data = get_image_data_from_zip(self.path)
+            if img_data:
+                q_image.loadFromData(img_data)
+        else:
+            q_image.load(self.path)
+            
+        self.signals.finished.emit(self.index, q_image, self.generation_id)
 
 class VideoFrameExtractorSignals(QObject):
     finished = pyqtSignal(str, QImage, int, float) # path, image, total_frames, fps

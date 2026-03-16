@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, QSizePolicy,
     QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter
 )
-from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon, QCursor, QPainter, QBrush, QColor
+from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon, QCursor, QPainter, QBrush, QColor, QImage
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent, QSize
 
 from src.ui.reader_view import ReaderView
@@ -521,7 +521,7 @@ class FolderGrid(QWidget):
         if loader in self._active_recent_loaders:
             self._active_recent_loaders.remove(loader)
 
-    def on_recent_item_loaded(self, pix, series, idx, generation, item_type):
+    def on_recent_item_loaded(self, qimg, series, idx, generation, item_type):
         if generation != self.recent_loading_generation:
             return
         
@@ -535,7 +535,9 @@ class FolderGrid(QWidget):
             widget.set_as_missing()
             widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
         else:
-            widget.set_pixmap(pix)
+            if qimg and not qimg.isNull():
+                pixmap = QPixmap.fromImage(qimg)
+                widget.set_pixmap(pixmap)
             widget.set_chapter_number(series)
             widget.clicked.connect(self.recent_series_selected)
 
@@ -601,10 +603,10 @@ class FolderGrid(QWidget):
         self.recent_scroll_left_btn.setEnabled(scroll_bar.value() > 0)
         self.recent_scroll_right_btn.setEnabled(scroll_bar.value() < scroll_bar.maximum())
 
-    def on_item_loaded(self, pix, series, idx, generation, item_type):
+    def on_item_loaded(self, qimg, series, idx, generation, item_type):
         if generation != self.loading_generation:
             return
-        self.received_items[idx] = (pix, series, item_type)
+        self.received_items[idx] = (qimg, series, item_type)
         self._display_pending_items()
 
     def on_item_invalid(self, idx, generation):
@@ -625,7 +627,7 @@ class FolderGrid(QWidget):
             item_data = self.received_items.pop(self.next_item_to_display)
             
             if item_data is not None:
-                pix, series, item_type = item_data
+                qimg, series, item_type = item_data
                 widget = ThumbnailWidget(series, self.library_manager)
 
                 series_path = Path(series['path'])
@@ -636,7 +638,9 @@ class FolderGrid(QWidget):
                     widget.set_as_missing()
                     widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
                 else:
-                    widget.set_pixmap(pix)
+                    if qimg and not qimg.isNull():
+                        pixmap = QPixmap.fromImage(qimg)
+                        widget.set_pixmap(pixmap)
                     widget.clicked.connect(self.item_selected)
 
                 widget.remove_requested.connect(self.remove_series)

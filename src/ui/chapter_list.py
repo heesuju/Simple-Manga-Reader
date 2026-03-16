@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QPushButt
 import os
 from PyQt6.QtGui import (
     QIcon, QPixmap, QPalette, QColor, QAction,
-    QPainter, QLinearGradient, QMouseEvent)
+    QPainter, QLinearGradient, QMouseEvent, QImage)
 from PyQt6.QtCore import (
     Qt, QThreadPool, pyqtSignal, QRectF, 
     QObject, QRunnable, QTimer, QSize
@@ -1029,10 +1029,11 @@ class ChapterListView(QWidget):
             
             QThreadPool.globalInstance().start(worker)
 
-    def on_thumbnail_loaded(self, pixmap, item, index, generation, item_type):
+    def on_thumbnail_loaded(self, qimg, item, index, generation, item_type):
         widget = getattr(self, '_chapter_loader_map', {}).get(index)
-        if pixmap and not pixmap.isNull() and widget is not None:
+        if qimg and not qimg.isNull() and widget is not None:
             try:
+                pixmap = QPixmap.fromImage(qimg)
                 widget.set_pixmap(pixmap)
             except RuntimeError:
                 # Widget was likely deleted

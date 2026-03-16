@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QImage
 from src.utils.img_utils import is_image_folder, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path, get_chapter_number, is_image_monotone
 
 class ItemLoaderSignals(QObject):
-    item_loaded = pyqtSignal(QPixmap, object, int, int, str)  # pix, path, idx, gen, item_type
+    item_loaded = pyqtSignal(QImage, object, int, int, str)  # qimg, path, idx, gen, item_type
     item_invalid = pyqtSignal(int, int)  # idx, gen
     loading_finished = pyqtSignal(int) # gen
 
@@ -34,14 +34,14 @@ class ItemLoader(QRunnable):
         return _get_first_media_path(str(folder_path)) is not None
 
     def run(self):
-        from PyQt6.QtGui import QPixmap, QColor
+        from PyQt6.QtGui import QImage, QColor
         from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path, _get_first_media_path
         
         for idx, item in enumerate(self.items):
             if self._is_aborted:
                 return
             item_type = ''
-            pix = None
+            qimg = None
             item_path = item
 
             if self.item_type == 'series':
@@ -49,9 +49,9 @@ class ItemLoader(QRunnable):
                 cover_image = item.get('cover_image')
                 if cover_image:
                     if '|' in cover_image:
-                        pix = load_thumbnail_from_virtual_path(cover_image, self.thumb_width, self.thumb_height)
+                        qimg = load_thumbnail_from_virtual_path(cover_image, self.thumb_width, self.thumb_height)
                     else:
-                        pix = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
+                        qimg = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
                 # 1. Try existing cover_path
@@ -63,11 +63,11 @@ class ItemLoader(QRunnable):
                 
                 if thumbnail_path:
                     if '|' in thumbnail_path:
-                        pix = load_thumbnail_from_virtual_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                        qimg = load_thumbnail_from_virtual_path(thumbnail_path, self.thumb_width, self.thumb_height)
                     else:
-                        pix = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                        qimg = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
                     
-                    if pix and not pix.isNull():
+                    if qimg and not qimg.isNull():
                         if self.library_manager and 'id' in item:
                             self.library_manager.set_chapter_cover_path(item['id'], thumbnail_path)
                         item['cover_path'] = thumbnail_path
@@ -86,21 +86,21 @@ class ItemLoader(QRunnable):
                 if media_path:
                     if '|' in media_path:
                         item_type = 'archive' if media_path.split('|')[0].lower().endswith(('.zip', '.cbz', '.7z', '.rar')) else 'image'
-                        pix = load_thumbnail_from_virtual_path(media_path, self.thumb_width, self.thumb_height, crop)
+                        qimg = load_thumbnail_from_virtual_path(media_path, self.thumb_width, self.thumb_height, crop)
                     elif Path(media_path).is_dir():
                         item_type = 'folder'
-                        pix = None # Should not happen with _get_first_media_path returning a file
+                        qimg = None # Should not happen with _get_first_media_path returning a file
                     else:
                         item_type = 'image'
-                        pix = load_thumbnail_from_path(media_path, self.thumb_width, self.thumb_height, crop)
+                        qimg = load_thumbnail_from_path(media_path, self.thumb_width, self.thumb_height, crop)
                 else:
                     self.signals.item_invalid.emit(idx, self.generation)
                     continue
 
-            if not pix or pix.isNull():
-                pix = QPixmap(self.thumb_width, self.thumb_height)
-                pix.fill(QColor("gray"))
+            if not qimg or qimg.isNull():
+                from src.utils.img_utils import empty_placeholder_qimage
+                qimg = empty_placeholder_qimage(self.thumb_width, self.thumb_height)
 
-            self.signals.item_loaded.emit(pix, item, idx, self.generation, item_type)
+            self.signals.item_loaded.emit(qimg, item, idx, self.generation, item_type)
         
         self.signals.loading_finished.emit(self.generation)

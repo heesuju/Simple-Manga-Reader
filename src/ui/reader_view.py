@@ -1089,7 +1089,6 @@ class ReaderView(QWidget):
             manga_dir=self.model.manga_dir,
             series_path=series_path,
             start_from_end=start_from_end,
-            load_pixmap_func=self.image_viewer._load_pixmap,
             sort_mode=sort_mode
         )
         worker.signals.finished.connect(self._on_chapter_loaded)

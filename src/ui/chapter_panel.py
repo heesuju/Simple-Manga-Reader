@@ -3,6 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QLabel
 
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
+from PyQt6.QtGui import QAction, QCursor, QKeySequence, QPixmap
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.workers.thumbnail_worker import ThumbnailWorker
@@ -115,8 +116,9 @@ class ChapterPanel(CollapsiblePanel):
              if self.model and self.model.chapter_index < len(self.chapter_thumbnail_widgets):
                  self._update_chapter_selection(self.model.chapter_index)
 
-    def _on_chapter_thumbnail_loaded(self, index, pixmap):
+    def _on_chapter_thumbnail_loaded(self, index, qimg):
         if index < len(self.chapter_thumbnail_widgets):
+            pixmap = QPixmap.fromImage(qimg)
             self.chapter_thumbnail_widgets[index].set_pixmap(pixmap)
 
     def _update_chapter_selection(self, index):

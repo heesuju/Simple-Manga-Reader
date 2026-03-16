@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox
 )
-from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor, QLinearGradient, QBrush
+from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor, QLinearGradient, QBrush, QImage
 from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup, QPointF, pyqtProperty
 from src.utils.img_utils import crop_pixmap, get_chapter_number, load_thumbnail_from_zip
 from src.ui.info_dialog import InfoDialog
@@ -247,8 +247,11 @@ class ThumbnailWidget(QWidget):
             # Reload cover image
             cover_path = self.series.get('cover_image')
             if cover_path and os.path.exists(cover_path):
+                pixmap = None
                 if cover_path.lower().endswith(('.zip', '.cbz')):
-                    pixmap = load_thumbnail_from_zip(cover_path)
+                    q_img = load_thumbnail_from_zip(cover_path)
+                    if q_img and not q_img.isNull():
+                        pixmap = QPixmap.fromImage(q_img)
                 else:
                     pixmap = QPixmap(cover_path)
                     

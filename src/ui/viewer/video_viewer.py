@@ -3,7 +3,7 @@ import time
 import shutil
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
-from PyQt6.QtGui import QPixmap, QAction
+from PyQt6.QtGui import QPixmap, QAction, QImage
 from PyQt6.QtWidgets import QMenu, QFileDialog, QGraphicsPixmapItem
 from PyQt6.QtCore import QUrl, QSizeF, QRectF, Qt, pyqtSignal, QPointF
 

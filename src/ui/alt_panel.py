@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QComboBox
 )
 from PyQt6.QtCore import Qt, QTimer, QSize
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
 from src.utils.resource_utils import resource_path
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path
@@ -292,8 +292,9 @@ class AltPanel(QWidget):
                 worker.signals.finished.connect(self._on_thumbnail_loaded)
                 self.thread_pool.start(worker)
             else:
-                pixmap = self._load_thumbnail(resolved)
-                if pixmap:
+                qimg = self._load_thumbnail(resolved)
+                if qimg and not qimg.isNull():
+                    pixmap = QPixmap.fromImage(qimg)
                     thumb.set_pixmap(pixmap)
 
         # Show panel
@@ -316,8 +317,9 @@ class AltPanel(QWidget):
         except Exception:
             return None
 
-    def _on_thumbnail_loaded(self, index, pixmap):
-        if index < len(self.alt_widgets):
+    def _on_thumbnail_loaded(self, index, qimg):
+        if qimg and not qimg.isNull() and index < len(self.alt_widgets):
+            pixmap = QPixmap.fromImage(qimg)
             self.alt_widgets[index].set_pixmap(pixmap)
 
     def _resolve_path(self, path_str):

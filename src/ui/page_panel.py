@@ -2,7 +2,7 @@ import os
 from typing import Set, List
 from PyQt6.QtCore import QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog
-from PyQt6.QtGui import QAction, QCursor, QKeySequence
+from PyQt6.QtGui import QAction, QCursor, QKeySequence, QPixmap
 
 from src.ui.base.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
@@ -184,23 +184,23 @@ class PagePanel(CollapsiblePanel):
                     if item_data['is_spread']:
                         target = right_page if right_page else left_page
                         if target and hasattr(target, 'path'):
-                             worker = ThumbnailWorker(i, target.path, self._load_thumbnail)
-                             worker.signals.finished.connect(lambda idx, p, w=widget: w.set_spread_pixmap(p))
-                             self.thread_pool.start(worker)
+                            worker = ThumbnailWorker(i, target.path, self._load_thumbnail)
+                            worker.signals.finished.connect(lambda idx, img, w=widget: w.set_spread_pixmap(QPixmap.fromImage(img)))
+                            self.thread_pool.start(worker)
                     else:
                         if left_page and hasattr(left_page, 'path'):
-                             worker_l = ThumbnailWorker(i, left_page.path, self._load_thumbnail)
-                             worker_l.signals.finished.connect(lambda idx, p, w=widget: w.set_visual_left_pixmap(p))
-                             self.thread_pool.start(worker_l)
+                            worker_l = ThumbnailWorker(i, left_page.path, self._load_thumbnail)
+                            worker_l.signals.finished.connect(lambda idx, img, w=widget: w.set_visual_left_pixmap(QPixmap.fromImage(img)))
+                            self.thread_pool.start(worker_l)
                         else:
-                             widget.set_visual_left_pixmap(empty_placeholder(100, 140))
+                            widget.set_visual_left_pixmap(empty_placeholder(100, 140))
                         
                         if right_page and hasattr(right_page, 'path'):
-                             worker_r = ThumbnailWorker(i, right_page.path, self._load_thumbnail)
-                             worker_r.signals.finished.connect(lambda idx, p, w=widget: w.set_visual_right_pixmap(p))
-                             self.thread_pool.start(worker_r)
+                            worker_r = ThumbnailWorker(i, right_page.path, self._load_thumbnail)
+                            worker_r.signals.finished.connect(lambda idx, img, w=widget: w.set_visual_right_pixmap(QPixmap.fromImage(img)))
+                            self.thread_pool.start(worker_r)
                         else:
-                             widget.set_visual_right_pixmap(empty_placeholder(100, 140))
+                            widget.set_visual_right_pixmap(empty_placeholder(100, 140))
 
 
                 else:
@@ -241,10 +241,11 @@ class PagePanel(CollapsiblePanel):
             self._update_page_selection(self.model.current_index, snap=True)
 
 
-    def _on_page_thumbnail_loaded(self, index, pixmap):
+    def _on_page_thumbnail_loaded(self, index, qimg):
         if index < len(self.page_thumbnail_widgets):
             widget = self.page_thumbnail_widgets[index]
-            if isinstance(widget, PageThumbnail):
+            if isinstance(widget, (PageThumbnail, DoublePageThumbnail)):
+                pixmap = QPixmap.fromImage(qimg)
                 widget.set_pixmap(pixmap)
 
     def _update_page_selection(self, index, snap=True):
