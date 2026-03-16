@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 from src.core.alt_manager import AltManager
+from src.utils.str_utils import natural_sort_key
 
 # prefer treating images and video separately for cover-selection vs listing
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif'}
@@ -148,9 +149,9 @@ class LibraryScanner:
                     parent = str(Path(x['path'].split('|')[1]).parent)
                 else:
                     parent = str(Path(x['path']).relative_to(item).parent)
-                return (parent, x['name'].lower())
+                return (natural_sort_key(parent), natural_sort_key(x['name']))
             except ValueError:
-                return ('', x['name'].lower())
+                return ([], natural_sort_key(x['name']))
 
         sorted_chapters = sorted(chapters, key=sort_key)
         
@@ -342,7 +343,7 @@ class LibraryScanner:
             
         def sort_key(x):
             parent = str(Path(x['path']).parent)
-            return (parent, x['name'].lower())
+            return (parent, natural_sort_key(x['name']))
 
         return sorted(chapters, key=sort_key)
 

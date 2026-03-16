@@ -821,9 +821,11 @@ class ChapterListView(QWidget):
                     chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
                     chapters_at_level.append(chap)
 
-        for f in sorted(list(folders_at_level)):
+        from src.utils.str_utils import natural_sort_key
+        for f in sorted(list(folders_at_level), key=natural_sort_key):
             self.display_items.append({'is_folder': True, 'name': f})
         
+        chapters_at_level.sort(key=lambda x: natural_sort_key(x['name']))
         self.display_items.extend(chapters_at_level)
         self.display_chapters = chapters_at_level
 
