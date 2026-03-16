@@ -256,15 +256,12 @@ def load_thumbnail_from_zip(path, width=150, height=200):
         path_obj = Path(path_str)
         ext = path_obj.suffix.lower()
         
-        # 7z/RAR support
-        if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
-            if SevenZipHandler.is_available():
-                files = SevenZipHandler.list_files(path_str)
-                image_files = sorted([f for f in files if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
-                
-                if not image_files:
-                    return None
-                    
+        # Try 7-Zip first for ALL archives if available
+        if SevenZipHandler.is_available():
+            files = SevenZipHandler.list_files(path_str)
+            image_files = sorted([f for f in files if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
+            
+            if image_files:
                 first_image_name = image_files[0]
                 image_data = SevenZipHandler.read_file(path_str, first_image_name)
                 
@@ -280,37 +277,49 @@ def load_thumbnail_from_zip(path, width=150, height=200):
                         pixmap.save(str(cached_thumb_path), "PNG")
                     
                     return pixmap
-            return None
 
-        # Standard Zip
-        from src.utils.img_utils import ZIP_CACHE
-        zf = ZIP_CACHE.get_zip(path)
-        if not zf:
-            return None
-            
-        try:
-            with ZIP_CACHE.read_lock:
-                image_files = sorted([f for f in zf.namelist() if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
-                if not image_files:
-                    return None
-
-                first_image_name = image_files[0]
-                with zf.open(first_image_name) as f:
-                    image_data = f.read()
+        # Standard Zip fallback
+        if ext in {'.zip', '.cbz'}:
+            from src.utils.img_utils import ZIP_CACHE
+            zf = ZIP_CACHE.get_zip(path)
+            if not zf:
+                return None
                 
-            byte_array = QByteArray(image_data)
-            buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+            try:
+                with ZIP_CACHE.read_lock:
+                    # Get list of files with proper encoding fallback
+                    namelist = []
+                    for info in zf.infolist():
+                        name = info.filename
+                        if not (info.flag_bits & 0x800):
+                            try:
+                                name = name.encode('cp437').decode('shift-jis')
+                            except (UnicodeEncodeError, UnicodeDecodeError):
+                                pass
+                        namelist.append((name, info.filename)) # Store (decoded, original)
 
-            reader = QImageReader(buffer, QByteArray())
-            pixmap = load_thumbnail(reader, width, height)
+                    image_files = sorted([pair for pair in namelist if pair[0].lower().endswith(IMG_EXTS) and not pair[0].startswith('__MACOSX')])
+                    if not image_files:
+                        return None
 
-            if pixmap and not pixmap.isNull():
-                pixmap.save(str(cached_thumb_path), "PNG")
+                    decoded_name, original_name = image_files[0]
+                    with zf.open(original_name) as f:
+                        image_data = f.read()
+                    
+                byte_array = QByteArray(image_data)
+                buffer = QBuffer(byte_array)
+                buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 
-            return pixmap
-        except (zipfile.BadZipFile, KeyError, RuntimeError):
-            return None
+                reader = QImageReader(buffer, QByteArray())
+                pixmap = load_thumbnail(reader, width, height)
+
+                if pixmap and not pixmap.isNull():
+                    pixmap.save(str(cached_thumb_path), "PNG")
+
+                return pixmap
+            except (zipfile.BadZipFile, KeyError, RuntimeError):
+                return None
+        return None
     except zipfile.BadZipFile:
         return None
         
@@ -381,28 +390,44 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
 def get_image_data_from_zip(virtual_path):
     zip_path_str, image_name = virtual_path.split('|', 1)
     
-    ext = Path(zip_path_str).suffix.lower()
-    if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
-        from src.utils.archive_utils import SevenZipHandler
-        if SevenZipHandler.is_available():
-            return SevenZipHandler.read_file(zip_path_str, image_name)
+    # Try 7-Zip first for ALL archives
+    from src.utils.archive_utils import SevenZipHandler
+    if SevenZipHandler.is_available():
+        data = SevenZipHandler.read_file(zip_path_str, image_name)
+        if data: return data
     
     # Standard Zip support (cached)
     try:
         zf = ZIP_CACHE.get_zip(zip_path_str)
         if zf:
             with ZIP_CACHE.read_lock:
+                # Direct try
                 try:
                     with zf.open(image_name) as f:
                         return f.read()
                 except (KeyError, ValueError, RuntimeError):
-                    # Retry once if it failed (e.g., if zip was closed from another thread)
-                    image_name_fixed = image_name.replace('\\', '/')
-                    try:
-                        with zf.open(image_name_fixed) as f:
+                    pass
+
+                # Fixed separator try
+                image_name_fixed = image_name.replace('\\', '/')
+                try:
+                    with zf.open(image_name_fixed) as f:
+                        return f.read()
+                except (KeyError, ValueError, RuntimeError):
+                    pass
+
+                # Fallback: find original name by decoding CP437 -> Shift-JIS
+                for info in zf.infolist():
+                    decoded = info.filename
+                    if not (info.flag_bits & 0x800):
+                        try:
+                            decoded = decoded.encode('cp437').decode('shift-jis')
+                        except (UnicodeEncodeError, UnicodeDecodeError):
+                            continue
+                    
+                    if decoded == image_name or decoded.replace('\\', '/') == image_name_fixed:
+                        with zf.open(info.filename) as f:
                             return f.read()
-                    except (KeyError, ValueError, RuntimeError):
-                        return None
     except Exception:
         return None
     return None
@@ -475,10 +500,25 @@ def _get_first_image_path(chapter_dir):
     chapter_path = Path(chapter_dir)
     if isinstance(chapter_dir, str) and (chapter_dir.lower().endswith('.zip') or chapter_dir.lower().endswith('.cbz')):
         try:
-            with zipfile.ZipFile(chapter_dir, 'r') as zf:
-                image_files = sorted([f for f in zf.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp')) and not f.startswith('__MACOSX')])
-                if image_files:
-                    return f"{chapter_dir}|{image_files[0]}"
+            # Prefer 7-Zip logic via load_thumbnail_from_zip as it's already robust
+            thumb = load_thumbnail_from_zip(chapter_dir)
+            if thumb:
+                # We need the path string... let's just use the ziplib logic for path extraction
+                # but with the encoding fix
+                with zipfile.ZipFile(chapter_dir, 'r') as zf:
+                    namelist = []
+                    for info in zf.infolist():
+                        name = info.filename
+                        if not (info.flag_bits & 0x800):
+                            try:
+                                name = name.encode('cp437').decode('shift-jis')
+                            except (UnicodeEncodeError, UnicodeDecodeError):
+                                pass
+                        namelist.append(name)
+                    
+                    image_files = sorted([f for f in namelist if f.lower().endswith(IMG_EXTS) and not f.startswith('__MACOSX')])
+                    if image_files:
+                        return f"{chapter_dir}|{image_files[0]}"
         except zipfile.BadZipFile:
             return None
     elif chapter_path.is_dir():

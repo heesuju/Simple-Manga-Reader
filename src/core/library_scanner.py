@@ -126,18 +126,30 @@ class LibraryScanner:
         is_seven_zip = False
         
         ext = archive_path.suffix.lower()
-        if ext in {'.7z', '.rar', '.cbr', '.cb7'} and SevenZipHandler.is_available():
-            file_list = SevenZipHandler.list_files(archive_path)
-            is_seven_zip = True
         
-        # Standard Zip
-        if not file_list and not is_seven_zip:
+        # Try 7-Zip first for ALL archives if available, as it handles encoding better
+        if SevenZipHandler.is_available():
+            file_list = SevenZipHandler.list_files(str(archive_path))
+            if file_list:
+                is_seven_zip = True
+        
+        # Standard Zip fallback
+        if not file_list and ext in {'.zip', '.cbz'}:
             try:
                 with zipfile.ZipFile(archive_path, 'r') as zf:
-                    file_list = zf.namelist()
+                    for info in zf.infolist():
+                        name = info.filename
+                        # If the name is encoded in CP437 (default for non-UTF8 zippers), 
+                        # it often breaks Japanese. Try to decode as Shift-JIS.
+                        if not (info.flag_bits & 0x800): # Not UTF-8
+                            try:
+                                # zipfile decodes CP437. Re-encode and decode as Shift-JIS.
+                                name = name.encode('cp437').decode('shift-jis')
+                            except (UnicodeEncodeError, UnicodeDecodeError):
+                                pass
+                        file_list.append(name)
             except Exception:
-                if SevenZipHandler.is_available() and not is_seven_zip:
-                    file_list = SevenZipHandler.list_files(archive_path)
+                pass
         
         if not file_list:
             return []
