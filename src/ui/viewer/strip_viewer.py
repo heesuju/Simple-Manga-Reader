@@ -40,6 +40,7 @@ class StripViewer(BaseViewer):
 
         
     def set_active(self, active: bool):
+        super().set_active(active)
         if active:
             self.reader_view.page_panel.hide()
             self.reader_view.media_stack.hide()

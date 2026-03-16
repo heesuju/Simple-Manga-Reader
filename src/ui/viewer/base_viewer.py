@@ -5,10 +5,10 @@ class BaseViewer(QObject):
     def __init__(self, reader_view):
         super().__init__()
         self.reader_view = reader_view
+        self.is_active = False
 
-    @abstractmethod
     def set_active(self, active: bool):
-        pass
+        self.is_active = active
 
     @abstractmethod
     def load(self, item):

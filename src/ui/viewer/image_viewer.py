@@ -37,7 +37,7 @@ class ImageViewer(BaseViewer):
         self.resize_timer.timeout.connect(self._trigger_hq_rescale)
 
     def set_active(self, active: bool):
-        self.is_active = active
+        super().set_active(active)
         if active:
             if self.pixmap_item:
                 self.pixmap_item.setVisible(True)

@@ -92,6 +92,7 @@ class ReaderView(QWidget):
         self.video_viewer = VideoViewer(self)
         self.strip_viewer = StripViewer(self)
         self.current_viewer = self.image_viewer
+        self.current_viewer.set_active(True)
         
         # Connect signals that depend on viewers
         self.video_control_panel.mode_changed.connect(self._on_video_mode_changed)
@@ -493,8 +494,9 @@ class ReaderView(QWidget):
              else:
                  new_viewer = self.image_viewer
         
-        if self.current_viewer != new_viewer:
-            self.current_viewer.set_active(False)
+        if self.current_viewer != new_viewer or not self.current_viewer.is_active:
+            if self.current_viewer:
+                self.current_viewer.set_active(False)
             self.current_viewer = new_viewer
             self.current_viewer.set_active(True)
             if hasattr(self.view, '_update_overlay_bounds'):
@@ -726,8 +728,9 @@ class ReaderView(QWidget):
         target_viewer = self.video_viewer if is_video else self.image_viewer
         
         if self.model.view_mode != ViewMode.STRIP:
-            if self.current_viewer != target_viewer:
-                self.current_viewer.set_active(False)
+            if self.current_viewer != target_viewer or not self.current_viewer.is_active:
+                if self.current_viewer:
+                    self.current_viewer.set_active(False)
                 self.current_viewer = target_viewer
                 self.current_viewer.set_active(True)
                 if hasattr(self.view, '_update_overlay_bounds'):
@@ -762,8 +765,9 @@ class ReaderView(QWidget):
         self._update_image_info([resolved_path])
 
     def _load_double_images(self, image1_path, image2_path):
-        if self.current_viewer != self.image_viewer:
-            self.current_viewer.set_active(False)
+        if self.current_viewer != self.image_viewer or not self.current_viewer.is_active:
+            if self.current_viewer:
+                self.current_viewer.set_active(False)
             self.current_viewer = self.image_viewer
             self.current_viewer.set_active(True)
              

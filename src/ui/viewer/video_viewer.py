@@ -58,6 +58,7 @@ class VideoViewer(BaseViewer):
         panel.step_frame.connect(self._step_video_frame)
 
     def set_active(self, active: bool):
+        super().set_active(active)
         if active:
             self._ensure_items_in_scene()
             if self.video_item:
