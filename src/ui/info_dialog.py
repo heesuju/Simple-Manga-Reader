@@ -104,14 +104,16 @@ class InfoDialog(QDialog):
         if cover_path and Path(cover_path).exists():
             self.cover_path_input.setText(cover_path)
             pixmap = QPixmap(cover_path)
-            self.cover_label.setPixmap(pixmap.scaled(200, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            if not pixmap.isNull():
+                self.cover_label.setPixmap(pixmap.scaled(200, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def browse_for_cover(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Cover Image", "", "Images (*.png *.jpg *.jpeg *.jpe *.bmp *.gif)")
         if file_path:
             self.cover_path_input.setText(file_path)
             pixmap = QPixmap(file_path)
-            self.cover_label.setPixmap(pixmap.scaled(200, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            if not pixmap.isNull():
+                self.cover_label.setPixmap(pixmap.scaled(200, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def search_info(self):
         title = self.title_input.text()
@@ -170,7 +172,8 @@ class InfoDialog(QDialog):
             if cover_path:
                 self.cover_path_input.setText(cover_path)
                 pixmap = QPixmap(cover_path)
-                self.cover_label.setPixmap(pixmap.scaled(200, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                if not pixmap.isNull():
+                    self.cover_label.setPixmap(pixmap.scaled(200, 300, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def save_info(self):
         new_info = {

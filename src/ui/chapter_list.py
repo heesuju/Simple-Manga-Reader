@@ -34,14 +34,20 @@ class ChapterListLoader(QRunnable):
         self.signals = ChapterListLoaderSignals()
         self.chapters = chapters
         self.series_path = series_path
+        self._is_aborted = False
+
+    def abort(self):
+        self._is_aborted = True
 
     def run(self):
         alt_config = AltManager.load_alts(self.series_path)
         from src.utils.img_utils import IMG_EXTS
         import zipfile
         from src.utils.archive_utils import SevenZipHandler
-
+        
         for i, chapter in enumerate(self.chapters):
+            if self._is_aborted:
+                return
             page_count = 0
             path_str = chapter['path']
             
@@ -58,6 +64,7 @@ class ChapterListLoader(QRunnable):
                         try:
                             with zipfile.ZipFile(zip_path, 'r') as zf:
                                 for info in zf.infolist():
+                                    if self._is_aborted: return []
                                     name = info.filename
                                     if not (info.flag_bits & 0x800):
                                         # Try multiple encodings for non-UTF-8 flagged entries
@@ -91,6 +98,7 @@ class ChapterListLoader(QRunnable):
                     if not imgs and SevenZipHandler.is_available():
                         all_files = SevenZipHandler.list_files(zip_path)
                         for f in all_files:
+                            if self._is_aborted: return []
                             f_norm = f.replace('\\', '/').strip('/')
                             if internal_path:
                                 if f_norm.startswith(internal_path + '/'):
@@ -500,6 +508,8 @@ class ChapterListView(QWidget):
         self.batch_timer.setSingleShot(True)
         self.batch_timer.timeout.connect(self._add_next_batch)
         
+        self._active_loaders = [] # Track active loaders to prevent GC
+        
         self.current_rel_path = []
         self.db_chapters = []
         self.display_items = []
@@ -580,11 +590,13 @@ class ChapterListView(QWidget):
         super().resizeEvent(event)
         self.background_label.setGeometry(self.rect())
         view_size = self.size()
-        scaled_pixmap = self.background_pixmap.scaled(view_size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-        x_offset = (scaled_pixmap.width() - view_size.width()) / 2
-        y_offset = 0  # Anchor to top vertically
-        cropped_pixmap = scaled_pixmap.copy(int(x_offset), int(y_offset), view_size.width(), view_size.height())
-        self.background_label.setPixmap(cropped_pixmap)
+        
+        if not self.background_pixmap.isNull():
+            scaled_pixmap = self.background_pixmap.scaled(view_size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            x_offset = (scaled_pixmap.width() - view_size.width()) / 2
+            y_offset = 0  # Anchor to top vertically
+            cropped_pixmap = scaled_pixmap.copy(int(x_offset), int(y_offset), view_size.width(), view_size.height())
+            self.background_label.setPixmap(cropped_pixmap)
         
         self.gradient_overlay.setGeometry(self.rect())
         self.scroll_area.setGeometry(self.rect())
@@ -889,6 +901,12 @@ class ChapterListView(QWidget):
              self._start_background_loaders()
 
     def _start_background_loaders(self):
+        # Abort existing loaders before starting new ones
+        for loader in self._active_loaders:
+            if hasattr(loader, 'abort'):
+                loader.abort()
+        self._active_loaders.clear()
+
         # Build map of indices and filter out folders for the loaders
         self._chapter_loader_map = {}
         target_chapters = []
@@ -911,11 +929,19 @@ class ChapterListView(QWidget):
         # --- Background Loaders ---
         page_count_loader = ChapterListLoader(target_chapters, str(self.series['path']))
         page_count_loader.signals.chapter_processed.connect(self.on_chapter_page_count_loaded)
+        page_count_loader.signals.finished.connect(lambda: self._on_loader_finished(page_count_loader))
+        self._active_loaders.append(page_count_loader)
         self.threadpool.start(page_count_loader)
 
         thumb_loader = ItemLoader(target_chapters, 0, item_type='chapter', thumb_width=150, thumb_height=75, library_manager=self.library_manager)
         thumb_loader.signals.item_loaded.connect(self.on_thumbnail_loaded)
+        thumb_loader.signals.loading_finished.connect(lambda: self._on_loader_finished(thumb_loader))
+        self._active_loaders.append(thumb_loader)
         self.threadpool.start(thumb_loader)
+
+    def _on_loader_finished(self, loader):
+        if loader in self._active_loaders:
+            self._active_loaders.remove(loader)
 
     def on_chapter_selected(self, chapter):
         self.open_reader.emit(self.series, chapter)

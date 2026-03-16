@@ -99,6 +99,9 @@ class FolderGrid(QWidget):
         self.recent_loader = None
         
         self.threadpool = QThreadPool()
+        self._active_loaders = [] # Track regular item loaders
+        self._active_recent_loaders = [] # Track recent item loaders
+        self._active_scanners = [] # Track scanner workers
         self.scanner = LibraryScanner()
         self.web_server_process = None
 
@@ -442,6 +445,12 @@ class FolderGrid(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
+        # Abort existing loaders
+        for loader in self._active_loaders:
+            if hasattr(loader, 'abort'):
+                loader.abort()
+        self._active_loaders.clear()
+
         if series_list is None:
             series_list = self.library_manager.get_series()
         self.total_items_to_load = len(series_list)
@@ -468,6 +477,8 @@ class FolderGrid(QWidget):
         self.loader = loader
         loader.signals.item_loaded.connect(self.on_item_loaded)
         loader.signals.item_invalid.connect(self.on_item_invalid)
+        loader.signals.loading_finished.connect(lambda: self._on_loader_finished(loader))
+        self._active_loaders.append(loader)
         self.threadpool.start(loader)
 
     def load_recent_items(self):
@@ -488,6 +499,12 @@ class FolderGrid(QWidget):
         self.recent_label.show()
         self.recent_scroll.show()
 
+        # Abort existing recent item loaders
+        for loader in self._active_recent_loaders:
+            if hasattr(loader, 'abort'):
+                loader.abort()
+        self._active_recent_loaders.clear()
+
         loader = ItemLoader(recent_series_list, self.recent_loading_generation, item_type='series')
         if self.recent_loader:
             try:
@@ -496,7 +513,13 @@ class FolderGrid(QWidget):
                 pass
         self.recent_loader = loader
         loader.signals.item_loaded.connect(self.on_recent_item_loaded)
+        loader.signals.loading_finished.connect(lambda: self._on_recent_loader_finished(loader))
+        self._active_recent_loaders.append(loader)
         self.threadpool.start(loader)
+
+    def _on_recent_loader_finished(self, loader):
+        if loader in self._active_recent_loaders:
+            self._active_recent_loaders.remove(loader)
 
     def on_recent_item_loaded(self, pix, series, idx, generation, item_type):
         if generation != self.recent_loading_generation:
@@ -650,6 +673,9 @@ class FolderGrid(QWidget):
             worker = ScannerWorker(self.scanner, new_path)
             worker.signals.finished.connect(lambda data: self._on_rescan_finished(series['id'], new_path, data))
             worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Rescan Error", err))
+            worker.signals.finished.connect(lambda data: self._on_loader_finished(worker, self._active_scanners))
+            worker.signals.error.connect(lambda err: self._on_loader_finished(worker, self._active_scanners))
+            self._active_scanners.append(worker)
             self.threadpool.start(worker)
 
     def _on_rescan_finished(self, series_id, new_path, series_data):
@@ -676,6 +702,9 @@ class FolderGrid(QWidget):
         worker = ScannerWorker(self.scanner, path)
         worker.signals.finished.connect(lambda data: self._on_rescan_finished(series['id'], path, data))
         worker.signals.error.connect(lambda err: [self.hide_info(), QMessageBox.warning(self, "Rescan Error", err)])
+        worker.signals.finished.connect(lambda data: self._on_loader_finished(worker, self._active_scanners))
+        worker.signals.error.connect(lambda err: self._on_loader_finished(worker, self._active_scanners))
+        self._active_scanners.append(worker)
         self.threadpool.start(worker)
 
     def show_info(self, text):
@@ -721,6 +750,12 @@ class FolderGrid(QWidget):
         self.received_items.clear()
         self.next_item_to_display = 0
 
+        # Abort existing loaders
+        for loader in self._active_loaders:
+            if hasattr(loader, 'abort'):
+                loader.abort()
+        self._active_loaders.clear()
+
         if not chapters:
             return
 
@@ -735,7 +770,16 @@ class FolderGrid(QWidget):
         self.loader = loader
         loader.signals.item_loaded.connect(self.on_item_loaded)
         loader.signals.item_invalid.connect(self.on_item_invalid)
+        loader.signals.loading_finished.connect(lambda: self._on_loader_finished(loader))
+        self._active_loaders.append(loader)
         self.threadpool.start(loader)
+
+    def _on_loader_finished(self, loader, loaders_list=None):
+        if loaders_list is None:
+            loaders_list = self._active_loaders
+            
+        if loader in loaders_list:
+            loaders_list.remove(loader)
 
     def open_reader_for_chapter(self, series, chapter):
         series_path = Path(series['path'])
@@ -851,6 +895,9 @@ class FolderGrid(QWidget):
             worker = ScannerWorker(self.scanner, normalized_path)
             worker.signals.finished.connect(lambda data: self.on_scan_finished(data, normalized_path))
             worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Scan Error", err))
+            worker.signals.finished.connect(lambda data: self._on_loader_finished(worker, self._active_scanners))
+            worker.signals.error.connect(lambda err: self._on_loader_finished(worker, self._active_scanners))
+            self._active_scanners.append(worker)
             self.threadpool.start(worker)
 
     def on_scan_finished(self, series_data, original_path):
@@ -893,6 +940,9 @@ class FolderGrid(QWidget):
             worker = ScannerWorker(self.scanner, normalized_path)
             worker.signals.finished.connect(lambda data: self._on_archive_scan_finished(data, normalized_path))
             worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Scan Error", err))
+            worker.signals.finished.connect(lambda data: self._on_loader_finished(worker, self._active_scanners))
+            worker.signals.error.connect(lambda err: self._on_loader_finished(worker, self._active_scanners))
+            self._active_scanners.append(worker)
             self.threadpool.start(worker)
 
     def _on_archive_scan_finished(self, series_data, original_path):
@@ -946,6 +996,9 @@ class FolderGrid(QWidget):
                 worker.signals.finished.connect(on_finished)
                 worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Batch Scan Error", err))
                 
+                worker.signals.finished.connect(lambda: self._on_loader_finished(worker, self._active_scanners))
+                worker.signals.error.connect(lambda err: self._on_loader_finished(worker, self._active_scanners))
+                self._active_scanners.append(worker)
                 self.threadpool.start(worker)
 
     def show_info(self, message):
@@ -980,6 +1033,9 @@ class FolderGrid(QWidget):
         worker = ScannerWorker(self.scanner, normalized_path)
         worker.signals.finished.connect(lambda data: self.on_scan_finished(data, normalized_path))
         worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Scan Error", err))
+        worker.signals.finished.connect(lambda data: self._on_loader_finished(worker, self._active_scanners))
+        worker.signals.error.connect(lambda err: self._on_loader_finished(worker, self._active_scanners))
+        self._active_scanners.append(worker)
         self.threadpool.start(worker)
 
     def add_multiple(self, paths):
@@ -1007,6 +1063,9 @@ class FolderGrid(QWidget):
             worker.signals.finished.connect(on_finished)
             worker.signals.error.connect(lambda err: QMessageBox.warning(self, "Batch Scan Error", err))
             
+            worker.signals.finished.connect(lambda: self._on_loader_finished(worker, self._active_scanners))
+            worker.signals.error.connect(lambda err: self._on_loader_finished(worker, self._active_scanners))
+            self._active_scanners.append(worker)
             self.threadpool.start(worker)
 
     def toggle_selection_mode(self, enabled):

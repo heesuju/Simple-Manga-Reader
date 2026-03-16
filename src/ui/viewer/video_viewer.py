@@ -254,6 +254,9 @@ class VideoViewer(BaseViewer):
         scene_rect = self.reader_view.scene.sceneRect()
         if scene_rect.width() <= 0: return
 
+        if self.last_frame_pixmap.isNull():
+            return
+
         scaled_pixmap = self.last_frame_pixmap.scaled(
             int(scene_rect.width()), int(scene_rect.height()), 
             Qt.AspectRatioMode.KeepAspectRatioByExpanding, 

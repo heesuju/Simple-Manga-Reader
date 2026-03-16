@@ -586,8 +586,10 @@ def _get_first_media_path(chapter_input):
     path_obj = Path(path_str)
     archive_exts = {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}
     
-    # 1. Handle Archives (Root)
+    # If it's an archive file (not a virtual path yet)
     if path_obj.suffix.lower() in archive_exts:
+        if not os.path.isfile(path_str): # Check if the archive file actually exists
+            return None
         # Re-use the virtual path logic for the root
         return _get_first_media_path(f"{path_str}|")
             

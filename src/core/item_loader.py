@@ -22,6 +22,10 @@ class ItemLoader(QRunnable):
         self.thumb_height = thumb_height
         self.root_dir = root_dir
         self.library_manager = library_manager
+        self._is_aborted = False
+
+    def abort(self):
+        self._is_aborted = True
 
     @staticmethod
     def _folder_is_valid(folder_path: Path) -> bool:
@@ -34,6 +38,8 @@ class ItemLoader(QRunnable):
         from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path, _get_first_media_path
         
         for idx, item in enumerate(self.items):
+            if self._is_aborted:
+                return
             item_type = ''
             pix = None
             item_path = item

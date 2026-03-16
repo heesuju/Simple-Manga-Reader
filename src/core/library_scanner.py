@@ -37,9 +37,15 @@ class ScannerWorker(QRunnable):
         self.scanner = scanner
         self.series_path = series_path
         self.signals = ScannerSignals()
+        self._is_aborted = False
+
+    def abort(self):
+        self._is_aborted = True
 
     @pyqtSlot()
     def run(self):
+        if self._is_aborted:
+            return
         try:
             result = self.scanner.scan_series(self.series_path)
             if result:
@@ -61,11 +67,18 @@ class BatchScannerWorker(QRunnable):
         self.scanner = scanner
         self.paths = paths
         self.signals = BatchScannerSignals()
+        self._is_aborted = False
+
+    def abort(self):
+        self._is_aborted = True
 
     @pyqtSlot()
     def run(self):
         total = len(self.paths)
         for i, path in enumerate(self.paths):
+            if self._is_aborted:
+                return
+            path_obj = Path(path)
             try:
                 self.signals.progress.emit(i + 1, total, str(path))
                 result = self.scanner.scan_series(path)
@@ -79,7 +92,7 @@ class BatchScannerWorker(QRunnable):
 
 class LibraryScanner:
     def is_archive(self, path: Path):
-        return path.suffix.lower() in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}
+        return path.is_file() and path.suffix.lower() in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}
 
     def is_chapter_folder(self, path: Path):
         name = path.name.lower()

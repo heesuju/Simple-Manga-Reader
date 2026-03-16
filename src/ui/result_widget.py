@@ -16,7 +16,8 @@ class ResultWidget(QWidget):
         self.cover_label = QLabel()
         if cover_path:
             pixmap = QPixmap(cover_path)
-            self.cover_label.setPixmap(pixmap.scaled(150, 225, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            if not pixmap.isNull():
+                self.cover_label.setPixmap(pixmap.scaled(150, 225, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.title_label = QLabel(manga_info['attributes']['title'].get('en', 'No Title'))
