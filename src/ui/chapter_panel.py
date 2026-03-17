@@ -99,7 +99,7 @@ class ChapterPanel(CollapsiblePanel):
                 widget = PageThumbnail(i, chapter_name)
                 widget.clicked.connect(self._change_chapter_by_thumbnail)
                 widget.right_clicked.connect(self._on_thumbnail_right_clicked)
-                widget.set_media_type(chapter_path)
+                widget.set_media_type(chapter_path.split('|')[0] if '|' in chapter_path else chapter_path)
                 self.thumbnails_layout.insertWidget(self.thumbnails_layout.count(), widget)
                 self.chapter_thumbnail_widgets.append(widget)
 

@@ -198,7 +198,9 @@ class ChapterListItemWidget(QWidget):
         self.archive_overlay.adjustSize()
         self.archive_overlay.move(75 - self.archive_overlay.width() - 2, 38 - self.archive_overlay.height() - 2)
         
-        is_archive = str(chapter['path']).lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+        chapter_path_str = str(chapter['path'])
+        is_archive = ('|' in chapter_path_str or
+                      chapter_path_str.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')))
         self.archive_overlay.setVisible(is_archive)
 
         self.name_label = QLabel()
@@ -390,7 +392,7 @@ class FolderListItemWidget(QWidget):
     folder_selected = pyqtSignal(str)
     sort_folder_requested = pyqtSignal(str, str)  # (folder_name, sort_mode)
 
-    def __init__(self, folder_name, parent=None):
+    def __init__(self, folder_name, parent=None, is_archive_content=False):
         super().__init__(parent)
         self.folder_name = folder_name
         self.is_highlighted = False
@@ -403,7 +405,7 @@ class FolderListItemWidget(QWidget):
 
         self.layout = QHBoxLayout(self)
         self.layout.setSpacing(10)
-        
+
         # Spacer to align with ChapterListItemWidget's chapter number
         self.layout.addSpacing(25)
 
@@ -415,9 +417,10 @@ class FolderListItemWidget(QWidget):
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setFixedSize(75, 38)
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
         # Distinguish between folders and archives for default icon
-        self.is_archive = folder_name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+        self.is_archive = (folder_name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+                           or is_archive_content)
         self.thumbnail_label.setText("📦" if self.is_archive else "📁")
         self.thumbnail_label.setStyleSheet("font-size: 18px; color: white; background: rgba(255,255,255,20); border-radius: 4px;")
         
@@ -852,9 +855,13 @@ class ChapterListView(QWidget):
 
         chapters_at_level = [c for c in chapters_at_level if c['name'] not in folders_at_level]
 
+        archive_exts = ('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')
+        in_archive = any(part.lower().endswith(archive_exts) for part in self.current_rel_path)
+
         from src.utils.str_utils import natural_sort_key
         for f in sorted(list(folders_at_level), key=natural_sort_key):
-            self.display_items.append({'is_folder': True, 'name': f})
+            is_archive_folder = f.lower().endswith(archive_exts) or in_archive
+            self.display_items.append({'is_folder': True, 'name': f, 'is_archive_content': is_archive_folder})
 
         chapters_at_level.sort(key=lambda x: natural_sort_key(x['name']))
 
@@ -907,7 +914,7 @@ class ChapterListView(QWidget):
             item = self.display_items[i]
             
             if item.get('is_folder'):
-                item_widget = FolderListItemWidget(item['name'], self)
+                item_widget = FolderListItemWidget(item['name'], self, is_archive_content=item.get('is_archive_content', False))
                 item_widget.folder_selected.connect(self.on_folder_selected)
                 item_widget.sort_folder_requested.connect(self.on_sort_folder_requested)
                 self.content_layout.addWidget(item_widget)
