@@ -339,7 +339,6 @@ def load_thumbnail_from_zip(path, width=150, height=200) -> QImage:
         return None
         
 def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=None) -> QImage:
-    from src.utils.archive_utils import SevenZipHandler
     try:
         cache_key = get_virtual_path_cache_key(virtual_path, width, height, crop)
         cached_thumb_path = CACHE_DIR / f"{cache_key}.png"
@@ -352,33 +351,7 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
         return None # Original zip file not found
 
     try:
-        zip_path_str, image_name = virtual_path.split('|', 1)
-        zip_path = Path(zip_path_str)
-        
-        image_data = None
-        
-        ext = zip_path.suffix.lower()
-        if ext in {'.7z', '.rar', '.cbr', '.cb7'}:
-            if SevenZipHandler.is_available():
-                image_data = SevenZipHandler.read_file(str(zip_path), image_name)
-        else:
-            # Fallback to standard zip
-            from src.utils.img_utils import ZIP_CACHE
-            zf = ZIP_CACHE.get_zip(str(zip_path))
-            if not zf:
-                return None
-                
-            image_name_fixed = image_name.replace('\\', '/')
-            try:
-                with ZIP_CACHE.read_lock:
-                    try:
-                        with zf.open(image_name) as f:
-                            image_data = f.read()
-                    except (KeyError, ValueError, RuntimeError):
-                        with zf.open(image_name_fixed) as f:
-                            image_data = f.read()
-            except (KeyError, ValueError, RuntimeError):
-                return None
+        image_data = get_image_data_from_zip(virtual_path)
 
         if image_data:
             byte_array = QByteArray(image_data)

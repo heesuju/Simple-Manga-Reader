@@ -27,6 +27,8 @@ class ChapterPanel(CollapsiblePanel):
         self.batch_timer.setSingleShot(True)
         self.batch_timer.timeout.connect(self._add_next_batch)
 
+        self._thumb_generation = 0
+
         self.navigate_first.connect(self._go_first)
         self.navigate_prev.connect(self._go_prev)
         self.navigate_next.connect(self._go_next)
@@ -76,6 +78,7 @@ class ChapterPanel(CollapsiblePanel):
                 item.widget().deleteLater()
         self.chapter_thumbnail_widgets.clear()
 
+        self._thumb_generation += 1
         self.chapters_to_load = chapters
         self.current_batch_index = 0
         self.last_subfolder = None
@@ -106,7 +109,10 @@ class ChapterPanel(CollapsiblePanel):
                 first_image_path = _get_first_media_path(chapter)
                 if first_image_path:
                     worker = ThumbnailWorker(i, first_image_path, self._load_thumbnail)
-                    worker.signals.finished.connect(self._on_chapter_thumbnail_loaded)
+                    gen = self._thumb_generation
+                    worker.signals.finished.connect(
+                        lambda idx, img, g=gen: self._on_chapter_thumbnail_loaded(idx, img, g)
+                    )
                     self.thread_pool.start(worker)
         finally:
              self.content_area.setUpdatesEnabled(True)
@@ -119,7 +125,9 @@ class ChapterPanel(CollapsiblePanel):
              if self.model and self.model.chapter_index < len(self.chapter_thumbnail_widgets):
                  self._update_chapter_selection(self.model.chapter_index)
 
-    def _on_chapter_thumbnail_loaded(self, index, qimg):
+    def _on_chapter_thumbnail_loaded(self, index, qimg, generation=None):
+        if generation != self._thumb_generation:
+            return
         if index < len(self.chapter_thumbnail_widgets):
             pixmap = QPixmap.fromImage(qimg)
             self.chapter_thumbnail_widgets[index].set_pixmap(pixmap)
