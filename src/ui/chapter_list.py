@@ -870,10 +870,9 @@ class ChapterListView(QWidget):
                 current_folder_path = str(Path(series_path).joinpath(*self.current_rel_path))
                 for chap in self.db_chapters:
                     if str(chap['path']) == current_folder_path:
-                        loose_chap = dict(chap)
                         chapter_name = Path(current_folder_path).name
-                        loose_chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
-                        chapters_at_level.insert(0, loose_chap)
+                        chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
+                        chapters_at_level.insert(0, chap)
                         break
             except Exception:
                 pass
