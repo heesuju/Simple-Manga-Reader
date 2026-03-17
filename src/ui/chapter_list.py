@@ -850,11 +850,27 @@ class ChapterListView(QWidget):
                     chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
                     chapters_at_level.append(chap)
 
+        chapters_at_level = [c for c in chapters_at_level if c['name'] not in folders_at_level]
+
         from src.utils.str_utils import natural_sort_key
         for f in sorted(list(folders_at_level), key=natural_sort_key):
             self.display_items.append({'is_folder': True, 'name': f})
-        
+
         chapters_at_level.sort(key=lambda x: natural_sort_key(x['name']))
+
+        if self.current_rel_path:
+            try:
+                current_folder_path = str(Path(series_path).joinpath(*self.current_rel_path))
+                for chap in self.db_chapters:
+                    if str(chap['path']) == current_folder_path:
+                        loose_chap = dict(chap)
+                        chapter_name = Path(current_folder_path).name
+                        loose_chap['_sort_mode'] = AltManager.get_chapter_sort(series_path, chapter_name)
+                        chapters_at_level.insert(0, loose_chap)
+                        break
+            except Exception:
+                pass
+
         self.display_items.extend(chapters_at_level)
         self.display_chapters = chapters_at_level
 
