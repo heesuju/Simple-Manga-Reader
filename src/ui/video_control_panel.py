@@ -1,9 +1,37 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel, QStyleOptionSlider, QStyle
 from src.ui.components.volume_control import VolumeControl
 from src.utils.resource_utils import resource_path
 from src.ui.styles import FLAT_BUTTON_STYLE
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
+
+
+class SeekSlider(QSlider):
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+            handle_rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self
+            )
+            if handle_rect.contains(event.position().toPoint()):
+                super().mousePressEvent(event)
+                return
+            groove_rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self
+            )
+            handle_width = handle_rect.width()
+            avail = groove_rect.width() - handle_width
+            click_x = event.position().x() - groove_rect.left() - handle_width / 2
+            ratio = max(0.0, min(1.0, click_x / avail)) if avail > 0 else 0.0
+            value = round(self.minimum() + ratio * (self.maximum() - self.minimum()))
+            self.setValue(value)
+            self.sliderPressed.emit()
+            self.sliderMoved.emit(value)
+            self.sliderReleased.emit()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
 
 
@@ -68,7 +96,7 @@ class VideoControlPanel(QWidget):
         self.current_time_label = QLabel("00:00")
         layout.addWidget(self.current_time_label)
 
-        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.position_slider = SeekSlider(Qt.Orientation.Horizontal)
         self.position_slider.sliderPressed.connect(self._on_slider_pressed)
         self.position_slider.sliderReleased.connect(self._on_slider_released)
         self.position_slider.sliderMoved.connect(self._on_slider_moved)
