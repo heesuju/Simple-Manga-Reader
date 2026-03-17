@@ -39,8 +39,32 @@ class ReaderModel(QObject):
         original_chapter = manga_dirs[index] if manga_dirs and 0 <= index < len(manga_dirs) else None
         
         self.chapters = manga_dirs if manga_dirs else []
-        # Ensure chapters are naturally sorted (e.g., Season 1, 2, 10 instead of 1, 10, 2)
-        self.chapters.sort(key=lambda x: natural_sort_key(x.get('name', '')) if isinstance(x, dict) else natural_sort_key(Path(str(x)).name))
+        # Sort chapters by parent folder first (to group subfolders), then by name naturally
+        _series_path = Path(str(self.series['path'])) if self.series and isinstance(self.series, dict) and 'path' in self.series else None
+
+        def _chapter_sort_key(x):
+            if isinstance(x, dict):
+                chapter_path_str = x.get('path', '')
+                chapter_name = x.get('name', Path(chapter_path_str).name)
+            else:
+                chapter_path_str = str(x)
+                chapter_name = Path(chapter_path_str).name
+            # For archive virtual paths (e.g. "Volume1.zip|ch1"), group by the
+            # archive file so chapters from the same zip stay together.
+            if '|' in chapter_path_str:
+                parent = Path(chapter_path_str.split('|')[0])
+            else:
+                parent = Path(chapter_path_str).parent
+            if _series_path:
+                try:
+                    parent_str = str(parent.relative_to(_series_path))
+                except ValueError:
+                    parent_str = str(parent)
+            else:
+                parent_str = str(parent)
+            return (natural_sort_key(parent_str), natural_sort_key(chapter_name))
+
+        self.chapters.sort(key=_chapter_sort_key)
         
         # Restore selection
         if original_chapter:
