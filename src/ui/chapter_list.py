@@ -256,6 +256,8 @@ class ChapterListItemWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return super().mousePressEvent(event)
         self.pressed = True
         self.update()
 
@@ -479,8 +481,9 @@ class FolderListItemWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.pressed = True
+        if event.button() != Qt.MouseButton.LeftButton:
+            return super().mousePressEvent(event)
+        self.pressed = True
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -1039,7 +1042,11 @@ class ChapterListView(QWidget):
                 # Widget was likely deleted
                 pass
     def go_back(self):
-        self.back_to_library.emit()
+        if self.current_rel_path:
+            self.current_rel_path.pop()
+            self.render_current_level()
+        else:
+            self.back_to_library.emit()
 
     def start_reading(self):
         if self.db_chapters:
