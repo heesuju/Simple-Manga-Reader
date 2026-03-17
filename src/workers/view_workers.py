@@ -447,9 +447,28 @@ class VideoFrameExtractorWorker(QRunnable):
             if cap.isOpened():
                 frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 fps = float(cap.get(cv2.CAP_PROP_FPS))
-                # Grab the last frame
-                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
-                ret, frame = cap.read()
+                ret, frame = False, None
+                if frame_count > 0:
+                    # Normal case: seek to last frame
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count - 1)
+                    ret, frame = cap.read()
+                if not ret:
+                    # Fallback for Chrome-produced webm (Duration: N/A) or seek failure:
+                    # read frames until EOF to get the last one
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    counted = 0
+                    last_good = None
+                    while not self.cancelled:
+                        ok, f = cap.read()
+                        if not ok:
+                            break
+                        last_good = f
+                        counted += 1
+                    if last_good is not None:
+                        frame = last_good
+                        ret = True
+                        if frame_count <= 0:
+                            frame_count = counted
                 cap.release()
                 if ret and not self.cancelled:
                     # Convert BGR to RGB
@@ -484,6 +503,16 @@ class VideoMetadataWorker(QRunnable):
             if cap.isOpened():
                 frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 fps = float(cap.get(cv2.CAP_PROP_FPS))
+                if frame_count <= 0 and not self.cancelled:
+                    # Chrome-produced webm files have Duration: N/A so frame_count=0.
+                    # Count frames by reading through the video.
+                    counted = 0
+                    while not self.cancelled:
+                        ok = cap.grab()
+                        if not ok:
+                            break
+                        counted += 1
+                    frame_count = counted
                 cap.release()
                 if not self.cancelled:
                     self.signals.finished.emit(self.path, frame_count, fps)
