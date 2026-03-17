@@ -63,6 +63,7 @@ class ChapterListLoader(QRunnable):
                     if is_zip:
                         try:
                             with zipfile.ZipFile(zip_path, 'r') as zf:
+                                all_zip_entries = []
                                 for info in zf.infolist():
                                     if self._is_aborted: return []
                                     name = info.filename
@@ -90,6 +91,12 @@ class ChapterListLoader(QRunnable):
                                         if '/' not in name_norm:
                                             if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
                                                 imgs.append(f"{zip_path}|{info.filename}")
+                                        # Collect all-depth entries as fallback
+                                        if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                            all_zip_entries.append(f"{zip_path}|{info.filename}")
+                                # If root scan found nothing, use all-depth entries
+                                if not imgs and not internal_path:
+                                    imgs = all_zip_entries
                         except (zipfile.BadZipFile, OSError, PermissionError, Exception) as e:
                             print(f"Error scanning archive {zip_path}: {e}")
                             pass
@@ -110,6 +117,13 @@ class ChapterListLoader(QRunnable):
                                 if '/' not in f_norm:
                                     if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
                                         imgs.append(f"{zip_path}|{f}")
+                        # If root scan found nothing, collect images at any depth
+                        if not imgs and not internal_path:
+                            for f in all_files:
+                                if self._is_aborted: return []
+                                f_norm = f.replace('\\', '/').strip('/')
+                                if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
+                                    imgs.append(f"{zip_path}|{f}")
                     return imgs
                 except Exception as e:
                     print(f"Error in scan_internal: {e}")

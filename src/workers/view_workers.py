@@ -348,10 +348,17 @@ class ChapterLoaderWorker(QRunnable):
                             if '/' not in f_norm:
                                 if f_norm.lower().endswith(valid_exts) and Path(f_norm).stem.lower() != 'cover':
                                     imgs.append(f"{zip_path}|{f}")
-                
+                    # If root scan found nothing, collect images at any depth (images in a subfolder)
+                    if not imgs and not internal_path:
+                        for f in all_files:
+                            f_norm = f.replace('\\', '/').strip('/')
+                            if f_norm.lower().endswith(valid_exts) and Path(f_norm).stem.lower() != 'cover':
+                                imgs.append(f"{zip_path}|{f}")
+
                 # zipfile fallback
                 if not imgs and zip_path.lower().endswith(('.zip', '.cbz')):
                     with zipfile.ZipFile(zip_path, 'r') as zf:
+                        all_zip_entries = []
                         for info in zf.infolist():
                             name = info.filename
                             if not (info.flag_bits & 0x800):
@@ -368,6 +375,12 @@ class ChapterLoaderWorker(QRunnable):
                                 if '/' not in name_norm:
                                     if name_norm.lower().endswith(valid_exts) and Path(name_norm).stem.lower() != 'cover':
                                         imgs.append(f"{zip_path}|{info.filename}")
+                                # Collect all-depth entries as fallback
+                                if name_norm.lower().endswith(valid_exts) and Path(name_norm).stem.lower() != 'cover':
+                                    all_zip_entries.append(f"{zip_path}|{info.filename}")
+                        # If root scan found nothing, use all-depth entries
+                        if not imgs and not internal_path:
+                            imgs = all_zip_entries
                 return sorted(imgs, key=get_chapter_number)
             except:
                 return []
