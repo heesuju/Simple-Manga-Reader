@@ -296,16 +296,24 @@ class ChapterLoaderWorker(QRunnable):
                 if size.isValid() and size.height() > 0:
                     is_spread = (size.width() / size.height()) > spread_threshold
             else:
-                image_data = get_image_data_from_zip(resolved)
-                if image_data:
-                    from PyQt6.QtCore import QBuffer, QByteArray
-                    byte_array = QByteArray(image_data)
-                    buffer = QBuffer(byte_array)
-                    buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-                    reader = QImageReader(buffer)
-                    size = reader.size()
-                    if size.isValid() and size.height() > 0:
-                        is_spread = (size.width() / size.height()) > spread_threshold
+                # Read only enough header bytes for dimension detection instead of the full file
+                zip_path_str, internal = (resolved if '|' in resolved else path).split('|', 1)
+                zf = ZIP_CACHE.get_zip(zip_path_str)
+                if zf:
+                    try:
+                        with zf.open(internal) as f:
+                            header_data = f.read(65536)  # 64KB is enough for all image headers
+                        if header_data:
+                            from PyQt6.QtCore import QBuffer, QByteArray
+                            byte_array = QByteArray(header_data)
+                            buffer = QBuffer(byte_array)
+                            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+                            reader = QImageReader(buffer)
+                            size = reader.size()
+                            if size.isValid() and size.height() > 0:
+                                is_spread = (size.width() / size.height()) > spread_threshold
+                    except Exception:
+                        pass
             
             if is_spread != page.is_spread:
                 page.is_spread = is_spread

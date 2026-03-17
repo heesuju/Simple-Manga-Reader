@@ -458,7 +458,6 @@ class ReaderView(QWidget):
         if not self.model.images:
             QMessageBox.information(self, "No images", f"No images found in: {self.model.manga_dir}")
 
-        self.page_panel._update_page_thumbnails(self.model)
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
         if self.slider_panel:
@@ -1131,11 +1130,6 @@ class ReaderView(QWidget):
                 self.model.current_index = 0
 
         self.model.refresh()
-        self.model.layout_updated.emit(self.model.view_mode)
-        
-        if self.model.images:
-             # Pass the path string of the current page
-             self.model.load_image()
 
 
     def back_to_grid(self):
