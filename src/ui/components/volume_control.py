@@ -3,14 +3,15 @@ from PyQt6.QtGui import QIcon, QMouseEvent
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QSize
 from src.utils.resource_utils import resource_path
 from src.ui.styles import FLAT_BUTTON_STYLE
+import src.utils.app_settings as app_settings
 
 class VolumeControl(QWidget):
     volume_changed = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._is_muted = False
-        self._last_volume = 100
+        self._is_muted = bool(app_settings.get("volume_muted", False))
+        self._last_volume = app_settings.get("volume", 100)
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self._check_and_hide_slider)
@@ -64,7 +65,7 @@ class VolumeControl(QWidget):
         slider_layout = QVBoxLayout(self.slider_popup)
         self.volume_slider = QSlider(Qt.Orientation.Vertical)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(self._last_volume)
+        self.volume_slider.setValue(0 if self._is_muted else self._last_volume)
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
         slider_layout.addWidget(self.volume_slider)
 
@@ -107,5 +108,7 @@ class VolumeControl(QWidget):
         self._is_muted = (value == 0)
         self.mute_btn.setIcon(self.volume_muted_icon if self._is_muted else self.volume_icon)
         self.volume_changed.emit(value)
+        app_settings.set("volume_muted", self._is_muted)
         if not self._is_muted:
             self._last_volume = value
+            app_settings.set("volume", value)

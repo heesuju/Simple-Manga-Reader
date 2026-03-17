@@ -57,6 +57,9 @@ class VideoViewer(BaseViewer):
         panel.seek_frame.connect(self._seek_to_frame)
         panel.step_frame.connect(self._step_video_frame)
 
+        # Apply saved volume/mute state (initial signal was emitted before this connection existed)
+        self._set_volume(panel.volume_control.volume_slider.value())
+
     def set_active(self, active: bool):
         super().set_active(active)
         if active:

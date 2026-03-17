@@ -10,3 +10,4 @@ dist/
 llama.cpp/
 models/
 llm_config.json
+app_settings.json
