@@ -16,6 +16,8 @@ class VolumeControl(QWidget):
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self._check_and_hide_slider)
         self._init_ui()
+        if self._is_muted:
+            self.mute_btn.setIcon(self.volume_muted_icon)
 
     def _init_ui(self):
         self.volume_icon = QIcon(resource_path("assets/icons/volume.svg"))
