@@ -1,6 +1,8 @@
 from typing import List
 from pathlib import Path
-from PyQt6.QtWidgets import QLabel
+import os
+import subprocess
+from PyQt6.QtWidgets import QLabel, QMenu
 
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtGui import QAction, QCursor, QKeySequence, QPixmap
@@ -96,6 +98,7 @@ class ChapterPanel(CollapsiblePanel):
                 chapter_name = Path(str(chapter)).name if not isinstance(chapter, dict) else chapter.get('name', Path(chapter['path']).name)
                 widget = PageThumbnail(i, chapter_name)
                 widget.clicked.connect(self._change_chapter_by_thumbnail)
+                widget.right_clicked.connect(self._on_thumbnail_right_clicked)
                 widget.set_media_type(chapter_path)
                 self.thumbnails_layout.insertWidget(self.thumbnails_layout.count(), widget)
                 self.chapter_thumbnail_widgets.append(widget)
@@ -132,6 +135,28 @@ class ChapterPanel(CollapsiblePanel):
 
     def _change_chapter_by_thumbnail(self, index: int):
         self.on_chapter_changed(index + 1)
+
+    def _on_thumbnail_right_clicked(self, index: int):
+        self._show_context_menu(index)
+
+    def _show_context_menu(self, index: int):
+        menu = QMenu(self)
+        open_explorer_action = QAction("Reveal in File Explorer", self)
+        open_explorer_action.triggered.connect(lambda: self._open_in_explorer(index))
+        menu.addAction(open_explorer_action)
+        menu.exec(QCursor.pos())
+
+    def _open_in_explorer(self, index: int):
+        if not self.model or index >= len(self.model.chapters):
+            return
+        chapter = self.model.chapters[index]
+        chapter_path = chapter['path'] if isinstance(chapter, dict) else str(chapter)
+        # Strip archive internal path
+        if '|' in chapter_path:
+            chapter_path = chapter_path.split('|')[0]
+        chapter_path = os.path.normpath(chapter_path)
+        if os.name == 'nt':
+            subprocess.Popen(['explorer', '/select,', chapter_path])
 
     def eventFilter(self, source, event):
         if source == self.content_area and event.type() == event.Type.KeyPress and self.is_expanded:
