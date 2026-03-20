@@ -81,8 +81,27 @@ class AltManager:
                 elif isinstance(entry, dict):
                      # 1. Alts
                      if "alts" in entry and isinstance(entry["alts"], list):
+                         alts_fix_map = entry.get("alts_fix", {})
                          for alt_name in entry["alts"]:
                              alt_base = Path(alt_name).name
+
+                             # Prefer _fix version if one is registered
+                             fix_rel = alts_fix_map.get(alt_name)
+                             if fix_rel:
+                                 fix_base = Path(fix_rel).name
+                                 if fix_base in path_map:
+                                     found_alts.append(path_map[fix_base])
+                                     processed_files.add(fix_base)
+                                     continue
+                                 else:
+                                     main_dir = Path(path).parent
+                                     fix_complex = main_dir / fix_rel
+                                     if fix_complex.exists():
+                                         found_alts.append(str(fix_complex))
+                                         processed_files.add(fix_base)
+                                         continue
+                                 # Fix registered but file missing — fall through to original
+
                              if alt_base in path_map:
                                  found_alts.append(path_map[alt_base])
                                  processed_files.add(alt_base)
@@ -90,14 +109,14 @@ class AltManager:
                                  # Fallback: Check if file exists in alts folder relative to main file
                                  main_dir = Path(path).parent
                                  alt_path_check = main_dir / "alts" / alt_base
-                                 
+
                                  # New logic: Check if alt_name itself contains directory info (e.g. 'alts/au/au_1.png')
                                  if '/' in alt_name or '\\' in alt_name:
                                      complex_path = main_dir / alt_name
                                      if complex_path.exists():
                                           found_alts.append(str(complex_path))
                                           continue
-                                          
+
                                  if alt_path_check.exists():
                                      found_alts.append(str(alt_path_check))
 
@@ -220,8 +239,27 @@ class AltManager:
                 elif isinstance(entry, dict):
                      # 1. Alts
                      if "alts" in entry and isinstance(entry["alts"], list):
+                         alts_fix_map = entry.get("alts_fix", {})
                          for alt_name in entry["alts"]:
                              alt_base = Path(alt_name).name
+
+                             # Prefer _fix version if one is registered
+                             fix_rel = alts_fix_map.get(alt_name)
+                             if fix_rel:
+                                 fix_base = Path(fix_rel).name
+                                 if fix_base in path_map:
+                                     found_alts.append(path_map[fix_base])
+                                     processed_files.add(fix_base)
+                                     continue
+                                 else:
+                                     main_dir = Path(path).parent
+                                     fix_complex = main_dir / fix_rel
+                                     if fix_complex.exists():
+                                         found_alts.append(str(fix_complex))
+                                         processed_files.add(fix_base)
+                                         continue
+                                 # Fix registered but file missing — fall through to original
+
                              if alt_base in path_map:
                                  found_alts.append(path_map[alt_base])
                                  processed_files.add(alt_base)
@@ -229,14 +267,14 @@ class AltManager:
                                  # Fallback: Check if file exists in alts folder relative to main file
                                  main_dir = Path(path).parent
                                  alt_path_check = main_dir / "alts" / alt_base
-                                 
+
                                  # New logic: Check if alt_name itself contains directory info (e.g. 'alts/au/au_1.png')
                                  if '/' in alt_name or '\\' in alt_name:
                                      complex_path = main_dir / alt_name
                                      if complex_path.exists():
                                           found_alts.append(str(complex_path))
                                           continue
-                                          
+
                                  if alt_path_check.exists():
                                      found_alts.append(str(alt_path_check))
 
@@ -580,3 +618,38 @@ class AltManager:
         
         if changed:
             AltManager.save_alts(series_path, data)
+
+    @staticmethod
+    def register_alt_fix(series_path: str, chapter_name: str, main_file: str, alt_rel_path: str, fix_rel_path: str):
+        """Register a _fix file for an alt. fix_rel_path replaces alt_rel_path in the reader."""
+        data = AltManager.load_alts(series_path)
+        if chapter_name not in data:
+            data[chapter_name] = {}
+        main_name = Path(main_file).name
+        if main_name in data[chapter_name]:
+            entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
+        else:
+            entry = {"alts": [], "translations": {}}
+        if "alts_fix" not in entry:
+            entry["alts_fix"] = {}
+        entry["alts_fix"][str(alt_rel_path).replace('\\', '/')] = str(fix_rel_path).replace('\\', '/')
+        data[chapter_name][main_name] = entry
+        AltManager.save_alts(series_path, data)
+
+    @staticmethod
+    def remove_alt_fix(series_path: str, chapter_name: str, main_file: str, alt_rel_path: str):
+        """Remove the _fix registration for an alt, reverting to the original."""
+        data = AltManager.load_alts(series_path)
+        if chapter_name not in data:
+            return
+        main_name = Path(main_file).name
+        if main_name not in data[chapter_name]:
+            return
+        entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
+        alt_key = str(alt_rel_path).replace('\\', '/')
+        if "alts_fix" in entry and alt_key in entry["alts_fix"]:
+            del entry["alts_fix"][alt_key]
+            if not entry["alts_fix"]:
+                del entry["alts_fix"]
+        data[chapter_name][main_name] = entry
+        AltManager.save_alts(series_path, data)

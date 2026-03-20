@@ -2,15 +2,16 @@ import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QFrame, QSizePolicy, QComboBox
+    QScrollArea, QFrame, QSizePolicy, QComboBox, QMenu
 )
-from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtCore import Qt, QTimer, QSize, QPoint
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
 from src.utils.resource_utils import resource_path
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.utils.str_utils import natural_sort_key
 from src.workers.thumbnail_worker import ThumbnailWorker
+from src.core.alt_manager import AltManager
 
 THUMB_W = 120
 THUMB_H = 160
@@ -18,11 +19,12 @@ THUMB_H = 160
 
 class AltThumbnail(QWidget):
     """Single clickable alt thumbnail row."""
-    def __init__(self, parent, variant_path, display_index, is_selected=False, on_click=None):
+    def __init__(self, parent, variant_path, display_index, is_selected=False, on_click=None, on_right_click=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.variant_path = variant_path
         self.on_click = on_click
+        self.on_right_click = on_right_click
         self.is_selected = is_selected
 
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -65,6 +67,12 @@ class AltThumbnail(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and self.on_click:
             self.on_click()
         super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event):
+        if self.on_right_click:
+            self.on_right_click(event.globalPos())
+        else:
+            super().contextMenuEvent(event)
 
 
 class AltPanel(QWidget):
@@ -280,7 +288,8 @@ class AltPanel(QWidget):
                 variant_path,
                 display_index=cat_v_idx + 1,
                 is_selected=is_selected,
-                on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v)
+                on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
+                on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
             )
             self.scroll_layout.addWidget(thumb)
             self.alt_widgets.append(thumb)
@@ -387,4 +396,96 @@ class AltPanel(QWidget):
         page = self.model.images[page_index]
         new_variant_index = (page.current_variant_index + 1) % len(page.images)
         self.model.change_variant(page_index, new_variant_index)
+
+    def _show_alt_context_menu(self, page_idx, variant_path, global_pos):
+        if not self.model or not (0 <= page_idx < len(self.model.images)):
+            return
+        page = self.model.images[page_idx]
+        # No context menu for the main page (index 0)
+        if variant_path == page.images[0]:
+            return
+
+        series_path = str(self.model.series['path'])
+        chapter_name = Path(str(self.model.manga_dir)).name
+        manga_dir = Path(str(self.model.manga_dir))
+        main_file = Path(page.images[0]).name
+
+        # Load alt config to determine fix state
+        data = AltManager.load_alts(series_path)
+        page_entry = data.get(chapter_name, {}).get(main_file, {})
+        if isinstance(page_entry, list):
+            page_entry = {"alts": page_entry, "translations": {}}
+        alts_list = page_entry.get("alts", [])
+        alts_fix_map = page_entry.get("alts_fix", {})
+
+        # Resolve variant_path to relative for lookup
+        try:
+            rel_variant = str(Path(variant_path).relative_to(manga_dir)).replace('\\', '/')
+        except ValueError:
+            rel_variant = None
+
+        # Determine if this variant is a fix or an original alt
+        original_rel = None   # relative path of the original alt
+        is_fix = False
+
+        if rel_variant:
+            # Check if rel_variant is a VALUE in alts_fix (i.e. it is a fix file)
+            for orig_key, fix_val in alts_fix_map.items():
+                if fix_val == rel_variant:
+                    original_rel = orig_key
+                    is_fix = True
+                    break
+            # If not a fix, check if it's directly in the alts list
+            if not is_fix and rel_variant in alts_list:
+                original_rel = rel_variant
+
+        if original_rel is None:
+            # Fallback: treat variant as original using filename match
+            vname = Path(variant_path).name
+            for a in alts_list:
+                if Path(a).name == vname:
+                    original_rel = a
+                    break
+            if original_rel is None:
+                return  # Can't identify this alt
+
+        # Build context menu
+        menu = QMenu(self)
+        refine_action = menu.addAction("Refine Alt")
+        revert_action = menu.addAction("Revert Alt") if is_fix else None
+
+        action = menu.exec(global_pos if isinstance(global_pos, QPoint) else QPoint(global_pos))
+
+        if action == refine_action:
+            self._open_refine_dialog(
+                page, main_file, original_rel,
+                manga_dir, series_path, chapter_name
+            )
+        elif revert_action and action == revert_action:
+            AltManager.remove_alt_fix(series_path, chapter_name, main_file, original_rel)
+            self.model.refresh()
+
+    def _open_refine_dialog(self, page, main_file, alt_rel_path, manga_dir, series_path, chapter_name):
+        from src.ui.components.refine_alt_dialog import RefineAltDialog
+
+        main_path = self._resolve_path(page.images[0])
+        alt_abs = str(manga_dir / alt_rel_path)
+
+        alt_p = Path(alt_rel_path)
+        fix_rel_path = str(alt_p.parent / (alt_p.stem + '_fix' + alt_p.suffix)).replace('\\', '/')
+        output_path = str(manga_dir / fix_rel_path)
+
+        dlg = RefineAltDialog(
+            parent=self,
+            main_path=main_path,
+            alt_path=alt_abs,
+            output_path=output_path,
+            series_path=series_path,
+            chapter_name=chapter_name,
+            main_file=main_file,
+            alt_rel_path=alt_rel_path,
+            fix_rel_path=fix_rel_path,
+        )
+        if dlg.exec():
+            self.model.refresh()
 

@@ -129,9 +129,9 @@ class DragDropAltDialog(QDialog):
                         item = QListWidgetItem(os.path.basename(file_path))
                         
                         # Load Thumbnail (Sync is okay for small batches)
-                        pixmap = load_thumbnail_from_path(file_path, 100, 140)
-                        if pixmap:
-                            item.setIcon(QIcon(pixmap))
+                        qimg = load_thumbnail_from_path(file_path, 100, 140)
+                        if qimg and not qimg.isNull():
+                            item.setIcon(QIcon(QPixmap.fromImage(qimg)))
                         
                         self.list_widget.addItem(item)
                         files_added += 1
