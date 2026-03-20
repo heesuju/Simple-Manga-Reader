@@ -476,6 +476,7 @@ class ReaderModel(QObject):
             entry = chapter_alts[main_name]
             
             # Handle List (Legacy) vs Dict (New)
+            alts_fix_map = {}
             if isinstance(entry, list):
                 alt_names = entry
             elif isinstance(entry, dict):
@@ -485,14 +486,22 @@ class ReaderModel(QObject):
                 # Add translations
                 if "translations" in entry and isinstance(entry["translations"], dict):
                     trans_dict = entry["translations"]
+                alts_fix_map = entry.get("alts_fix", {})
 
             found_alts = []
-            
+
             chapter_dir = Path(self.manga_dir)
             possible_dirs = [chapter_dir / "alts", chapter_dir / "translations", chapter_dir]
-            
-            # Resolve Alts
+
+            # Resolve Alts — prefer fix file if registered
             for alt_name in alt_names:
+                fix_rel = alts_fix_map.get(alt_name)
+                if fix_rel:
+                    fix_candidate = chapter_dir / fix_rel
+                    if fix_candidate.exists():
+                        found_alts.append(str(fix_candidate))
+                        continue
+                    # fix registered but file missing — fall through to original
                 for d in possible_dirs:
                     candidate = d / alt_name
                     if candidate.exists():

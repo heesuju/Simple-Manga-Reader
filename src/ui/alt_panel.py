@@ -458,14 +458,14 @@ class AltPanel(QWidget):
 
         if action == refine_action:
             self._open_refine_dialog(
-                page, main_file, original_rel,
+                page, page_idx, variant_path, main_file, original_rel,
                 manga_dir, series_path, chapter_name
             )
         elif revert_action and action == revert_action:
             AltManager.remove_alt_fix(series_path, chapter_name, main_file, original_rel)
             self.model.refresh()
 
-    def _open_refine_dialog(self, page, main_file, alt_rel_path, manga_dir, series_path, chapter_name):
+    def _open_refine_dialog(self, page, page_idx, variant_path, main_file, alt_rel_path, manga_dir, series_path, chapter_name):
         from src.ui.components.refine_alt_dialog import RefineAltDialog
 
         main_path = self._resolve_path(page.images[0])
@@ -487,5 +487,15 @@ class AltPanel(QWidget):
             fix_rel_path=fix_rel_path,
         )
         if dlg.exec():
-            self.model.refresh()
+            # Swap the in-memory path for this variant and reload the view immediately
+            try:
+                variant_idx = page.images.index(variant_path)
+            except ValueError:
+                variant_idx = None
+
+            if variant_idx is not None:
+                page.images[variant_idx] = output_path
+                self.model.change_variant(page_idx, variant_idx)
+            else:
+                self.model.refresh()
 
