@@ -468,6 +468,21 @@ class AltPanel(QWidget):
     def _open_refine_dialog(self, page, page_idx, variant_path, main_file, alt_rel_path, manga_dir, series_path, chapter_name):
         from src.ui.components.refine_alt_dialog import RefineAltDialog
 
+        # Load metadata to filter fixes from being used as references
+        data = AltManager.load_alts(series_path)
+        page_entry = data.get(chapter_name, {}).get(main_file, {})
+        if isinstance(page_entry, list):
+            page_entry = {"alts": page_entry, "translations": {}}
+        alts_fix_map = page_entry.get("alts_fix", {})
+        fix_rel_paths = set(alts_fix_map.values())
+
+        # Collect all original variants as possible references
+        reference_paths = [self._resolve_path(page.images[0])]
+        for alt_rel in page_entry.get("alts", []):
+            abs_p = self._resolve_path(alt_rel)
+            if abs_p not in reference_paths:
+                reference_paths.append(abs_p)
+
         main_path = self._resolve_path(page.images[0])
         alt_abs = str(manga_dir / alt_rel_path)
 
@@ -485,6 +500,7 @@ class AltPanel(QWidget):
             main_file=main_file,
             alt_rel_path=alt_rel_path,
             fix_rel_path=fix_rel_path,
+            reference_paths=reference_paths
         )
         if dlg.exec():
             # Swap the in-memory path for this variant and reload the view immediately

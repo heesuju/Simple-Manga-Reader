@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QCheckBox, QSpinBox, QGroupBox
+    QCheckBox, QSpinBox, QGroupBox, QComboBox
 )
 from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtGui import QPixmap, QImageReader
@@ -45,7 +45,8 @@ def _make_thumb_label(path=None):
 class RefineAltDialog(QDialog):
     def __init__(self, parent=None, main_path=None, alt_path=None,
                  output_path=None, series_path=None, chapter_name=None,
-                 main_file=None, alt_rel_path=None, fix_rel_path=None):
+                 main_file=None, alt_rel_path=None, fix_rel_path=None,
+                 reference_paths=None):
         super().__init__(parent)
         self.setWindowTitle("Refine Alt")
         self.resize(820, 640)
@@ -58,6 +59,7 @@ class RefineAltDialog(QDialog):
         self.main_file = main_file
         self.alt_rel_path = alt_rel_path
         self.fix_rel_path = fix_rel_path
+        self.reference_paths = reference_paths or [main_path]
 
         # Temp file lives in .cache/alt_refine/ — never in the alt directory
         op = Path(output_path)
@@ -73,16 +75,52 @@ class RefineAltDialog(QDialog):
         preview_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview_row.setSpacing(16)
 
-        for title, path in [("Original", main_path), ("Alt", alt_path)]:
+        for title, path in [("Reference", self.main_path), ("Alt", alt_path)]:
             col = QVBoxLayout()
             col.setAlignment(Qt.AlignmentFlag.AlignCenter)
             col.setSpacing(4)
-            col.addWidget(QLabel(title, alignment=Qt.AlignmentFlag.AlignCenter))
-            col.addWidget(_make_thumb_label(path))
+            
+            if title == "Reference":
+                title_row = QHBoxLayout()
+                title_row.addWidget(QLabel("Reference:", alignment=Qt.AlignmentFlag.AlignRight))
+                
+                self.ref_combo = QComboBox()
+                self.ref_combo.setMinimumWidth(120)
+                for rp in self.reference_paths:
+                    self.ref_combo.addItem(Path(rp).name, rp)
+                
+                # Select current
+                for i in range(self.ref_combo.count()):
+                    if self.ref_combo.itemData(i) == self.main_path:
+                        self.ref_combo.setCurrentIndex(i)
+                        break
+                
+                self.ref_combo.currentIndexChanged.connect(self._on_ref_changed)
+                title_row.addWidget(self.ref_combo)
+                col.addLayout(title_row)
+            else:
+                col.addWidget(QLabel(title, alignment=Qt.AlignmentFlag.AlignCenter))
+
+            thumb = _make_thumb_label(path)
+            col.addWidget(thumb)
+            
+            if title == "Reference":
+                self.ref_thumb = thumb
+                # Make thumbnail clickable to cycle or trigger selection? 
+                # Request says "clicking it should allow it to be changed with combobox"
+                # We'll just focus the combobox or show its popup? 
+                # QComboBox.showPopup() is good.
+                self.ref_thumb.setCursor(Qt.CursorShape.PointingHandCursor)
+                self.ref_thumb.mousePressEvent = lambda e: self.ref_combo.showPopup()
+
             size_lbl = QLabel(_read_size_str(path))
             size_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             size_lbl.setStyleSheet("color: rgba(255,255,255,120); font-size: 11px;")
             col.addWidget(size_lbl)
+            
+            if title == "Reference":
+                self.ref_size_lbl = size_lbl
+                
             preview_row.addLayout(col)
 
         # Result column (empty until refined)
@@ -163,6 +201,32 @@ class RefineAltDialog(QDialog):
         layout.addLayout(btn_row)
 
     # ── Slots ─────────────────────────────────────────────────────────────────
+    def _on_ref_changed(self, index):
+        new_path = self.ref_combo.itemData(index)
+        if new_path == self.main_path:
+            return
+        
+        self.main_path = new_path
+        
+        # Update UI
+        qimg = load_thumbnail_from_path(new_path, PREVIEW_W, PREVIEW_H)
+        if qimg and not qimg.isNull():
+            self.ref_thumb.setPixmap(QPixmap.fromImage(qimg).scaled(
+                PREVIEW_W, PREVIEW_H,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            ))
+        else:
+            self.ref_thumb.setPixmap(QPixmap())
+            
+        self.ref_size_lbl.setText(_read_size_str(new_path))
+        
+        # Reset result
+        self.result_thumb.setPixmap(QPixmap())
+        self.result_thumb.setText("–")
+        self.result_size_lbl.setText("–")
+        self.save_btn.setEnabled(False)
+        self._set_status("Reference changed. Click Refine to update.")
 
     def _on_manual_toggled(self, checked):
         self.spin_w.setEnabled(checked)
