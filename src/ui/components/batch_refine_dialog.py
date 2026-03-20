@@ -270,16 +270,26 @@ class BatchRefineDialog(QDialog):
             
         self.refine_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
+        self.status_total.setText("Processing...")
         
         manual_size = None
         if self.cb_manual.isChecked():
             manual_size = (self.spin_w.value(), self.spin_h.value())
             
+        import time
         for row in selected_rows:
+            row.is_processed = False # Reset state for new run
             row.set_status("Processing...", "#2196F3")
             
             alt_p = Path(row.alt_rel_path)
-            tmp_name = f"{alt_p.stem}_refine_{id(row)}.png"
+            # Use timestamp to make filename unique and avoid cache issues
+            ts = int(time.time() * 1000)
+            tmp_name = f"{alt_p.stem}_refine_{id(row)}_{ts}.png"
+            # Cleanup old temp file if exists
+            if row.temp_output_path and os.path.exists(row.temp_output_path):
+                try: os.remove(row.temp_output_path)
+                except: pass
+            
             tmp_path = str(self.cache_dir / tmp_name)
             
             worker = AltRefinerWorker(
@@ -317,7 +327,13 @@ class BatchRefineDialog(QDialog):
         for row in rows_to_save:
             try:
                 alt_p = Path(row.alt_rel_path)
-                fix_rel_path = str(alt_p.parent / (alt_p.stem + '_fix' + alt_p.suffix)).replace('\\', '/')
+                # Avoid nested _fix_fix
+                base_name = alt_p.stem
+                if base_name.endswith('_fix'):
+                    base_name = base_name[:-4]
+                
+                fix_name = base_name + '_fix' + alt_p.suffix
+                fix_rel_path = str(alt_p.parent / fix_name).replace('\\', '/')
                 final_output_path = str(self.manga_dir / fix_rel_path)
                 
                 Path(final_output_path).parent.mkdir(parents=True, exist_ok=True)
