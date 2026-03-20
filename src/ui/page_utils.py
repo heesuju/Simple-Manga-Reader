@@ -145,17 +145,49 @@ def unlink_page(model: ReaderModel, index: int):
     main_file_path = Path(page.images[0])
     is_main_file = (current_file_path.resolve() == main_file_path.resolve())
     
-    AltManager.unlink_page(series_path, chapter_name, str(current_file_path))
-    
-    files_to_rename = []
-    
+    # Load alts_fix to identify pairs
+    series_path = model.series['path']
+    current_data = AltManager.load_alts(series_path)
+    main_name = main_file_path.name
+    ch_entry = current_data.get(chapter_name, {}).get(main_name, {})
+    if isinstance(ch_entry, list):
+        ch_entry = {"alts": ch_entry, "translations": {}}
+    alts_fix = ch_entry.get("alts_fix", {})
+    fix_to_orig = {v: k for k, v in alts_fix.items()}
+
+    def get_pair_abs(p_abs):
+        try:
+            rel = str(p_abs.relative_to(chapter_dir)).replace('\\', '/')
+        except ValueError:
+            return [p_abs]
+        if rel in alts_fix:
+            return [p_abs, chapter_dir / alts_fix[rel]]
+        if rel in fix_to_orig:
+            return [p_abs, chapter_dir / fix_to_orig[rel]]
+        return [p_abs]
+
+    files_to_detach = []
     if is_main_file:
-        files_to_rename = [Path(p) for p in page.images if Path(p).resolve() != main_file_path.resolve()]
+        for p_str in page.images:
+            p_abs = Path(p_str)
+            if p_abs.resolve() != main_file_path.resolve():
+                files_to_detach.extend(get_pair_abs(p_abs))
     else:
-        files_to_rename = [current_file_path]
+        files_to_detach = get_pair_abs(current_file_path)
+    
+    # Now that we've identified what to detach on disk, remove from metadata
+    AltManager.unlink_page(series_path, chapter_name, str(current_file_path))
         
-    for p in files_to_rename:
-        if "alts" in str(p.parent.name):
+    seen = set()
+    for p in files_to_detach:
+        p_res = p.resolve()
+        if p_res in seen: continue
+        seen.add(p_res)
+        
+        if not p.exists(): continue
+        
+        # If it's in any 'alts' hierarchy, we move it out/rename it
+        if "alts" in [parent.name.lower() for parent in p.parents]:
             new_stem = f"{p.stem}_detached_{uuid.uuid4().hex[:8]}"
             new_name = f"{new_stem}{p.suffix}"
             dst_path = p.parent / new_name
@@ -187,83 +219,134 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
     Renames and moves files on disk safely, then updates info.json.
     """
     if not page_obj or not page_obj.images: return False
-    
+
     main_file = page_obj.images[0]
+    main_name = Path(main_file).name
     main_stem = Path(main_file).stem
     chapter_dir = Path(model.manga_dir)
     alts_dir = chapter_dir / "alts"
     series_path = model.series['path']
     chapter_name = chapter_dir.name
-    
+
+    # Load current alts_fix before any changes
+    current_data = AltManager.load_alts(series_path)
+    ch_full_entry = current_data.get(chapter_name, {}).get(main_name, {})
+    if isinstance(ch_full_entry, list):
+        ch_full_entry = {"alts": ch_full_entry, "translations": {}}
+    alts_fix = dict(ch_full_entry.get("alts_fix", {}))
+    fix_to_orig = {v: k for k, v in alts_fix.items()}
+
+    # Helper to get both paths if they exist
+    def get_variant_pair(abs_path):
+        try:
+            rel = str(Path(abs_path).relative_to(chapter_dir)).replace('\\', '/')
+        except ValueError:
+            return abs_path, None, None, None
+        
+        if rel in alts_fix: # Current is original
+            f_rel = alts_fix[rel]
+            return abs_path, str(chapter_dir / f_rel), rel, f_rel
+        if rel in fix_to_orig: # Current is fix
+            o_rel = fix_to_orig[rel]
+            return str(chapter_dir / o_rel), abs_path, o_rel, rel
+        return abs_path, None, rel, None
+
+    # 1. Handle Removal
+    new_flat = {p for paths in new_structure.values() for p in paths if p != main_file}
+    removed_abs_paths = [p for p in page_obj.images[1:] if p not in new_flat]
+
+    for removed_abs in removed_abs_paths:
+        orig_abs, fix_abs, orig_rel, fix_rel = get_variant_pair(removed_abs)
+        
+        # If the user chose to delete from disk in the dialog, ONE of these might already be gone.
+        # We ensure BOTH are gone if they exist, to prevent orphans.
+        for p_abs in [orig_abs, fix_abs]:
+            if p_abs and os.path.exists(p_abs):
+                try:
+                    os.remove(p_abs)
+                except OSError:
+                    pass
+        
+        # Clean alts_fix map
+        if orig_rel in alts_fix:
+            del alts_fix[orig_rel]
+
+    # 2. Process Moves/Renames
     flat_new_paths = [main_file]
-    
-    # Process each category
+    new_alts_fix = {}
+
     for cat_name, file_paths in new_structure.items():
-        # First image in file_paths might be main_file, ignore it in moves if so, but it shouldn't be in the ALTs list
-        if cat_name.lower() == "main":
-            cat_dir = alts_dir / main_stem / "main"
-        else:
-            cat_dir = alts_dir / main_stem / cat_name.lower()
-             
+        cat_dir = alts_dir / main_stem / cat_name.lower()
         if not cat_dir.exists():
-            try:
-                cat_dir.mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                print(f"Failed to create category directory: {e}")
-                continue
-                
-        # To avoid name collision during rename (e.g. renaming 2 to 1 while 1 exists), we move them all to a temp name first
-        temp_moves = []
+            cat_dir.mkdir(parents=True, exist_ok=True)
+
+        temp_moves = [] # List of ((orig_temp, fix_temp), (orig_old_rel, fix_old_rel))
         for path_str in file_paths:
             if path_str == main_file: continue
-            old_path = Path(path_str)
-            if not old_path.exists(): continue
-             
-            temp_path = cat_dir / f"temp_{uuid.uuid4().hex[:8]}{old_path.suffix}"
-            try:
-                shutil.move(old_path, temp_path)
-                temp_moves.append(temp_path)
-            except Exception as e:
-                print(f"Failed to move to temp: {e}")
-                 
-        # Now rename them sequentially
-        for i, temp_path in enumerate(temp_moves):
-            # Index 1-based start
-            if cat_name.lower() == "main":
-                new_name = f"main_{i + 1}{temp_path.suffix}"
-            else:
-                new_name = f"{cat_name.lower()}_{i + 1}{temp_path.suffix}"
             
-            final_path = cat_dir / new_name
-            try:
-                shutil.move(temp_path, final_path)
-                
-                # Save relative path for info.json linking
-                try:
-                    rel_path = final_path.relative_to(chapter_dir)
-                    flat_new_paths.append(str(rel_path).replace('\\', '/'))
-                except ValueError:
-                    flat_new_paths.append(str(final_path))
-                     
-            except Exception as e:
-                print(f"Failed to move from temp to final: {e}")
+            o_abs, f_abs, o_rel, f_rel = get_variant_pair(path_str)
+            
+            o_temp = None
+            if o_abs and os.path.exists(o_abs):
+                o_temp = cat_dir / f"temp_o_{uuid.uuid4().hex[:8]}{Path(o_abs).suffix}"
+                shutil.move(o_abs, o_temp)
+            
+            f_temp = None
+            if f_abs and os.path.exists(f_abs):
+                f_temp = cat_dir / f"temp_f_{uuid.uuid4().hex[:8]}{Path(f_abs).suffix}"
+                shutil.move(f_abs, f_temp)
+            
+            if o_temp or f_temp:
+                temp_moves.append(((o_temp, f_temp), (o_rel, f_rel)))
 
-    # Remove main file from the list to be sent to AltManager (it expects only the alts list)
-    if flat_new_paths and flat_new_paths[0] == main_file:
-        alts_to_link = flat_new_paths[1:]
-    else:
-        alts_to_link = flat_new_paths
-         
-    from src.core.alt_manager import AltManager
-    # Replace the existing alts directly via a new manager method
+        # Rename to final names
+        for i, ((o_temp, f_temp), (o_old_rel, f_old_rel)) in enumerate(temp_moves):
+            prefix = f"{cat_name.lower()}_{i + 1}"
+            
+            # Final original path
+            o_final_rel = None
+            if o_temp:
+                o_final_path = cat_dir / f"{prefix}{o_temp.suffix}"
+                shutil.move(o_temp, o_final_path)
+                o_final_rel = str(o_final_path.relative_to(chapter_dir)).replace('\\', '/')
+            
+            # Final fix path
+            f_final_rel = None
+            if f_temp:
+                # Retain _fix suffix if it exists
+                f_final_path = cat_dir / f"{prefix}_fix{f_temp.suffix}"
+                shutil.move(f_temp, f_final_path)
+                f_final_rel = str(f_final_path.relative_to(chapter_dir)).replace('\\', '/')
+
+            # Determine what to use in the 'alts' list (prefer fix if it exists, as that's what the user sees)
+            if f_final_rel:
+                flat_new_paths.append(f_final_rel)
+            elif o_final_rel:
+                flat_new_paths.append(o_final_rel)
+                
+            # Update alts_fix
+            if o_final_rel and f_final_rel:
+                new_alts_fix[o_final_rel] = f_final_rel
+
+    # Update info.json
+    alts_to_link = flat_new_paths[1:] if flat_new_paths[0] == main_file else flat_new_paths
     AltManager.update_alts_order(series_path, chapter_name, main_file, alts_to_link)
-    
-    # Cleanup empty category folders (except "main")
+
+    data = AltManager.load_alts(series_path)
+    if chapter_name in data and main_name in data[chapter_name]:
+        entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
+        if new_alts_fix:
+            entry["alts_fix"] = new_alts_fix
+        elif "alts_fix" in entry:
+            del entry["alts_fix"]
+        data[chapter_name][main_name] = entry
+        AltManager.save_alts(series_path, data)
+
+    # Cleanup empty category folders
     page_alts_root = alts_dir / main_stem
     if page_alts_root.exists() and page_alts_root.is_dir():
         for sub_dir in page_alts_root.iterdir():
             if sub_dir.is_dir() and sub_dir.name.lower() != "main":
-                # Only remove if truly empty
                 try:
                     if not any(sub_dir.iterdir()):
                         sub_dir.rmdir()

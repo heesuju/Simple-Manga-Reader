@@ -530,11 +530,12 @@ class AltManager:
         # Case 2: It is an Alt/Translation inside some Main file
         for main_img, entry in data[chapter_name].items():
             entry = AltManager._ensure_entry_structure(entry)
+            changed = False
             
             # Check alts
             if target_name in entry["alts"]:
                 entry["alts"].remove(target_name)
-                # If empty, keep empty list
+                changed = True
             
             # Check translations
             keys_to_remove = []
@@ -543,10 +544,28 @@ class AltManager:
                     keys_to_remove.append(lang)
             for k in keys_to_remove:
                 del entry["translations"][k]
+                changed = True
 
-            # Save (even if struct didn't change effectively, migration might have happened)
-            data[chapter_name][main_img] = entry
-            AltManager.save_alts(series_path, data)
+            # Check alts_fix
+            if "alts_fix" in entry:
+                # 1. target_name is the original (key)
+                if target_name in entry["alts_fix"]:
+                    del entry["alts_fix"][target_name]
+                    changed = True
+                else:
+                    # 2. target_name is the fix (value)
+                    fix_keys_to_remove = [k for k, v in entry["alts_fix"].items() if v == target_name]
+                    for k in fix_keys_to_remove:
+                        del entry["alts_fix"][k]
+                        changed = True
+                
+                if not entry["alts_fix"]:
+                    del entry["alts_fix"]
+                    changed = True
+
+            if changed:
+                data[chapter_name][main_img] = entry
+                AltManager.save_alts(series_path, data)
             return
 
     @staticmethod
