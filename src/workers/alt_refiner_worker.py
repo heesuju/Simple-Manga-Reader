@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from pathlib import Path
+from src.utils.img_utils import imread_unicode, imwrite_unicode
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal
 
 
@@ -23,8 +24,8 @@ class AltRefinerWorker(QRunnable):
 
     def run(self):
         try:
-            main_img = cv2.imread(self.main_path)
-            alt_img = cv2.imread(self.alt_path)
+            main_img = imread_unicode(self.main_path)
+            alt_img = imread_unicode(self.alt_path)
             if main_img is None or alt_img is None:
                 self.signals.error.emit("Failed to load images.")
                 return
@@ -41,7 +42,7 @@ class AltRefinerWorker(QRunnable):
                 result = self._color_transfer(main_img, result)
 
             Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
-            cv2.imwrite(self.output_path, result)
+            imwrite_unicode(self.output_path, result)
             self.signals.finished.emit(self.output_path)
         except Exception as e:
             self.signals.error.emit(str(e))

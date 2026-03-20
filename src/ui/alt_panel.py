@@ -165,6 +165,25 @@ class AltPanel(QWidget):
         self.revert_btn.clicked.connect(self._on_revert_clicked)
         top_row.addWidget(self.revert_btn)
 
+        # Batch Refine button
+        self.batch_refine_icon = QIcon(resource_path("assets/icons/auto_fix.svg")) # Reusing icon or similar
+        self.batch_refine_btn = QPushButton()
+        self.batch_refine_btn.setIcon(self.batch_refine_icon)
+        self.batch_refine_btn.setFixedSize(28, 28)
+        self.batch_refine_btn.setToolTip("Batch Refine Category")
+        self.batch_refine_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 30);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 50);
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: rgba(255, 255, 255, 60); }
+        """)
+        self.batch_refine_btn.clicked.connect(self._on_batch_refine_clicked)
+        top_row.addWidget(self.batch_refine_btn)
+
         main_layout.addLayout(top_row)
 
         # Scroll area for thumbnails
@@ -474,7 +493,6 @@ class AltPanel(QWidget):
         if isinstance(page_entry, list):
             page_entry = {"alts": page_entry, "translations": {}}
         alts_fix_map = page_entry.get("alts_fix", {})
-        fix_rel_paths = set(alts_fix_map.values())
 
         # Collect all original variants as possible references
         reference_paths = [self._resolve_path(page.images[0])]
@@ -515,3 +533,78 @@ class AltPanel(QWidget):
             else:
                 self.model.refresh()
 
+    def _on_batch_refine_clicked(self):
+        if not self.model or not (0 <= self.model.current_index < len(self.model.images)):
+            return
+        
+        page_idx = self.model.current_index
+        page = self.model.images[page_idx]
+        active_cat = self.active_categories.get(page_idx)
+        if not active_cat:
+            return
+            
+        categories = page.get_categorized_variants()
+        cat_paths = categories.get(active_cat, [])
+        if not cat_paths:
+            return
+
+        series_path = str(self.model.series['path'])
+        chapter_name = Path(str(self.model.manga_dir)).name
+        manga_dir = Path(str(self.model.manga_dir))
+        main_file = Path(page.images[0]).name
+
+        # Load metadata to identify original alts vs fixes
+        data = AltManager.load_alts(series_path)
+        page_entry = data.get(chapter_name, {}).get(main_file, {})
+        if isinstance(page_entry, list):
+            page_entry = {"alts": page_entry, "translations": {}}
+        alts_fix_map = page_entry.get("alts_fix", {})
+        fix_to_orig = {v: k for k, v in alts_fix_map.items()}
+
+        items_data = []
+        for p in cat_paths:
+            # Skip the main page (index 0)
+            if p == page.images[0]:
+                continue
+                
+            try:
+                rel = str(Path(p).relative_to(manga_dir)).replace('\\', '/')
+            except ValueError:
+                rel = None
+            
+            # If this is a fix, find its original
+            if rel and rel in fix_to_orig:
+                orig_rel = fix_to_orig[rel]
+                orig_abs = str(manga_dir / orig_rel)
+            else:
+                orig_rel = rel
+                orig_abs = str(manga_dir / rel) if rel else p
+            
+            items_data.append({
+                'alt_abs': orig_abs,
+                'alt_rel': orig_rel
+            })
+
+        if not items_data:
+            return
+
+        # Prepare reference paths
+        reference_paths = [self._resolve_path(page.images[0])]
+        for alt_rel in page_entry.get("alts", []):
+            abs_p = self._resolve_path(alt_rel)
+            if abs_p not in reference_paths:
+                reference_paths.append(abs_p)
+
+        from src.ui.components.batch_refine_dialog import BatchRefineDialog
+        dlg = BatchRefineDialog(
+            parent=self,
+            items_data=items_data,
+            series_path=series_path,
+            chapter_name=chapter_name,
+            main_file=main_file,
+            reference_paths=reference_paths,
+            manga_dir=manga_dir
+        )
+        if dlg.exec():
+            # Refresh model to show new fixes
+            self.model.refresh()

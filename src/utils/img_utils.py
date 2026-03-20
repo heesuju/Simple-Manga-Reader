@@ -13,6 +13,31 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+def imread_unicode(path: str, flags=cv2.IMREAD_COLOR):
+    """Read an image from a path that may contain non-ASCII characters on Windows."""
+    try:
+        # Use fromfile to read the file as a numpy array (Unicode safe)
+        nparr = np.fromfile(path, np.uint8)
+        # Decode the image from the array
+        return cv2.imdecode(nparr, flags)
+    except Exception as e:
+        print(f"Error reading image {path}: {e}")
+        return None
+
+def imwrite_unicode(path: str, img, params=None):
+    """Write an image to a path that may contain non-ASCII characters on Windows."""
+    try:
+        ext = Path(path).suffix
+        # Encode the image to the specified extension
+        ret, nparr = cv2.imencode(ext, img, params)
+        if ret:
+            # Save the array to file (Unicode safe)
+            nparr.tofile(path)
+            return True
+    except Exception as e:
+        print(f"Error writing image {path}: {e}")
+    return False
+
 class ZipCache:
     """Thread-safe LRU cache for open ZipFile objects."""
     def __init__(self, max_size: int = 5):
@@ -102,12 +127,8 @@ def is_image_monotone(image_path: str, threshold: float = 10.0) -> bool:
         return False
 
     try:
-        # Read file into a numpy array to handle non-ASCII paths correctly
-        with open(image_path, 'rb') as f:
-            nparr = np.frombuffer(f.read(), np.uint8)
-        
-        # Decode image from the array
-        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+        # Use Unicode-safe read
+        img = imread_unicode(image_path, cv2.IMREAD_GRAYSCALE)
 
         if img is None:
             return True # Treat as monotone if it can't be read
@@ -593,8 +614,8 @@ def segment_image_by_black_lines(image_path: str) -> List[dict]:
     Returns a list of dictionaries, each containing the coordinates for each segmented part.
     """
     try:
-        # Load the image using OpenCV
-        img = cv2.imread(image_path)
+        # Load the image using Unicode-safe read
+        img = imread_unicode(image_path)
         if img is None:
             return []
 
@@ -633,8 +654,8 @@ def detect_manga_panels(image_path: str) -> List[dict]:
     Returns a list of dictionaries, each containing the center coordinates and dimensions.
     """
     try:
-        # Load the image using OpenCV
-        img = cv2.imread(image_path)
+        # Load the image using Unicode-safe read
+        img = imread_unicode(image_path)
         if img is None:
             return []
 
