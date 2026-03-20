@@ -57,9 +57,10 @@ class AltRefinerWorker(QRunnable):
 
         # Base output: stretch alt to match original's aspect ratio at the largest scale
         # (no crop — both dimensions must be >= both images' corresponding dimensions)
-        k = max(w_src / w_ref, h_src / h_ref)
-        w_base = max(round(k * w_ref), w_ref)
-        h_base = max(round(k * h_ref), h_ref)
+        # Largest scale that fits within alt's native dimensions while matching original's ratio
+        k = min(w_src / w_ref, h_src / h_ref)
+        w_base = round(k * w_ref)
+        h_base = round(k * h_ref)
 
         # ECC at working resolution — both images stretched to the same size
         # so ECC captures residual content-scale mismatch, not the ratio difference
@@ -86,8 +87,8 @@ class AltRefinerWorker(QRunnable):
             # sx>1: source is zoomed in → divide to shrink; sx<1: source is zoomed out → divide to enlarge.
             sx = float(np.clip(warp[0, 0], 0.5, 2.0))
             sy = float(np.clip(warp[1, 1], 0.5, 2.0))
-            w_out = max(round(w_base / sx), w_ref)
-            h_out = max(round(h_base / sy), h_ref)
+            w_out = min(round(w_base / sx), w_src)
+            h_out = min(round(h_base / sy), h_src)
         except cv2.error:
             w_out, h_out = w_base, h_base
 
