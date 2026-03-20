@@ -10,6 +10,7 @@ import math
 import os
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
+from src.utils.str_utils import natural_sort_key
 from src.core.alt_manager import AltManager
 
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
@@ -223,8 +224,13 @@ class ChapterLoaderWorker(QRunnable):
                     return 0.0
             return sorted(image_list, key=_ctime)
 
-        # Default: natural/alphanumeric
-        return sorted(image_list, key=get_chapter_number)
+        # Default: natural/alphanumeric — sort by (prefix text, number, ...) so
+        # files with the same alphabetic prefix stay grouped together (a1,a2 before b1,b2).
+        def _name_key(p):
+            name = Path(p.split('|')[1]).name if '|' in p else Path(p).name
+            return natural_sort_key(name)
+
+        return sorted(image_list, key=_name_key)
 
     def _detect_spreads_in_background(self, pages):
         """Perform spread detection using extracted files or ZipFile data."""
