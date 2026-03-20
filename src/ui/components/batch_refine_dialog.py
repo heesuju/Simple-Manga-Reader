@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QCheckBox, QSpinBox, QGroupBox, QComboBox, QScrollArea, QWidget, QFrame
+    QCheckBox, QSpinBox, QGroupBox, QComboBox, QScrollArea, QWidget, QFrame, QProgressBar
 )
 from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal, QObject
 from PyQt6.QtGui import QPixmap, QImageReader
@@ -20,6 +20,22 @@ class BatchRefineRow(QFrame):
                  series_path, chapter_name, main_file):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet("""
+            BatchRefineRow {
+                background-color: rgba(255, 255, 255, 5);
+                border: 1px solid rgba(255, 255, 255, 10);
+                border-radius: 12px;
+                margin: 2px;
+            }
+            BatchRefineRow QLabel, BatchRefineRow QCheckBox {
+                background: transparent;
+            }
+            BatchRefineRow:hover {
+                background-color: rgba(255, 255, 255, 12);
+                border: 1px solid rgba(255, 255, 255, 25);
+            }
+        """)
+        
         self.main_path = main_path
         self.alt_abs_path = alt_abs_path
         self.alt_rel_path = alt_rel_path
@@ -58,7 +74,9 @@ class BatchRefineRow(QFrame):
         layout.addLayout(ref_col)
 
         # 3. Arrow
-        layout.addWidget(QLabel("→"))
+        self.arrow_lbl = QLabel("→")
+        self.arrow_lbl.setStyleSheet("background: transparent;")
+        layout.addWidget(self.arrow_lbl)
 
         # 4. Original Alt
         alt_col = QVBoxLayout()
@@ -133,10 +151,10 @@ class BatchRefineRow(QFrame):
 
     def set_status(self, text, color=None):
         self.status_lbl.setText(text)
+        style = "background: transparent;"
         if color:
-            self.status_lbl.setStyleSheet(f"color: {color};")
-        else:
-            self.status_lbl.setStyleSheet("")
+            style += f" color: {color};"
+        self.status_lbl.setStyleSheet(style)
 
     def set_result(self, temp_path):
         self.temp_output_path = temp_path
@@ -194,6 +212,24 @@ class BatchRefineDialog(QDialog):
         
         opts_layout.addStretch()
         
+        # Select All/None
+        sel_btn_layout = QHBoxLayout()
+        self.btn_all = QPushButton("Select All")
+        self.btn_all.setFixedWidth(80)
+        self.btn_all.setStyleSheet("font-size: 11px; padding: 2px;")
+        self.btn_all.clicked.connect(lambda: self._set_all_checkboxes(True))
+        
+        self.btn_none = QPushButton("Select None")
+        self.btn_none.setFixedWidth(80)
+        self.btn_none.setStyleSheet("font-size: 11px; padding: 2px;")
+        self.btn_none.clicked.connect(lambda: self._set_all_checkboxes(False))
+        
+        sel_btn_layout.addWidget(self.btn_all)
+        sel_btn_layout.addWidget(self.btn_none)
+        opts_layout.addLayout(sel_btn_layout)
+        
+        opts_layout.addSpacing(20)
+
         # Global Ref Selection
         opts_layout.addWidget(QLabel("Global Ref:"))
         self.global_ref_combo = QComboBox()
@@ -205,6 +241,25 @@ class BatchRefineDialog(QDialog):
         opts_layout.addWidget(self.global_ref_combo)
         
         layout.addWidget(opts_group)
+
+        # ── Progress Bar ───────────────────────────────────────────────────
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid rgba(255,255,255,10);
+                border-radius: 5px;
+                background-color: rgba(0,0,0,50);
+                text-align: center;
+                height: 10px;
+                font-size: 9px;
+            }
+            QProgressBar::chunk {
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2196F3, stop:1 #00BCD4);
+                border-radius: 4px;
+            }
+        """)
+        layout.addWidget(self.progress_bar)
 
         # ── Batch List ───────────────────────────────────────────────────────
         self.scroll = QScrollArea()
@@ -263,6 +318,10 @@ class BatchRefineDialog(QDialog):
                     row.ref_combo.setCurrentIndex(i)
                     break
 
+    def _set_all_checkboxes(self, state):
+        for row in self.rows:
+            row.cb_active.setChecked(state)
+
     def _on_refine_all(self):
         selected_rows = [row for row in self.rows if row.cb_active.isChecked()]
         if not selected_rows:
@@ -271,6 +330,16 @@ class BatchRefineDialog(QDialog):
         self.refine_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
         self.status_total.setText("Processing...")
+        
+        active_rows = [row for row in self.rows if row.cb_active.isChecked()]
+        if not active_rows:
+            self.refine_btn.setEnabled(True)
+            self.status_total.setText("")
+            return
+            
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, len(active_rows))
+        self.progress_bar.setValue(0)
         
         manual_size = None
         if self.cb_manual.isChecked():
@@ -312,19 +381,26 @@ class BatchRefineDialog(QDialog):
         active_rows = [row for row in self.rows if row.cb_active.isChecked()]
         finished = [row for row in active_rows if row.is_processed or row.status_lbl.text() == "Error"]
         
+        self.progress_bar.setValue(len(finished))
         self.status_total.setText(f"Progress: {len(finished)} / {len(active_rows)}")
         
         if len(finished) == len(active_rows):
             self.refine_btn.setEnabled(True)
             self.save_btn.setEnabled(True)
+            # Hide progress bar after a short delay or just leave it at 100%
+            # For now, just keep it visible as feedback
 
     def _on_save_all(self):
         rows_to_save = [row for row in self.rows if row.cb_active.isChecked() and row.is_processed]
         if not rows_to_save:
             return
-            
+        self.save_btn.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, len(rows_to_save))
+        self.progress_bar.setValue(0)
+        
         count = 0
-        for row in rows_to_save:
+        for i, row in enumerate(rows_to_save):
             try:
                 alt_p = Path(row.alt_rel_path)
                 # Avoid nested _fix_fix
@@ -350,6 +426,8 @@ class BatchRefineDialog(QDialog):
                 count += 1
             except Exception as e:
                 row.set_status("Save Fail", "#F44336")
+            
+            self.progress_bar.setValue(i + 1)
                 
         self.status_total.setText(f"Batch saved: {count} items")
         self.save_btn.setEnabled(False)
