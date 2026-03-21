@@ -34,10 +34,22 @@ class InputLabel(QWidget):
 
         self.total_label = QLabel(f"/ {total}")
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.total_label.setStyleSheet("""QLabel { color: white; }""")
+        self.total_label.setStyleSheet("""
+            QLabel {
+                background: transparent;
+                border: none;
+                color: white;
+            }"""
+        )
         
         self.label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.label.setStyleSheet("""QLabel { color: white; }""")
+        self.label.setStyleSheet("""
+            QLabel {
+                background: transparent;
+                border: none;
+                color: white;
+            }"""
+        )
         self.input.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
