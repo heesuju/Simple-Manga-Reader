@@ -8,6 +8,7 @@ class AltSlider(QSlider):
         self.alt_indices = set()
         self.setMouseTracking(True)
         self.hovered_index = -1
+        self._dragging = False
         
     def set_alt_indices(self, indices):
         self.alt_indices = set(indices)
@@ -41,30 +42,44 @@ class AltSlider(QSlider):
         hit_size = 12
         return QRect(int(x_pos - hit_size/2), int(y_pos - hit_size/2), hit_size, hit_size)
 
-    def mouseMoveEvent(self, event):
+    def _value_from_pos(self, x: float) -> int:
         opt = QStyleOptionSlider()
         self.initStyleOption(opt)
         groove_rect = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self)
         handle_rect = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self)
-        handle_width = handle_rect.width()
-        
-        min_val = self.minimum()
-        max_val = self.maximum()
-        
+        track_length = groove_rect.width() - handle_rect.width()
+        if track_length <= 0:
+            return self.value()
+        click_x = x - groove_rect.left() - handle_rect.width() / 2
+        click_x = max(0.0, min(click_x, float(track_length)))
+        return self.style().sliderValueFromPosition(
+            self.minimum(), self.maximum(), int(click_x), track_length, opt.upsideDown
+        )
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            self.setValue(self._value_from_pos(event.position().x()))
+            event.accept()
+            return
+
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+        groove_rect = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self)
+        handle_rect = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self)
+
         hovered = -1
         for idx in self.alt_indices:
-            if not (min_val <= idx <= max_val):
+            if not (self.minimum() <= idx <= self.maximum()):
                 continue
-            
-            rect = self.get_marker_rect(idx, groove_rect, handle_width)
+            rect = self.get_marker_rect(idx, groove_rect, handle_rect.width())
             if rect.contains(event.position().toPoint()):
                 hovered = idx
                 break
-        
+
         if hovered != self.hovered_index:
             self.hovered_index = hovered
             self.update()
-            
+
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event):
@@ -79,7 +94,20 @@ class AltSlider(QSlider):
             event.accept()
             return
 
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self.setValue(self._value_from_pos(event.position().x()))
+            event.accept()
+            return
+
         super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._dragging and event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def paintEvent(self, event):
         super().paintEvent(event)
