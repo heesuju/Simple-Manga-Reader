@@ -370,6 +370,7 @@ class ReaderView(QWidget):
         if self.frame_panel.isVisible():
             panel_w = self.frame_panel.width()
             self.frame_panel.setGeometry(total_w - panel_w, y_pos, panel_w, available_h)
+            self.frame_panel.set_tab_center_y(stable_tab_center_y)
             self.frame_panel.raise_()
 
         # Keep UI controls on top

@@ -10,6 +10,8 @@ from src.workers.view_workers import VideoBatchFrameExtractorWorker
 THUMB_W = 120
 THUMB_H = 160
 PAGE_SIZE = 50
+TAB_W = 16
+TAB_H = 56
 
 class FrameThumbnail(QWidget):
     """Single clickable video frame thumbnail."""
@@ -69,10 +71,21 @@ class FramePanel(QWidget):
                 border: none;
             }
         """)
+        self._collapsed = False
         self.setFixedWidth(THUMB_W + 40)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
-        main_layout = QVBoxLayout(self)
+        # Outer layout holds only the content widget; tab is a floating overlay
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        self._content_widget = QWidget(self)
+        self._content_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._content_widget.setStyleSheet("background: transparent;")
+        outer_layout.addWidget(self._content_widget)
+
+        main_layout = QVBoxLayout(self._content_widget)
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
 
@@ -81,11 +94,11 @@ class FramePanel(QWidget):
         self.prev_btn = QPushButton("<")
         self.prev_btn.setFixedSize(30, 30)
         self.prev_btn.clicked.connect(self.prev_page)
-        
+
         self.page_label = QLabel("0/0")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.page_label.setStyleSheet("color: white; font-weight: bold;")
-        
+
         self.next_btn = QPushButton(">")
         self.next_btn.setFixedSize(30, 30)
         self.next_btn.clicked.connect(self.next_page)
@@ -111,7 +124,61 @@ class FramePanel(QWidget):
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
 
+        # Collapse tab — floats on the left edge (panel is on the right side of the screen)
+        self._tab_btn = QPushButton("›", self)
+        self._tab_btn.setFixedSize(TAB_W, TAB_H)
+        self._tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._tab_btn.setToolTip("Collapse panel")
+        self._tab_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 140);
+                color: rgba(255, 255, 255, 200);
+                border: 1px solid rgba(255, 255, 255, 40);
+                border-right: none;
+                border-radius: 5px 0px 0px 5px;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 50);
+                color: white;
+            }
+        """)
+        self._tab_btn.clicked.connect(self._toggle_collapse)
+        self._tab_btn.raise_()
+
         self.hide()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._reposition_tab()
+
+    def set_tab_center_y(self, center_y: int):
+        self._tab_center_y = center_y
+        self._reposition_tab()
+
+    def _reposition_tab(self):
+        if hasattr(self, '_tab_center_y'):
+            tab_y = max(0, min(self._tab_center_y - TAB_H // 2, self.height() - TAB_H))
+        else:
+            tab_y = max(0, (self.height() - TAB_H) // 2)
+        self._tab_btn.move(0, tab_y)
+        self._tab_btn.raise_()
+
+    def _toggle_collapse(self):
+        self._collapsed = not self._collapsed
+        self._content_widget.setVisible(not self._collapsed)
+        if self._collapsed:
+            self.setFixedWidth(TAB_W)
+            self._tab_btn.setText("‹")
+            self._tab_btn.setToolTip("Expand panel")
+        else:
+            self.setFixedWidth(THUMB_W + 40)
+            self._tab_btn.setText("›")
+            self._tab_btn.setToolTip("Collapse panel")
+        if hasattr(self.parent(), '_update_side_panels_geometry'):
+            QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
 
     def set_video(self, path, total_frames):
         if self.video_path == path and self.total_frames == total_frames:
