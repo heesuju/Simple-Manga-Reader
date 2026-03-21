@@ -411,9 +411,7 @@ class ReaderView(QWidget):
         top_h = self.top_panel.height()
         slider_h = self.slider_panel.height() if self.slider_panel.isVisible() else 0
         
-        padding = 20
-        
-        available_h = total_h - top_h - slider_h - padding
+        available_h = total_h - top_h - slider_h
         if available_h < 100: available_h = 100
         
         panel.setFixedHeight(available_h)
