@@ -12,7 +12,6 @@ from src.core.item_loader import ItemLoader
 from src.ui.clickable_label import ClickableLabel
 from src.ui.components.flow_layout import FlowLayout, VerticalFastLayout
 from src.ui.reader_view import ReaderView
-from src.utils.img_utils import crop_pixmap
 from pathlib import Path
 from src.workers.group_worker import GroupPagesWorker
 from src.workers.translation_matcher_worker import TranslationMatcherWorker
@@ -25,8 +24,6 @@ from src.core.alt_manager import AltManager
 class ChapterListLoaderSignals(QObject):
     chapter_processed = pyqtSignal(object, int, int)  # chapter, page_count, index
     finished = pyqtSignal()
-
-from src.core.alt_manager import AltManager
 
 class ChapterListLoader(QRunnable):
     def __init__(self, chapters, series_path: str):

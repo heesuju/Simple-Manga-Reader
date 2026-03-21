@@ -101,7 +101,6 @@ class SevenZipHandler:
                 
                 startupinfo = None
                 if platform.system() == 'Windows':
-                    import subprocess
                     startupinfo = subprocess.STARTUPINFO()
                     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     
