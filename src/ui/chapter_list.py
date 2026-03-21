@@ -17,6 +17,7 @@ from src.workers.group_worker import GroupPagesWorker
 from src.workers.translation_matcher_worker import TranslationMatcherWorker
 from src.ui.add_translation_dialog import AddTranslationDialog
 from src.utils.img_utils import get_chapter_number, crop_pixmap
+from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS, split_virtual_path
 from src.ui.styles import FLAT_BUTTON_STYLE, ARCHIVE_BADGE_STYLE, LABEL_WHITE_STYLE
 from src.utils.resource_utils import resource_path
 from src.core.alt_manager import AltManager
@@ -53,7 +54,7 @@ class ChapterListLoader(QRunnable):
                 imgs = []
                 internal_path = internal_path.strip('/').replace('\\', '/')
                 lower_zip_path = zip_path.lower()
-                is_zip = lower_zip_path.endswith(('.zip', '.cbz'))
+                is_zip = Path(lower_zip_path).suffix in ZIP_EXTS
                 
                 try:
                     # 1. Try zipfile first for .zip/.cbz
@@ -127,7 +128,7 @@ class ChapterListLoader(QRunnable):
                     return []
 
             if '|' in path_str:
-                zip_path, internal_path = path_str.split('|', 1)
+                zip_path, internal_path = split_virtual_path(path_str)
                 images = scan_internal(zip_path, internal_path)
                 images = sorted(images, key=get_chapter_number)
                 chapter_name = Path(internal_path).name if internal_path else Path(zip_path).stem
@@ -136,7 +137,7 @@ class ChapterListLoader(QRunnable):
                 page_count = len(grouped_pages)
             else:
                 full_path = Path(path_str)
-                if full_path.is_file() and full_path.suffix.lower() in ('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'):
+                if full_path.is_file() and full_path.suffix.lower() in ARCHIVE_EXTS:
                     # Oneshot archive
                     images = scan_internal(path_str, "")
                     images = sorted(images, key=get_chapter_number)
@@ -197,7 +198,7 @@ class ChapterListItemWidget(QWidget):
         
         chapter_path_str = str(chapter['path'])
         is_archive = ('|' in chapter_path_str or
-                      chapter_path_str.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')))
+                      Path(chapter_path_str).suffix.lower() in ARCHIVE_EXTS)
         self.archive_overlay.setVisible(is_archive)
 
         self.name_label = QLabel()
@@ -291,8 +292,8 @@ class ChapterListItemWidget(QWidget):
         
         # Check if read-only (archive)
         is_read_only = False
-        if str(self.series['path']).lower().endswith(('.zip', '.cbz')) or \
-           str(self.chapter['path']).lower().endswith(('.zip', '.cbz')):
+        if (Path(str(self.series['path'])).suffix.lower() in ZIP_EXTS or
+                Path(str(self.chapter['path'])).suffix.lower() in ZIP_EXTS):
             is_read_only = True
 
         if not is_read_only:
@@ -416,7 +417,7 @@ class FolderListItemWidget(QWidget):
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Distinguish between folders and archives for default icon
-        self.is_archive = (folder_name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+        self.is_archive = (Path(folder_name).suffix.lower() in ARCHIVE_EXTS
                            or is_archive_content)
         self.thumbnail_label.setText("📦" if self.is_archive else "📁")
         self.thumbnail_label.setStyleSheet("font-size: 18px; color: white; background: rgba(255,255,255,20); border-radius: 4px;")
@@ -678,10 +679,10 @@ class ChapterListView(QWidget):
         series_root_dir = str(self.series['path'])
         
         # If the series itself is an archive, we shouldn't treat the archive filename as a folder
-        is_series_archive = series_root_dir.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'))
+        is_series_archive = Path(series_root_dir).suffix.lower() in ARCHIVE_EXTS
 
         if '|' in chapter_path:
-            archive_path, internal_rel = chapter_path.split('|', 1)
+            archive_path, internal_rel = split_virtual_path(chapter_path)
             internal_parts = [p for p in internal_rel.strip('/').split('/') if p]
             
             if is_series_archive:
@@ -852,8 +853,7 @@ class ChapterListView(QWidget):
 
         chapters_at_level = [c for c in chapters_at_level if c['name'] not in folders_at_level]
 
-        archive_exts = ('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')
-        in_archive = any(part.lower().endswith(archive_exts) for part in self.current_rel_path)
+        in_archive = any(Path(part).suffix.lower() in ARCHIVE_EXTS for part in self.current_rel_path)
 
         from src.utils.str_utils import natural_sort_key
         for f in sorted(list(folders_at_level), key=natural_sort_key):

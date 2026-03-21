@@ -11,6 +11,7 @@ from src.workers.thumbnail_worker import ThumbnailWorker
 from src.data.reader_model import ReaderModel
 from src.enums import ViewMode
 from src.utils.img_utils import empty_placeholder, load_thumbnail_from_path, load_thumbnail_from_virtual_path
+from src.utils.archive_utils import split_virtual_path
 from src.core.alt_manager import AltManager
 from src.ui.components.drag_drop_alt_dialog import DragDropAltDialog
 import src.ui.page_utils as page_utils
@@ -82,7 +83,7 @@ class PagePanel(CollapsiblePanel):
         if not path or '|' not in path:
             return path
             
-        archive_path, internal = path.split('|', 1)
+        archive_path, internal = split_virtual_path(path)
         from src.utils.archive_utils import SevenZipHandler
         extract_dir = SevenZipHandler.get_extract_dir(archive_path)
         target = extract_dir / internal.replace('/', os.sep).replace('\\', os.sep)

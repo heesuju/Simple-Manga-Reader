@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QMouseEvent
 from PyQt6.QtCore import Qt, pyqtSignal, QMargins
 from src.utils.img_utils import crop_pixmap, VIDEO_EXTS
+from src.utils.archive_utils import ARCHIVE_EXTS
 
 class PageThumbnail(QWidget):
     clicked = pyqtSignal(int)
@@ -150,7 +151,7 @@ class PageThumbnail(QWidget):
             
         path_lower = path.lower()
         is_video = any(path_lower.endswith(ext) for ext in VIDEO_EXTS)
-        is_archive = any(path_lower.endswith(ext) for ext in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'})
+        is_archive = any(path_lower.endswith(ext) for ext in ARCHIVE_EXTS)
         
         if is_video:
             self.media_indicator.setText("🎬")

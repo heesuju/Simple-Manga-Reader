@@ -7,6 +7,9 @@ import threading
 from typing import Optional, List
 from pathlib import Path
 
+ARCHIVE_EXTS = frozenset({'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'})
+ZIP_EXTS = frozenset({'.zip', '.cbz'})
+
 ARCHIVE_CACHE_DIR = Path('.cache/archives')
 ARCHIVE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -26,6 +29,24 @@ def decode_zip_filename(name: str, flag_bits: int) -> str:
         except UnicodeDecodeError:
             continue
     return name  # Fallback: keep CP437 interpretation
+
+def is_archive(path: str) -> bool:
+    """Return True if *path* (plain or virtual) points to a supported archive."""
+    base = path.split('|', 1)[0] if '|' in path else path
+    return os.path.splitext(base)[1].lower() in ARCHIVE_EXTS
+
+def is_zip(path: str) -> bool:
+    """Return True if *path* points to a .zip/.cbz archive."""
+    base = path.split('|', 1)[0] if '|' in path else path
+    return os.path.splitext(base)[1].lower() in ZIP_EXTS
+
+def split_virtual_path(path: str) -> tuple[str, str]:
+    """Split a virtual path 'archive.zip|internal/file' into (archive, internal).
+    If *path* is not virtual, returns (path, '')."""
+    if '|' in path:
+        archive, internal = path.split('|', 1)
+        return archive, internal
+    return path, ''
 
 def get_archive_lock(archive_path: str) -> threading.Lock:
     path_str = str(archive_path)

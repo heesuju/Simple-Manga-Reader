@@ -9,7 +9,7 @@ import zipfile
 import threading
 from collections import OrderedDict
 from src.utils.str_utils import find_number
-from src.utils.archive_utils import decode_zip_filename
+from src.utils.archive_utils import decode_zip_filename, ARCHIVE_EXTS, ZIP_EXTS, split_virtual_path
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -166,7 +166,7 @@ def get_cache_key(path: str, width: int, height: int, crop: str = None) -> str:
 
 def get_virtual_path_cache_key(virtual_path: str, width: int, height: int, crop: str = None) -> str:
     """Generate a cache key for a virtual path and thumbnail settings."""
-    zip_path, image_name = virtual_path.split('|', 1)
+    zip_path, image_name = split_virtual_path(virtual_path)
     mod_time = os.path.getmtime(zip_path)
     settings = f"{width}x{height}{'_' + crop if crop else ''}"
     return hashlib.md5(f"{virtual_path}{mod_time}{settings}".encode()).hexdigest()
@@ -271,12 +271,11 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None) -> QImage:
         return None # Original file not found
         
     video_extensions = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
-    archive_extensions = {".zip", ".cbz", ".7z", ".rar", ".cbr", ".cb7"}
     file_ext = Path(path_str).suffix.lower()
 
     q_image = None
 
-    if file_ext in archive_extensions:
+    if file_ext in ARCHIVE_EXTS:
         return load_thumbnail_from_zip(path, width, height)
 
     if file_ext in video_extensions:
@@ -434,7 +433,7 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
         return None
 
 def get_image_data_from_zip(virtual_path):
-    zip_path_str, image_name = virtual_path.split('|', 1)
+    zip_path_str, image_name = split_virtual_path(virtual_path)
     
     # Try 7-Zip first for ALL archives
     from src.utils.archive_utils import SevenZipHandler
@@ -549,7 +548,7 @@ def _get_first_media_path(chapter_input):
         
     # Handle Virtual Paths (archive.zip|subfolder)
     if '|' in path_str:
-        archive_path, internal_path = path_str.split('|', 1)
+        archive_path, internal_path = split_virtual_path(path_str)
         internal_path = internal_path.strip('/').replace('\\', '/')
         archive_ext = Path(archive_path).suffix.lower()
         
@@ -598,10 +597,8 @@ def _get_first_media_path(chapter_input):
 
     # Handle Normal Paths
     path_obj = Path(path_str)
-    archive_exts = {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}
-    
     # If it's an archive file (not a virtual path yet)
-    if path_obj.suffix.lower() in archive_exts:
+    if path_obj.suffix.lower() in ARCHIVE_EXTS:
         if not os.path.isfile(path_str): # Check if the archive file actually exists
             return None
         # Re-use the virtual path logic for the root

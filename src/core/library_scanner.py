@@ -4,6 +4,7 @@ import re
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 from src.core.alt_manager import AltManager
 from src.utils.str_utils import natural_sort_key
+from src.utils.archive_utils import ARCHIVE_EXTS
 
 # prefer treating images and video separately for cover-selection vs listing
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif'}
@@ -92,7 +93,7 @@ class BatchScannerWorker(QRunnable):
 
 class LibraryScanner:
     def is_archive(self, path: Path):
-        return path.is_file() and path.suffix.lower() in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}
+        return path.is_file() and path.suffix.lower() in ARCHIVE_EXTS
 
     def is_chapter_folder(self, path: Path):
         name = path.name.lower()

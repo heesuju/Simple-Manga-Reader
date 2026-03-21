@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
 from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, pyqtSignal, QSize, QRectF
 from src.utils.resource_utils import resource_path
+from src.utils.archive_utils import is_archive, is_zip, split_virtual_path
 from src.ui.styles import FLAT_BUTTON_STYLE
 
 from src.enums import ViewMode
@@ -733,18 +734,17 @@ class ReaderView(QWidget):
         """Resolves a virtual archive path to a real local file path if it exists in cache."""
         if not path or '|' not in path:
             return path
-            
-        archive_path, internal = path.split('|', 1)
-        ext = os.path.splitext(archive_path)[1].lower()
-        
-        if ext in {'.7z', '.rar', '.cbr', '.cb7', '.zip', '.cbz'}:
+
+        archive_path, internal = split_virtual_path(path)
+
+        if is_archive(archive_path):
             from src.utils.archive_utils import SevenZipHandler
             extract_dir = SevenZipHandler.get_extract_dir(archive_path)
             target = extract_dir / internal.replace('/', os.sep).replace('\\', os.sep)
-            
+
             if target.exists():
                 return str(target)
-                
+
         return path
 
     def _load_image(self, path: str):
@@ -1077,14 +1077,10 @@ class ReaderView(QWidget):
 
         if self.model.manga_dir:
             path_str = str(self.model.manga_dir)
-            if path_str.lower().endswith(('.7z', '.rar', '.cbr', '.cb7', '.zip', '.cbz')):
-                extract_worker = ArchiveExtractionWorker(path_str)
+            archive_str, _ = split_virtual_path(path_str)
+            if is_archive(archive_str):
+                extract_worker = ArchiveExtractionWorker(archive_str)
                 self.thread_pool.start(extract_worker)
-            elif '|' in path_str:
-                zip_path, _ = path_str.split('|', 1)
-                if zip_path.lower().endswith(('.7z', '.rar', '.cbr', '.cb7', '.zip', '.cbz')):
-                    extract_worker = ArchiveExtractionWorker(zip_path)
-                    self.thread_pool.start(extract_worker)
 
     def _on_chapter_loaded(self, result: dict):
         if result["manga_dir"] != self.model.manga_dir:
@@ -1179,8 +1175,7 @@ class ReaderView(QWidget):
             return
 
         # Check if reading from archive - disable translation
-        if str(self.model.series['path']).lower().endswith(('.zip', '.cbz')) or \
-           str(self.model.manga_dir).lower().endswith(('.zip', '.cbz')):
+        if is_zip(str(self.model.series['path'])) or is_zip(str(self.model.manga_dir)):
             self.top_panel.update_translate_button('DISABLED')
             return
 

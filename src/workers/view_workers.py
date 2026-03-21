@@ -9,6 +9,7 @@ from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption, Q
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
 from src.utils.str_utils import natural_sort_key
+from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS, split_virtual_path
 from src.core.alt_manager import AltManager
 
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
@@ -45,7 +46,7 @@ class VideoExtractionWorker(QRunnable):
             self.signals.finished.emit(self.original_path, self.original_path, True)
             return
 
-        archive_path, internal = self.original_path.split('|', 1)
+        archive_path, internal = split_virtual_path(self.original_path)
         extracted_path = SevenZipHandler.ensure_extracted(archive_path, internal)
         
         success = extracted_path is not None and os.path.exists(extracted_path)
@@ -72,10 +73,8 @@ class AnimationFrameLoaderWorker(QRunnable):
 
         # Normalize path for zip entries like "archive.zip|file.ext"
         path_lower = self.path.lower() if isinstance(self.path, str) else ""
-        if '|' in path_lower:
-            ext = Path(path_lower.split('|', 1)[1]).suffix.lower()
-        else:
-            ext = Path(path_lower).suffix.lower()
+        _, internal = split_virtual_path(path_lower)
+        ext = Path(internal if internal else path_lower).suffix.lower()
 
         # Skip video formats entirely (they are handled by the video playback path)
         if ext in VIDEO_EXTS:
@@ -181,7 +180,7 @@ class ChapterLoaderWorker(QRunnable):
         if not path or '|' not in path:
             return path
             
-        archive_path, internal = path.split('|', 1)
+        archive_path, internal = split_virtual_path(path)
         from src.utils.archive_utils import SevenZipHandler
         extract_dir = SevenZipHandler.get_extract_dir(archive_path)
         target = extract_dir / internal.replace('/', os.sep).replace('\\', os.sep)
@@ -259,7 +258,7 @@ class ChapterLoaderWorker(QRunnable):
                 if size.isValid() and size.height() > 0:
                     ratios.append(size.width() / size.height())
             else:
-                zip_path, internal = path.split('|', 1)
+                zip_path, internal = split_virtual_path(path)
                 zf = ZIP_CACHE.get_zip(zip_path)
                 if zf:
                     try:
@@ -301,7 +300,7 @@ class ChapterLoaderWorker(QRunnable):
                     is_spread = (size.width() / size.height()) > spread_threshold
             else:
                 # Read only enough header bytes for dimension detection instead of the full file
-                zip_path_str, internal = (resolved if '|' in resolved else path).split('|', 1)
+                zip_path_str, internal = split_virtual_path(resolved if '|' in resolved else path)
                 zf = ZIP_CACHE.get_zip(zip_path_str)
                 if zf:
                     try:
@@ -390,10 +389,10 @@ class ChapterLoaderWorker(QRunnable):
                 return []
 
         if '|' in path_str:
-            zip_path, internal_path = path_str.split('|', 1)
+            zip_path, internal_path = split_virtual_path(path_str)
             return scan_archive_internal(zip_path, internal_path)
 
-        if path_str.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')):
+        if Path(path_str).suffix.lower() in ARCHIVE_EXTS:
             return scan_archive_internal(path_str, "")
         
         manga_path = Path(path_str)
