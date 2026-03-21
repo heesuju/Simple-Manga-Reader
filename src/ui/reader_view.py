@@ -418,22 +418,16 @@ class ReaderView(QWidget):
         
         panel.setFixedHeight(available_h)
 
-    def _on_slideshow_speed_changed(self):
+    def _on_slideshow_speed_changed(self, index: int):
         if self.model.view_mode == ViewMode.STRIP:
-            self.strip_viewer.current_scroll_speed_index = (self.strip_viewer.current_scroll_speed_index + 1) % len(self.strip_viewer.scroll_speeds)
-            speed_text = f"{int(self.strip_viewer.scroll_speeds[self.strip_viewer.current_scroll_speed_index]/5)}x"
-            self.top_panel.speed_button.setText(speed_text)
+            self.strip_viewer.current_scroll_speed_index = index % len(self.strip_viewer.scroll_speeds)
+            self.top_panel.set_speed_index(self.strip_viewer.current_scroll_speed_index)
             if self.strip_viewer.strip_scroll_timer.isActive():
                 self.strip_viewer.strip_scroll_timer.start(self.strip_viewer.scroll_interval)
             return
 
-        self.current_slideshow_speed_index = (self.current_slideshow_speed_index + 1) % len(self.slideshow_speeds)
-        current_speed_s = 4000 / self.slideshow_speeds[self.current_slideshow_speed_index]
-        if current_speed_s < 1.0 and current_speed_s % 1 != 0:
-            self.top_panel.speed_button.setText(f"{round(current_speed_s, 1)}x".replace("0", ""))
-        else:
-            self.top_panel.speed_button.setText(f"{int(current_speed_s)}x")
-
+        self.current_slideshow_speed_index = index % len(self.slideshow_speeds)
+        self.top_panel.set_speed_index(self.current_slideshow_speed_index)
         if self.page_slideshow_timer.isActive():
             self.page_slideshow_timer.start(self.slideshow_speeds[self.current_slideshow_speed_index])
 
@@ -504,6 +498,19 @@ class ReaderView(QWidget):
             if hasattr(self.view, '_update_overlay_bounds'):
                 self.view._update_overlay_bounds()
             
+        # Sync speed options/index with the new viewer mode
+        if self.model.view_mode == ViewMode.STRIP:
+            speed_labels = [f"{int(s/5)}x" for s in self.strip_viewer.scroll_speeds]
+            speed_index = self.strip_viewer.current_scroll_speed_index
+        else:
+            speed_labels = []
+            for ms in self.slideshow_speeds:
+                s = 4000 / ms
+                speed_labels.append(f"{round(s, 1)}x".rstrip("0").rstrip(".") + "x" if s != int(s) else f"{int(s)}x")
+            speed_index = self.current_slideshow_speed_index
+        self.top_panel.set_speed_options(speed_labels)
+        self.top_panel.set_speed_index(speed_index)
+
         self.layout_btn.setText("")
         if self.model.view_mode == ViewMode.SINGLE:
             self.layout_btn.setIcon(self.layout_single_icon)
