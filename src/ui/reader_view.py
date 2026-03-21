@@ -156,9 +156,9 @@ class ReaderView(QWidget):
         self.setAcceptDrops(True)
 
         self.back_icon = QIcon(resource_path("assets/icons/back.svg"))
-        self.layout_single_icon = QIcon(resource_path("assets/icons/layout_single.svg"))
-        self.layout_double_icon = QIcon(resource_path("assets/icons/layout_double.svg"))
-        self.layout_strip_icon = QIcon(resource_path("assets/icons/layout_strip.svg"))
+        self.layout_single_icon = QIcon(resource_path("assets/icons/single.svg"))
+        self.layout_double_icon = QIcon(resource_path("assets/icons/double.svg"))
+        self.layout_strip_icon = QIcon(resource_path("assets/icons/strip.svg"))
 
         # Scene/view
         self.scene = QGraphicsScene()
