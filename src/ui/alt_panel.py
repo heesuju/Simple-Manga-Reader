@@ -15,6 +15,8 @@ from src.core.alt_manager import AltManager
 
 THUMB_W = 120
 THUMB_H = 160
+TAB_W = 16   # width of the collapse/expand tab
+TAB_H = 56   # height of the collapse/expand tab
 
 
 class AltThumbnail(QWidget):
@@ -41,9 +43,13 @@ class AltThumbnail(QWidget):
         self.thumb_label.setStyleSheet("background: transparent;")
         layout.addWidget(self.thumb_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        is_orig = str(display_index) == "ORIG"
         self.name_label = QLabel(str(display_index))
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.name_label.setStyleSheet("color: white; font-size: 11px;")
+        if is_orig:
+            self.name_label.setStyleSheet("color: rgba(255, 180, 80, 200); font-size: 10px; font-weight: bold;")
+        else:
+            self.name_label.setStyleSheet("color: rgba(255, 255, 255, 160); font-size: 11px;")
         layout.addWidget(self.name_label)
 
         self._update_style()
@@ -91,17 +97,28 @@ class AltPanel(QWidget):
                 border: none;
             }
         """)
+        self._collapsed = False
         self.setFixedWidth(THUMB_W + 40)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        # Outer layout holds only the content widget; tab is a floating overlay
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
 
-        # Top row: Category dropdown + Play button
-        top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(3)
+        self._content_widget = QWidget(self)
+        self._content_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._content_widget.setStyleSheet("background: transparent;")
+        outer_layout.addWidget(self._content_widget)
+
+        main_layout = QVBoxLayout(self._content_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(4)
+
+        # Row 1: Category dropdown (full width)
+        cat_row = QHBoxLayout()
+        cat_row.setContentsMargins(0, 0, 0, 0)
+        cat_row.setSpacing(0)
 
         self.cat_combo = QComboBox()
         self.cat_combo.setStyleSheet("""
@@ -125,66 +142,59 @@ class AltPanel(QWidget):
             }
         """)
         self.cat_combo.currentIndexChanged.connect(self._on_combo_changed)
-        top_row.addWidget(self.cat_combo, 1)
+        cat_row.addWidget(self.cat_combo)
+
+        main_layout.addLayout(cat_row)
+
+        # Row 2: Action buttons — equally spaced across full panel width
+        _btn_style = """
+            QPushButton {
+                background-color: rgba(255, 255, 255, 30);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 50);
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 0px 2px;
+            }
+            QPushButton:hover { background-color: rgba(255, 255, 255, 60); }
+        """
+
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(3)
 
         self.play_icon = QIcon(resource_path("assets/icons/play.svg"))
         self.play_btn = QPushButton()
         self.play_btn.setIcon(self.play_icon)
-        self.play_btn.setFixedSize(28, 28)
+        self.play_btn.setFixedHeight(26)
         self.play_btn.setCheckable(True)
-        self.play_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 30);
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 50);
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: rgba(255, 255, 255, 60); }
+        self.play_btn.setToolTip("Slideshow (click again to cycle speed: x1 → x2 → x4 → x8)")
+        self.play_btn.setStyleSheet(_btn_style + """
             QPushButton:checked { background-color: rgba(50, 200, 255, 180); border: 1px solid rgba(50, 200, 255, 200); }
         """)
         self.play_btn.clicked.connect(self._on_play_clicked)
-        top_row.addWidget(self.play_btn)
+        btn_row.addWidget(self.play_btn, 1)
 
-        # Revert button
         self.revert_icon = QIcon(resource_path("assets/icons/search_reset.svg"))
         self.revert_btn = QPushButton()
         self.revert_btn.setIcon(self.revert_icon)
-        self.revert_btn.setFixedSize(28, 28)
+        self.revert_btn.setFixedHeight(26)
         self.revert_btn.setToolTip("Revert to Original")
-        self.revert_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 30);
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 50);
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: rgba(255, 255, 255, 60); }
-        """)
+        self.revert_btn.setStyleSheet(_btn_style)
         self.revert_btn.clicked.connect(self._on_revert_clicked)
-        top_row.addWidget(self.revert_btn)
+        btn_row.addWidget(self.revert_btn, 1)
 
-        # Batch Refine button
-        self.batch_refine_icon = QIcon(resource_path("assets/icons/auto_fix.svg")) # Reusing icon or similar
+        self.batch_refine_icon = QIcon(resource_path("assets/icons/auto_fix.svg"))
         self.batch_refine_btn = QPushButton()
         self.batch_refine_btn.setIcon(self.batch_refine_icon)
-        self.batch_refine_btn.setFixedSize(28, 28)
+        self.batch_refine_btn.setFixedHeight(26)
         self.batch_refine_btn.setToolTip("Batch Refine Category")
-        self.batch_refine_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 30);
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 50);
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: rgba(255, 255, 255, 60); }
-        """)
+        self.batch_refine_btn.setStyleSheet(_btn_style)
         self.batch_refine_btn.clicked.connect(self._on_batch_refine_clicked)
-        top_row.addWidget(self.batch_refine_btn)
+        btn_row.addWidget(self.batch_refine_btn, 1)
 
-        main_layout.addLayout(top_row)
+        main_layout.addLayout(btn_row)
 
         # Scroll area for thumbnails
         self.scroll_area = QScrollArea()
@@ -211,6 +221,30 @@ class AltPanel(QWidget):
         self.speeds = [2000, 1000, 500, 250]
         self.speed_labels = ["x1", "x2", "x4", "x8"]
 
+        # Collapse tab — floats on the right edge, always visible when panel is shown
+        self._tab_btn = QPushButton("‹", self)
+        self._tab_btn.setFixedSize(TAB_W, TAB_H)
+        self._tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._tab_btn.setToolTip("Collapse panel")
+        self._tab_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 140);
+                color: rgba(255, 255, 255, 200);
+                border: 1px solid rgba(255, 255, 255, 40);
+                border-left: none;
+                border-radius: 0px 5px 5px 0px;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 50);
+                color: white;
+            }
+        """)
+        self._tab_btn.clicked.connect(self._toggle_collapse)
+        self._tab_btn.raise_()
+
         self.hide()
 
         if self.model:
@@ -222,6 +256,27 @@ class AltPanel(QWidget):
 
     def _on_double_image_loaded(self, path1, path2):
         self._update_panel(self.model.current_index)
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        # Keep tab anchored to the right edge, vertically centered
+        tab_y = max(0, (self.height() - TAB_H) // 2)
+        self._tab_btn.move(self.width() - TAB_W, tab_y)
+        self._tab_btn.raise_()
+
+    def _toggle_collapse(self):
+        self._collapsed = not self._collapsed
+        self._content_widget.setVisible(not self._collapsed)
+        if self._collapsed:
+            self.setFixedWidth(TAB_W)
+            self._tab_btn.setText("›")
+            self._tab_btn.setToolTip("Expand panel")
+        else:
+            self.setFixedWidth(THUMB_W + 40)
+            self._tab_btn.setText("‹")
+            self._tab_btn.setToolTip("Collapse panel")
+        if hasattr(self.parent(), '_update_side_panels_geometry'):
+            QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
 
     def _clear_content(self):
         """Remove all thumbnail widgets."""
@@ -280,11 +335,11 @@ class AltPanel(QWidget):
         self.play_btn.setChecked(is_playing)
         if is_playing:
             state = self.slideshow_states[idx]
-            self.play_btn.setText(self.speed_labels[state['speed_idx']])
-            self.play_btn.setIcon(QIcon())
-        else:
-            self.play_btn.setText("")
             self.play_btn.setIcon(self.play_icon)
+            self.play_btn.setText(self.speed_labels[state['speed_idx']])
+        else:
+            self.play_btn.setIcon(self.play_icon)
+            self.play_btn.setText("")
 
         # Build thumbnail rows for active category
         active_paths = categories.get(active_cat, [])
@@ -301,11 +356,13 @@ class AltPanel(QWidget):
         for cat_v_idx, variant_path in enumerate(active_paths):
             true_v_idx = page.images.index(variant_path)
             is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
+            is_original = (variant_path == original_image_path)
+            display_label = "ORIG" if is_original else cat_v_idx + 1
 
             thumb = AltThumbnail(
                 self.scroll_content,
                 variant_path,
-                display_index=cat_v_idx + 1,
+                display_index=display_label,
                 is_selected=is_selected,
                 on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
                 on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
