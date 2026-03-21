@@ -397,14 +397,8 @@ class ReaderView(QWidget):
         # We now show frame panel for all videos, so mode change just ensures it's refreshed
         if self.current_viewer == self.video_viewer:
             path = self.video_viewer.video_item.data(0)
-            total_frames = self.video_control_panel.total_frames
-            if path and total_frames > 0:
-                self.frame_panel.set_video(path, total_frames)
-                if self.panels_visible:
-                    self.frame_panel.show()
-                    self._update_side_panels_geometry()
-                else:
-                    self.frame_panel.hide()
+            if path:
+                self._update_frame_panel(path)
 
     def _update_expanded_panel_height(self, panel):
         total_h = self.height()
@@ -431,7 +425,6 @@ class ReaderView(QWidget):
 
     def _on_slideshow_repeat_changed(self, is_checked: bool):
         self.slideshow_repeat = is_checked
-        pass
 
     def start_page_slideshow(self):
         if self.model.view_mode == ViewMode.STRIP:
@@ -488,13 +481,7 @@ class ReaderView(QWidget):
              else:
                  new_viewer = self.image_viewer
         
-        if self.current_viewer != new_viewer or not self.current_viewer.is_active:
-            if self.current_viewer:
-                self.current_viewer.set_active(False)
-            self.current_viewer = new_viewer
-            self.current_viewer.set_active(True)
-            if hasattr(self.view, '_update_overlay_bounds'):
-                self.view._update_overlay_bounds()
+        self._switch_to_viewer(new_viewer)
             
         # Sync speed options/index with the new viewer mode
         if self.model.view_mode == ViewMode.STRIP:
@@ -705,6 +692,43 @@ class ReaderView(QWidget):
                         category=cat if cat else None
                     )
 
+    def _chapter_name_from_path(self, chapter_path: str) -> str:
+        """Extract the chapter directory/stem name from a plain or virtual path."""
+        if '|' in chapter_path:
+            return Path(chapter_path.split('|')[0]).stem
+        return Path(chapter_path).name
+
+    def _switch_to_viewer(self, viewer):
+        """Activate *viewer*, deactivating the current one if different."""
+        if self.current_viewer != viewer or not self.current_viewer.is_active:
+            if self.current_viewer:
+                self.current_viewer.set_active(False)
+            self.current_viewer = viewer
+            self.current_viewer.set_active(True)
+            if hasattr(self.view, '_update_overlay_bounds'):
+                self.view._update_overlay_bounds()
+
+    def _update_frame_panel(self, path: str):
+        """Sync the frame panel with the current video path and visibility state."""
+        total_frames = getattr(self.video_control_panel, 'total_frames', 0)
+        if total_frames > 0:
+            self.frame_panel.set_video(path, total_frames)
+            if self.panels_visible:
+                self.frame_panel.show()
+            else:
+                self.frame_panel.hide()
+            self._update_side_panels_geometry()
+
+    def _update_after_load(self, path: str):
+        """Update page-panel selection, slider and top-panel after loading a page."""
+        self.page_panel._update_page_selection(self.model.current_index)
+        if self.model.view_mode == ViewMode.DOUBLE:
+            self.slider_panel.set_value(self.model._get_current_layout_index())
+        else:
+            self.slider_panel.set_value(self.model.current_index)
+        self.update_top_panel()
+        self._update_image_info([path])
+
     def resolve_path(self, path: str) -> str:
         """Resolves a virtual archive path to a real local file path if it exists in cache."""
         if not path or '|' not in path:
@@ -745,14 +769,8 @@ class ReaderView(QWidget):
         target_viewer = self.video_viewer if is_video else self.image_viewer
         
         if self.model.view_mode != ViewMode.STRIP:
-            if self.current_viewer != target_viewer or not self.current_viewer.is_active:
-                if self.current_viewer:
-                    self.current_viewer.set_active(False)
-                self.current_viewer = target_viewer
-                self.current_viewer.set_active(True)
-                if hasattr(self.view, '_update_overlay_bounds'):
-                    self.view._update_overlay_bounds()
-        
+            self._switch_to_viewer(target_viewer)
+
         if self.current_viewer == self.strip_viewer:
             # Refresh current index just in case, though on_page_updated handles specific updates
             self.strip_viewer.refresh(self.model.current_index)
@@ -760,26 +778,11 @@ class ReaderView(QWidget):
             self.current_viewer.load(resolved_path)
 
         if self.current_viewer == self.video_viewer:
-             total_frames = getattr(self.video_control_panel, 'total_frames', 0)
-             if total_frames > 0:
-                self.frame_panel.set_video(resolved_path, total_frames)
-                if self.panels_visible:
-                    self.frame_panel.show()
-                else:
-                    self.frame_panel.hide()
-                self._update_side_panels_geometry()
+            self._update_frame_panel(resolved_path)
         else:
             self.frame_panel.hide()
 
-        self.page_panel._update_page_selection(self.model.current_index)
-        
-        if self.model.view_mode == ViewMode.DOUBLE:
-            self.slider_panel.set_value(self.model._get_current_layout_index())
-        else:
-            self.slider_panel.set_value(self.model.current_index)
-             
-        self.update_top_panel()
-        self._update_image_info([resolved_path])
+        self._update_after_load(resolved_path)
 
     def _on_video_extracted_finished(self, original_path, extracted_path, success):
         self.loading_label.hide()
@@ -800,43 +803,15 @@ class ReaderView(QWidget):
             return
 
         # Proceed with load using extracted path
-        target_viewer = self.video_viewer
         if self.model.view_mode != ViewMode.STRIP:
-            if self.current_viewer != target_viewer or not self.current_viewer.is_active:
-                if self.current_viewer:
-                    self.current_viewer.set_active(False)
-                self.current_viewer = target_viewer
-                self.current_viewer.set_active(True)
-                if hasattr(self.view, '_update_overlay_bounds'):
-                    self.view._update_overlay_bounds()
+            self._switch_to_viewer(self.video_viewer)
 
         self.current_viewer.load(extracted_path)
-        
-        total_frames = getattr(self.video_control_panel, 'total_frames', 0)
-        if total_frames > 0:
-            self.frame_panel.set_video(extracted_path, total_frames)
-            if self.panels_visible:
-                self.frame_panel.show()
-            else:
-                self.frame_panel.hide()
-            self._update_side_panels_geometry()
-
-        self.page_panel._update_page_selection(self.model.current_index)
-        
-        if self.model.view_mode == ViewMode.DOUBLE:
-            self.slider_panel.set_value(self.model._get_current_layout_index())
-        else:
-            self.slider_panel.set_value(self.model.current_index)
-             
-        self.update_top_panel()
-        self._update_image_info([extracted_path])
+        self._update_frame_panel(extracted_path)
+        self._update_after_load(extracted_path)
 
     def _load_double_images(self, image1_path, image2_path):
-        if self.current_viewer != self.image_viewer or not self.current_viewer.is_active:
-            if self.current_viewer:
-                self.current_viewer.set_active(False)
-            self.current_viewer = self.image_viewer
-            self.current_viewer.set_active(True)
+        self._switch_to_viewer(self.image_viewer)
              
         self.image_viewer.load((self.resolve_path(image1_path), self.resolve_path(image2_path)))
         self.page_panel._update_page_selection(self.model.current_index)
@@ -1085,11 +1060,7 @@ class ReaderView(QWidget):
         
         series_path = str(self.model.series['path'])
         chapter_path = str(self.model.manga_dir) if self.model.manga_dir else ''
-        # Determine chapter name for sort lookup
-        if '|' in chapter_path:
-            _chapter_name = Path(chapter_path.split('|')[0]).stem
-        else:
-            _chapter_name = Path(chapter_path).name
+        _chapter_name = self._chapter_name_from_path(chapter_path)
         sort_mode = AltManager.get_chapter_sort(series_path, _chapter_name)
 
         worker = ChapterLoaderWorker(
@@ -1193,10 +1164,7 @@ class ReaderView(QWidget):
         """Handle sort mode changes from TopPanel."""
         series_path = str(self.model.series['path'])
         chapter_path = str(self.model.manga_dir) if self.model.manga_dir else ''
-        if '|' in chapter_path:
-            _chapter_name = Path(chapter_path.split('|')[0]).stem
-        else:
-            _chapter_name = Path(chapter_path).name
+        _chapter_name = self._chapter_name_from_path(chapter_path)
 
         AltManager.save_chapter_sort(series_path, _chapter_name, mode)
         self.reload_chapter()
@@ -1220,7 +1188,6 @@ class ReaderView(QWidget):
         combo_text = self.top_panel.lang_combo.currentText()
         
         if combo_text == "Original":
-             # Cannot translate Original to Original
              # Cannot translate Original to Original
              self.top_panel.update_translate_button('DISABLED')
              return
