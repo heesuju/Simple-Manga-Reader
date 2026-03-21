@@ -352,16 +352,18 @@ class ReaderView(QWidget):
         # Use sizeHint for reliability during transition
         top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
         bottom_h = self.bottom_container.sizeHint().height() if self.bottom_container.isVisible() else 0
-        
-        available_h = total_h - top_h - bottom_h
-        if available_h < 100:
-            available_h = 100
-        
+
+        available_h = max(100, total_h - top_h - bottom_h)
         y_pos = top_h
+
+        # Tab is anchored to the center of the stable full side height so it
+        # doesn't move when bottom panels open/close.
+        stable_tab_center_y = (total_h - top_h) // 2
 
         # Update Alt Panel (Left)
         if self.alt_panel.isVisible():
             self.alt_panel.setGeometry(0, y_pos, self.alt_panel.width(), available_h)
+            self.alt_panel.set_tab_center_y(stable_tab_center_y)
             self.alt_panel.raise_()
 
         # Update Frame Panel (Right)

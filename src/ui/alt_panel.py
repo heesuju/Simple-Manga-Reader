@@ -259,8 +259,18 @@ class AltPanel(QWidget):
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
-        # Keep tab anchored to the right edge, vertically centered
-        tab_y = max(0, (self.height() - TAB_H) // 2)
+        self._reposition_tab()
+
+    def set_tab_center_y(self, center_y: int):
+        """Set the tab's vertical center to a viewport-relative y so it stays stable."""
+        self._tab_center_y = center_y
+        self._reposition_tab()
+
+    def _reposition_tab(self):
+        if hasattr(self, '_tab_center_y'):
+            tab_y = max(0, min(self._tab_center_y - TAB_H // 2, self.height() - TAB_H))
+        else:
+            tab_y = max(0, (self.height() - TAB_H) // 2)
         self._tab_btn.move(self.width() - TAB_W, tab_y)
         self._tab_btn.raise_()
 
