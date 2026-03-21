@@ -197,7 +197,7 @@ class StripViewer(BaseViewer):
             worker.signals.finished.connect(self._on_image_loaded)
             self.reader_view.thread_pool.start(worker)
 
-    def _on_image_loaded(self, index: int, pixmap: QPixmap, generation_id: int):
+    def _on_image_loaded(self, index: int, pixmap: QImage, generation_id: int):
         if generation_id != self.layout_generation:
             return
 
@@ -300,7 +300,7 @@ class StripViewer(BaseViewer):
             # Scale relative to WINDOW WIDTH
             return int(available_w * self._strip_zoom_factor)
 
-    def _resize_single_label(self, label: QLabel, orig_pix: QPixmap, index: int):
+    def _resize_single_label(self, label: QLabel, orig_pix: QImage, index: int):
         target_w = self._get_target_width(orig_pix)
         if target_w <= 0 or orig_pix.isNull():
             return
@@ -322,9 +322,7 @@ class StripViewer(BaseViewer):
 
         # Start Async Scale
         self.scaling_indices.add(index)
-        # Convert QPixmap to QImage for thread safety
-        q_image = orig_pix.toImage()
-        worker = AsyncScaleWorker(q_image, target_w, index, self.layout_generation, high_quality=False)
+        worker = AsyncScaleWorker(orig_pix, target_w, index, self.layout_generation, high_quality=False)
         worker.signals.finished.connect(self._on_image_scaled)
         self.reader_view.thread_pool.start(worker)
 
