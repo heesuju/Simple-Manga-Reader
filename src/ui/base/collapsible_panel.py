@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QPushButton, QCheckBox, QLabel
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QIcon
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path
 
@@ -148,9 +148,13 @@ class CollapsiblePanel(QWidget):
         self.nav_buttons_layout.setSpacing(3)
 
         # Icons
-        self.icon_close = QIcon(resource_path("assets/icons/search_reset.svg"))
-        self.icon_expand = QIcon(resource_path("assets/icons/panel_expand.svg"))
-        self.icon_collapse = QIcon(resource_path("assets/icons/panel_collapse.svg"))
+        self.icon_close = QIcon(resource_path("assets/icons/close.svg"))
+        self.icon_expand = QIcon(resource_path("assets/icons/expand.svg"))
+        self.icon_collapse = QIcon(resource_path("assets/icons/collapse.svg"))
+        self.icon_first = QIcon(resource_path("assets/icons/first.svg"))
+        self.icon_prev = QIcon(resource_path("assets/icons/left.svg"))
+        self.icon_next = QIcon(resource_path("assets/icons/right.svg"))
+        self.icon_last = QIcon(resource_path("assets/icons/last.svg"))
 
         # Left: Close Button
         self.btn_close = QPushButton()
@@ -167,14 +171,19 @@ class CollapsiblePanel(QWidget):
         self.nav_group = QHBoxLayout()
         self.nav_group.setSpacing(2)
 
-        self.btn_first = QPushButton("<<")
-        self.btn_prev = QPushButton("<")
-        self.btn_next = QPushButton(">")
-        self.btn_last = QPushButton(">>")
+        self.btn_first = QPushButton()
+        self.btn_first.setIcon(self.icon_first)
+        self.btn_prev = QPushButton()
+        self.btn_prev.setIcon(self.icon_prev)
+        self.btn_next = QPushButton()
+        self.btn_next.setIcon(self.icon_next)
+        self.btn_last = QPushButton()
+        self.btn_last.setIcon(self.icon_last)
 
         for btn in [self.btn_first, self.btn_prev, self.btn_next, self.btn_last]:
             btn.setFixedSize(26, 22)
-            btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-size: 10px; font-weight: bold; color: white; }")
+            btn.setIconSize(QSize(16, 16))
+            btn.setStyleSheet(FLAT_BUTTON_STYLE)
             self.nav_group.addWidget(btn)
 
         self.nav_buttons_layout.addLayout(self.nav_group)
