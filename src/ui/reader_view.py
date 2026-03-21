@@ -283,16 +283,16 @@ class ReaderView(QWidget):
         self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
         self.slider_panel.chapter_input_clicked.connect(self._show_chapter_panel)
-        self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
-        self.slider_panel.zoom_reset.connect(self.reset_zoom)
-        self.slider_panel.fullscreen_requested.connect(self.toggle_fullscreen)
+        self.top_panel.zoom_mode_changed.connect(self.set_zoom_mode)
+        self.top_panel.zoom_reset.connect(self.reset_zoom)
+        self.top_panel.fullscreen_requested.connect(self.toggle_fullscreen)
 
         self.selection_panel.ratio_selected.connect(self.view.set_selection_ratio)
         self.selection_panel.apply_clicked.connect(self._apply_area_selection)
         self.selection_panel.cancel_clicked.connect(self._cancel_area_selection)
         self.view.ratio_changed.connect(self.selection_panel.set_ratio)
 
-        self.zoom_changed.connect(self.slider_panel.set_zoom_text)
+        self.zoom_changed.connect(self.top_panel.set_zoom_text)
 
         self.page_panel.hide_content()
         self.chapter_panel.hide_content()

@@ -5,6 +5,7 @@ from src.utils.resource_utils import resource_path
 from src.enums import Language
 from src.ui.styles import FLAT_BUTTON_STYLE
 
+
 BUTTON_SIZE = QSize(28, 28)
 ICON_SIZE = QSize(18, 18)
 
@@ -17,6 +18,9 @@ class TopPanel(QWidget):
     translate_clicked = pyqtSignal(str)
     lang_changed = pyqtSignal(str)
     sort_changed = pyqtSignal(str)
+    zoom_mode_changed = pyqtSignal(str)
+    zoom_reset = pyqtSignal()
+    fullscreen_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -36,6 +40,38 @@ class TopPanel(QWidget):
         self._speed_index = 0
         self._speed_options: list[str] = ["1x", "2x", "8x"]
         self._current_sort_mode = 'name'
+
+        # Zoom controls (view group — sits left of title)
+        zoom_fit_icon = QIcon(resource_path("assets/icons/reset_zoom.svg"))
+        fullscreen_icon = QIcon(resource_path("assets/icons/fullscreen.svg"))
+
+        self.zoom_combobox = QComboBox()
+        self.zoom_combobox.setEditable(True)
+        self.zoom_combobox.addItems(['Fit Page', 'Fit Width', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
+        self.zoom_combobox.setFixedSize(90, 28)
+        self.zoom_combobox.setStyleSheet("""
+            color: white;
+            background-color: rgba(255, 255, 255, 30);
+            border: 1px solid rgba(255, 255, 255, 50);
+            border-radius: 3px;
+        """)
+        self.zoom_combobox.currentTextChanged.connect(self.zoom_mode_changed.emit)
+
+        self.reset_zoom_button = QPushButton()
+        self.reset_zoom_button.setIcon(zoom_fit_icon)
+        self.reset_zoom_button.setIconSize(ICON_SIZE)
+        self.reset_zoom_button.setFixedSize(BUTTON_SIZE)
+        self.reset_zoom_button.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.reset_zoom_button.setToolTip("Reset Zoom")
+        self.reset_zoom_button.clicked.connect(self.zoom_reset.emit)
+
+        self.fullscreen_button = QPushButton()
+        self.fullscreen_button.setIcon(fullscreen_icon)
+        self.fullscreen_button.setIconSize(ICON_SIZE)
+        self.fullscreen_button.setFixedSize(BUTTON_SIZE)
+        self.fullscreen_button.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.fullscreen_button.setToolTip("Toggle Fullscreen")
+        self.fullscreen_button.clicked.connect(self.fullscreen_requested.emit)
 
         self.series_label = QLabel("Series Title")
         self.series_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
@@ -74,6 +110,9 @@ class TopPanel(QWidget):
         self._row.addWidget(self.series_label, 1)
         self._row.addWidget(self.lang_combo)
         self._row.addWidget(self.translate_btn)
+        self._row.addWidget(self.zoom_combobox)
+        self._row.addWidget(self.reset_zoom_button)
+        self._row.addWidget(self.fullscreen_button)
         self._row.addWidget(self.overflow_btn)
 
     # ── Injected buttons ────────────────────────────────────────────────────
@@ -106,6 +145,11 @@ class TopPanel(QWidget):
 
     def set_sort_mode(self, mode: str):
         self._current_sort_mode = mode or 'name'
+
+    def set_zoom_text(self, text: str):
+        self.zoom_combobox.blockSignals(True)
+        self.zoom_combobox.setCurrentText(text)
+        self.zoom_combobox.blockSignals(False)
 
     # ── Internal ─────────────────────────────────────────────────────────────
 

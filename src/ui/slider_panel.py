@@ -1,49 +1,49 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSlider, QLabel, QPushButton, QVBoxLayout, QComboBox, QSpacerItem, QSizePolicy
-from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
+from PyQt6.QtCore import Qt, pyqtSignal
 from src.ui.components.input_label import InputLabel
 from src.ui.components.alt_slider import AltSlider
-from src.utils.resource_utils import resource_path
-from src.ui.styles import FLAT_BUTTON_STYLE
 
 
 class SliderPanel(QWidget):
-    """
-    A panel containing a slider for page navigation and slideshow controls.
-    """
+    """Single-row panel for page/chapter navigation."""
     valueChanged = pyqtSignal(int)
     page_changed = pyqtSignal(int)
     chapter_changed = pyqtSignal(int)
     page_input_clicked = pyqtSignal()
     chapter_input_clicked = pyqtSignal()
-    zoom_mode_changed = pyqtSignal(str)
-    zoom_reset = pyqtSignal()
-    fullscreen_requested = pyqtSignal() # New signal
 
     def __init__(self, parent=None, model=None):
         super().__init__(parent)
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("background-color: rgba(0, 0, 0, 170); color: white;")
-        
-        # --- Icons ---
-        self.zoom_fit_icon = QIcon(resource_path("assets/icons/reset_zoom.svg"))
-        self.fullscreen_icon = QIcon(resource_path("assets/icons/fullscreen.svg"))
 
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 5, 10, 5)
-        main_layout.setSpacing(5)
-
-        # Top part (slider)
-        top_widget = QWidget()
-        top_widget.setStyleSheet("background: transparent;")
-        top_layout = QHBoxLayout(top_widget)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(10)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(10, 5, 10, 5)
+        row.setSpacing(10)
 
         self.slider = AltSlider(Qt.Orientation.Horizontal)
+        self.slider.setStyleSheet("""
+            QSlider { background: transparent; }
+            QSlider::groove:horizontal {
+                background: rgba(255, 255, 255, 40);
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::sub-page:horizontal {
+                background: rgba(255, 255, 255, 100);
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                width: 12px;
+                height: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+        """)
         self.slider.valueChanged.connect(self.on_slider_value_changed)
-        
+
         self.chapter_input = InputLabel("Chapter", 1, 1)
         self.page_input = InputLabel("Page", 1, 1)
 
@@ -52,107 +52,51 @@ class SliderPanel(QWidget):
         self.chapter_input.clicked.connect(self.chapter_input_clicked.emit)
         self.page_input.clicked.connect(self.page_input_clicked.emit)
 
-        top_layout.addWidget(self.page_input)
-        top_layout.addWidget(self.slider, 1) # Add stretch factor
-        top_layout.addWidget(self.chapter_input)
+        row.addWidget(self.page_input)
+        row.addWidget(self.slider, 1)
+        row.addWidget(self.chapter_input)
 
-        # Bottom part (buttons)
-        bottom_widget = QWidget()
-        bottom_widget.setStyleSheet("background: transparent;")
-        bottom_layout = QHBoxLayout(bottom_widget)
-        bottom_layout.setSpacing(10)
-        bottom_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        button_size = QSize(32, 32)
-
-        self.info_label = QLabel("")
-        self.info_label.setStyleSheet("color: rgba(255, 255, 255, 150); font-size: 11px;")
-        bottom_layout.addWidget(self.info_label)
-
-        bottom_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
-
-        self.zoom_combobox = QComboBox()
-        self.zoom_combobox.setEditable(True)
-        self.zoom_combobox.addItems(['Fit Page', 'Fit Width', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
-        self.zoom_combobox.currentTextChanged.connect(self.zoom_mode_changed.emit)
-
-        self.reset_zoom_button = QPushButton()
-        self.reset_zoom_button.setIcon(self.zoom_fit_icon)
-        self.reset_zoom_button.setIconSize(QSize(24, 24))
-        self.reset_zoom_button.setFixedSize(button_size)
-        self.reset_zoom_button.setStyleSheet(FLAT_BUTTON_STYLE)
-        self.reset_zoom_button.clicked.connect(self.zoom_reset)
-
-        # New fullscreen button
-        self.fullscreen_button = QPushButton()
-        self.fullscreen_button.setIcon(self.fullscreen_icon)
-        self.fullscreen_button.setIconSize(QSize(24, 24))
-        self.fullscreen_button.setFixedSize(button_size)
-        self.fullscreen_button.setStyleSheet(FLAT_BUTTON_STYLE)
-        self.fullscreen_button.clicked.connect(self.fullscreen_requested.emit)
-        
-        bottom_layout.addWidget(self.zoom_combobox)
-        bottom_layout.addWidget(self.reset_zoom_button)
-        bottom_layout.addWidget(self.fullscreen_button) # Add new button to layout
-
-        main_layout.addWidget(top_widget)
-        main_layout.addWidget(bottom_widget)
-
-    def set_zoom_text(self, text: str):
-        self.zoom_combobox.blockSignals(True)
-        self.zoom_combobox.setCurrentText(text)
-        self.zoom_combobox.blockSignals(False)
+    # ── Public API ────────────────────────────────────────────────────────────
 
     def set_info_text(self, text: str):
-        self.info_label.setText(text)
+        """Show file info as a tooltip on the page input."""
+        self.page_input.setToolTip(text)
 
     def set_range(self, max_value):
-        """Sets the range of the slider."""
         self.slider.blockSignals(True)
         self.slider.setRange(0, max_value)
         self.slider.blockSignals(False)
         self.update_page_input_total(max_value)
-    
+
     def update_alt_indicators(self, images):
-        alt_indices = []
-        for i, page in enumerate(images):
-            if len(page.images) > 1:
-                alt_indices.append(i)
+        alt_indices = [i for i, page in enumerate(images) if len(page.images) > 1]
         self.slider.set_alt_indices(alt_indices)
 
     def set_alt_indices(self, indices: list[int]):
         self.slider.set_alt_indices(indices)
 
     def set_value(self, value):
-        """Sets the current value of the slider and updates the label."""
-        # Block signals to prevent feedback loop if the value is set from outside
         self.slider.blockSignals(True)
         self.slider.setValue(value)
         self.slider.blockSignals(False)
         self.update_page_input_value(value)
-
-    def on_slider_value_changed(self, value):
-        """Emits the valueChanged signal and updates the label."""
-        self.update_page_input_value(value)
-        self.valueChanged.emit(value)
 
     def set_chapter(self, current: int, total: int):
         self.chapter_input.set_value(current)
         self.chapter_input.set_total(total)
 
     def update_page_input_total(self, max_value):
-        total_display = max_value + 1
-        self.page_input.set_total(total_display)
+        self.page_input.set_total(max_value + 1)
 
     def update_page_input_value(self, index):
-        display_val = index + 1
-        self.page_input.set_value(display_val)
+        self.page_input.set_value(index + 1)
+
+    # ── Internal ─────────────────────────────────────────────────────────────
+
+    def on_slider_value_changed(self, value):
+        self.update_page_input_value(value)
+        self.valueChanged.emit(value)
 
     def _on_page_input_entered(self, display_val):
-        real_index = display_val - 1
-        
-        # Bounds check
-        if real_index < 0: real_index = 0
-        if real_index > self.slider.maximum(): real_index = self.slider.maximum()
-        
-        self.page_changed.emit(real_index + 1) # emitted value is 1-based usually expect by change_page
+        real_index = max(0, min(display_val - 1, self.slider.maximum()))
+        self.page_changed.emit(real_index + 1)
