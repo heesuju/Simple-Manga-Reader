@@ -17,10 +17,20 @@ class InputLabel(QWidget):
         self.label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         self.input = QLineEdit(str(current))
-        
         self.input.setFixedWidth(40)
         self.input.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.input.setValidator(QIntValidator(1, 10**max_digits))
+        self.input.setStyleSheet("""
+            QLineEdit {
+                background: transparent;
+                color: white;
+                border: none;
+                border-bottom: 1px solid rgba(255, 255, 255, 60);
+            }
+            QLineEdit:focus {
+                border-bottom: 1px solid rgba(255, 255, 255, 160);
+            }
+        """)
 
         self.total_label = QLabel(f"/ {total}")
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignLeft)

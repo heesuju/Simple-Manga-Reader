@@ -130,21 +130,22 @@ class CollapsiblePanel(QWidget):
         super().__init__(parent)
         self.setMouseTracking(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("CollapsiblePanel { background-color: rgba(0, 0, 0, 170); }")
+        self.setStyleSheet("CollapsiblePanel { background-color: rgba(0, 0, 0, 170); border: none; outline: none; }")
 
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(10, 10, 10, 10)
-        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(6, 4, 6, 4)
+        self.layout.setSpacing(4)
 
         self.input_container = QWidget()
+        self.input_container.setVisible(False)
         self.input_layout = QHBoxLayout(self.input_container)
-        self.input_layout.setContentsMargins(0,0,0,0)
+        self.input_layout.setContentsMargins(0, 0, 0, 0)
         self.layout.addWidget(self.input_container)
 
         # --- Header Layout ---
         self.nav_buttons_layout = QHBoxLayout()
         self.nav_buttons_layout.setContentsMargins(0, 0, 0, 0)
-        self.nav_buttons_layout.setSpacing(5)
+        self.nav_buttons_layout.setSpacing(3)
 
         # Icons
         self.icon_close = QIcon(resource_path("assets/icons/search_reset.svg"))
@@ -154,7 +155,7 @@ class CollapsiblePanel(QWidget):
         # Left: Close Button
         self.btn_close = QPushButton()
         self.btn_close.setIcon(self.icon_close)
-        self.btn_close.setFixedSize(28, 28)
+        self.btn_close.setFixedSize(24, 24)
         self.btn_close.setStyleSheet(FLAT_BUTTON_STYLE)
         self.btn_close.setToolTip("Close Panel")
         self.btn_close.clicked.connect(self.hide_content)
@@ -162,27 +163,27 @@ class CollapsiblePanel(QWidget):
 
         # Center: Navigation Buttons
         self.nav_buttons_layout.addStretch(1)
-        
+
         self.nav_group = QHBoxLayout()
         self.nav_group.setSpacing(2)
-        
+
         self.btn_first = QPushButton("<<")
         self.btn_prev = QPushButton("<")
         self.btn_next = QPushButton(">")
         self.btn_last = QPushButton(">>")
 
         for btn in [self.btn_first, self.btn_prev, self.btn_next, self.btn_last]:
-            btn.setFixedSize(32, 24)
+            btn.setFixedSize(26, 22)
             btn.setStyleSheet(FLAT_BUTTON_STYLE + " QPushButton { font-size: 10px; font-weight: bold; color: white; }")
             self.nav_group.addWidget(btn)
-            
+
         self.nav_buttons_layout.addLayout(self.nav_group)
         self.nav_buttons_layout.addStretch(1)
 
         # Right: Expand/Collapse Button
         self.btn_expand = QPushButton()
         self.btn_expand.setIcon(self.icon_expand)
-        self.btn_expand.setFixedSize(28, 28)
+        self.btn_expand.setFixedSize(24, 24)
         self.btn_expand.setStyleSheet(FLAT_BUTTON_STYLE)
         self.btn_expand.setToolTip("Expand to Grid View")
         self.btn_expand.clicked.connect(self.toggle_expand)
@@ -196,7 +197,7 @@ class CollapsiblePanel(QWidget):
         self.layout.addLayout(self.nav_buttons_layout)
 
         self.content_area = HorizontalScrollArea()
-        self.content_area.setStyleSheet("background: transparent;")
+        self.content_area.setStyleSheet("background: transparent; border: none;")
         self.content_area.setFrameShape(QFrame.Shape.NoFrame)
         self.content_area.setVisible(False)
 
