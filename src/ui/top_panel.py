@@ -3,7 +3,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QAction
 from src.utils.resource_utils import resource_path
 from src.enums import Language
-from src.ui.styles import FLAT_BUTTON_STYLE
+from src.ui.styles import FLAT_BUTTON_STYLE, PANEL_BG_STYLE
 
 
 BUTTON_SIZE = QSize(28, 28)
@@ -25,7 +25,7 @@ class TopPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 170); color: white;")
+        self.setStyleSheet(PANEL_BG_STYLE)
 
         self._row = QHBoxLayout(self)
         self._row.setContentsMargins(8, 4, 8, 4)

@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QScrollArea, QFrame, QMenu, QCheckBox, QProgressBar
 )
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QMimeData, QThreadPool
+from src.ui.styles import SCROLL_AREA_TRANSPARENT
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap, QDrag
 from src.utils.img_utils import load_thumbnail_from_path, extract_page_number, get_chapter_number
 from src.enums import Language
@@ -296,7 +297,7 @@ class AddTranslationDialog(QDialog):
         # 3. Scroll Area for Rows
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
-        self.scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self.scroll.setStyleSheet(SCROLL_AREA_TRANSPARENT)
         
         self.container = QWidget()
         self.container.setStyleSheet("background: transparent;")

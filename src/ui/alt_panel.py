@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QComboBox, QMenu
 )
 from PyQt6.QtCore import Qt, QTimer, QSize, QPoint
+from src.ui.styles import SCROLL_AREA_TRANSPARENT
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
 from src.utils.resource_utils import resource_path
@@ -203,7 +204,7 @@ class AltPanel(QWidget):
         self.scroll_area.setLineWidth(0)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self.scroll_area.setStyleSheet(SCROLL_AREA_TRANSPARENT)
         main_layout.addWidget(self.scroll_area, 1)
 
         self.scroll_content = QWidget()

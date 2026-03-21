@@ -1,6 +1,7 @@
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QCompleter, QScrollArea, QHBoxLayout, QSizePolicy
 from PyQt6.QtCore import pyqtSignal, Qt, QStringListModel
+from src.ui.styles import SCROLL_AREA_TRANSPARENT
 
 class TokenInput(QWidget):
     filters_changed = pyqtSignal()
@@ -23,7 +24,7 @@ class TokenInput(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self.scroll_area.setStyleSheet(SCROLL_AREA_TRANSPARENT)
         self.scroll_area.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
         self.token_container = QWidget()

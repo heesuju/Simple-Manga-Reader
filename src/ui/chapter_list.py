@@ -17,7 +17,7 @@ from src.workers.group_worker import GroupPagesWorker
 from src.workers.translation_matcher_worker import TranslationMatcherWorker
 from src.ui.add_translation_dialog import AddTranslationDialog
 from src.utils.img_utils import get_chapter_number, crop_pixmap
-from src.ui.styles import FLAT_BUTTON_STYLE
+from src.ui.styles import FLAT_BUTTON_STYLE, ARCHIVE_BADGE_STYLE, LABEL_WHITE_STYLE
 from src.utils.resource_utils import resource_path
 from src.core.alt_manager import AltManager
 
@@ -191,7 +191,7 @@ class ChapterListItemWidget(QWidget):
 
         self.archive_overlay = QLabel(self.thumbnail_container)
         self.archive_overlay.setText("📦")
-        self.archive_overlay.setStyleSheet("background: rgba(0,0,0,150); border-radius: 4px; font-size: 10px; padding: 1px;")
+        self.archive_overlay.setStyleSheet(ARCHIVE_BADGE_STYLE)
         self.archive_overlay.adjustSize()
         self.archive_overlay.move(75 - self.archive_overlay.width() - 2, 38 - self.archive_overlay.height() - 2)
         
@@ -219,8 +219,8 @@ class ChapterListItemWidget(QWidget):
         
         self.chapter_number_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 0px; color: white; background: transparent;")
         self.name_label.setText(chapter.get('name', Path(chapter['path']).name))
-        self.name_label.setStyleSheet("color: white; background: transparent;")
-        self.page_count_label.setStyleSheet("color: white; background: transparent;")
+        self.name_label.setStyleSheet(LABEL_WHITE_STYLE)
+        self.page_count_label.setStyleSheet(LABEL_WHITE_STYLE)
         self.page_count_label.setText("...")
 
     def paintEvent(self, event):
@@ -425,7 +425,7 @@ class FolderListItemWidget(QWidget):
 
         self.archive_overlay = QLabel(self.thumbnail_container)
         self.archive_overlay.setText("📦")
-        self.archive_overlay.setStyleSheet("background: rgba(0,0,0,150); border-radius: 4px; font-size: 10px; padding: 1px;")
+        self.archive_overlay.setStyleSheet(ARCHIVE_BADGE_STYLE)
         self.archive_overlay.adjustSize()
         self.archive_overlay.move(75 - self.archive_overlay.width() - 2, 38 - self.archive_overlay.height() - 2)
         self.archive_overlay.setVisible(False) # Only show if we have a real thumbnail

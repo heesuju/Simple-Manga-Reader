@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 from src.ui.components.input_label import InputLabel
 from src.ui.components.alt_slider import AltSlider
+from src.ui.styles import PANEL_BG_STYLE
 
 
 class SliderPanel(QWidget):
@@ -16,7 +17,7 @@ class SliderPanel(QWidget):
         super().__init__(parent)
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 170); color: white;")
+        self.setStyleSheet(PANEL_BG_STYLE)
 
         row = QHBoxLayout(self)
         row.setContentsMargins(10, 5, 10, 5)
