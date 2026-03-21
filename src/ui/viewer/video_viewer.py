@@ -9,6 +9,7 @@ from PyQt6.QtCore import QUrl, QSizeF, QRectF, Qt, pyqtSignal, QPointF
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.workers.view_workers import VideoFrameExtractorWorker, VideoMetadataWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
+from src.utils.img_utils import get_image_format_from_ext, compress_qimage_to_size
 
 class VideoItem(QGraphicsVideoItem):
     context_menu_requested = pyqtSignal(object) # QPointF (scene pos)
@@ -566,10 +567,7 @@ class VideoViewer(BaseViewer):
             return
         
         cropped = img.copy(intersected)
-        ext = os.path.splitext(save_path)[1].lower()
-        if ext in [".jpg", ".jpeg", ".jpe"]: fmt = "JPEG"
-        elif ext == ".webp": fmt = "WEBP"
-        else: fmt = "PNG"
+        fmt = get_image_format_from_ext(save_path)
 
         from PyQt6.QtWidgets import QMessageBox
         from PyQt6.QtCore import QByteArray, QBuffer, Qt
@@ -594,38 +592,7 @@ class VideoViewer(BaseViewer):
                     return
 
             if fmt in ["JPEG", "WEBP"]:
-                # Binary search quality
-                low, high = 0, 100
-                best_data = None
-                for _ in range(8):
-                    mid = (low + high) // 2
-                    ba = QByteArray()
-                    buf = QBuffer(ba)
-                    buf.open(QBuffer.OpenModeFlag.WriteOnly)
-                    cropped.save(buf, fmt, mid)
-                    if ba.size() <= target_bytes:
-                        best_data = ba
-                        low = mid + 1
-                    else:
-                        high = mid - 1
-                
-                if best_data is None:
-                    # Downscale
-                    scale = 0.9
-                    curr_img = cropped
-                    while True:
-                        w = int(curr_img.width() * scale)
-                        h = int(curr_img.height() * scale)
-                        if w < 10 or h < 10: break
-                        curr_img = curr_img.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                        ba = QByteArray()
-                        buf = QBuffer(ba)
-                        buf.open(QBuffer.OpenModeFlag.WriteOnly)
-                        curr_img.save(buf, fmt, 0)
-                        if ba.size() <= target_bytes:
-                            best_data = ba
-                            break
-                
+                best_data = compress_qimage_to_size(cropped, target_bytes, fmt)
                 if best_data:
                     try:
                         with open(save_path, "wb") as f:

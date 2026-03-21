@@ -1,7 +1,7 @@
 import re
 import os
 import hashlib
-from typing import Union, List
+from typing import Union, List, Optional
 from pathlib import Path
 from PyQt6.QtGui import QPixmap, QImageReader, QColor, QImage
 from PyQt6.QtCore import Qt, QSize, QBuffer, QByteArray, QRect
@@ -9,6 +9,7 @@ import zipfile
 import threading
 from collections import OrderedDict
 from src.utils.str_utils import find_number
+from src.utils.archive_utils import decode_zip_filename
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -92,6 +93,67 @@ class ZipCache:
             self.cache.clear()
 
 ZIP_CACHE = ZipCache(max_size=5)
+
+def qimage_reader_from_bytes(data: bytes):
+    """Create a QImageReader from raw bytes. Returns (reader, buffer) — keep buffer in scope.
+
+    Uses QBuffer.setData() so the buffer owns its copy of the data and no external
+    QByteArray reference needs to be kept alive.
+    """
+    buffer = QBuffer()
+    buffer.setData(QByteArray(data))
+    buffer.open(QBuffer.OpenModeFlag.ReadOnly)
+    return QImageReader(buffer), buffer
+
+def get_image_format_from_ext(path: str) -> str:
+    """Return the Qt image format string for a file path based on its extension."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".jpg", ".jpeg", ".jpe"):
+        return "JPEG"
+    if ext == ".webp":
+        return "WEBP"
+    return "PNG"
+
+def compress_qimage_to_size(img: QImage, target_bytes: int, fmt: str) -> Optional[QByteArray]:
+    """Compress a QImage to fit within target_bytes via binary-search quality then downscaling.
+
+    Only meaningful for JPEG/WEBP formats. Returns None if compression failed.
+    """
+    if fmt not in ("JPEG", "WEBP"):
+        return None
+
+    low, high = 0, 100
+    best_data = None
+    for _ in range(8):
+        mid = (low + high) // 2
+        ba = QByteArray()
+        buf = QBuffer(ba)
+        buf.open(QBuffer.OpenModeFlag.WriteOnly)
+        img.save(buf, fmt, mid)
+        if ba.size() <= target_bytes:
+            best_data = ba
+            low = mid + 1
+        else:
+            high = mid - 1
+
+    if best_data is None:
+        scale = 0.9
+        curr_img = img
+        while True:
+            w = int(curr_img.width() * scale)
+            h = int(curr_img.height() * scale)
+            if w < 10 or h < 10:
+                break
+            curr_img = curr_img.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            ba = QByteArray()
+            buf = QBuffer(ba)
+            buf.open(QBuffer.OpenModeFlag.WriteOnly)
+            curr_img.save(buf, fmt, 0)
+            if ba.size() <= target_bytes:
+                best_data = ba
+                break
+
+    return best_data
 
 CACHE_DIR = Path('.cache/thumbnails')
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -306,11 +368,7 @@ def load_thumbnail_from_zip(path, width=150, height=200) -> QImage:
                             with zf.open(original_name) as f:
                                 image_data = f.read()
                             
-                            byte_array = QByteArray(image_data)
-                            buffer = QBuffer(byte_array)
-                            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-
-                            reader = QImageReader(buffer, QByteArray())
+                            reader, buffer = qimage_reader_from_bytes(image_data)
                             q_image = load_thumbnail(reader, width, height)
 
                             if q_image and not q_image.isNull():
@@ -331,11 +389,7 @@ def load_thumbnail_from_zip(path, width=150, height=200) -> QImage:
                 image_data = SevenZipHandler.read_file(path_str, first_image_name)
                 
                 if image_data:
-                    byte_array = QByteArray(image_data)
-                    buffer = QBuffer(byte_array)
-                    buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-
-                    reader = QImageReader(buffer, QByteArray())
+                    reader, buffer = qimage_reader_from_bytes(image_data)
                     q_image = load_thumbnail(reader, width, height)
 
                     if q_image and not q_image.isNull():
@@ -362,11 +416,7 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
         image_data = get_image_data_from_zip(virtual_path)
 
         if image_data:
-            byte_array = QByteArray(image_data)
-            buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-
-            reader = QImageReader(buffer, QByteArray())
+            reader, buffer = qimage_reader_from_bytes(image_data)
             reader.setAutoTransform(True)
             original_image = reader.read()
 
@@ -430,10 +480,7 @@ def load_qimage_for_thumbnailing(path: str, target_width: int = 0) -> QImage | N
     if '|' in path:
         image_data = get_image_data_from_zip(path)
         if image_data:
-            byte_array = QByteArray(image_data)
-            buffer = QBuffer(byte_array)
-            buffer.open(QBuffer.OpenModeFlag.ReadOnly)
-            reader = QImageReader(buffer)
+            reader, buffer = qimage_reader_from_bytes(image_data)
     else:
         reader = QImageReader(path)
 

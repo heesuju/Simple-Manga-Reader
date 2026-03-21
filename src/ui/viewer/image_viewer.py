@@ -10,7 +10,7 @@ from PyQt6.QtGui import QPixmap, QMovie, QImage, QBrush, QPainter, QColor, QFont
 from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool, QSize
 
 from src.ui.viewer.base_viewer import BaseViewer
-from src.utils.img_utils import get_image_data_from_zip, empty_placeholder
+from src.utils.img_utils import get_image_data_from_zip, empty_placeholder, get_image_format_from_ext, compress_qimage_to_size
 from src.enums import ViewMode
 from src.workers.view_workers import AsyncLoaderWorker, AsyncScaleWorker
 
@@ -555,9 +555,7 @@ class ImageViewer(BaseViewer):
 
         # Determine format from extension
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in [".jpg", ".jpeg", ".jpe"]: fmt = "JPEG"
-        elif ext == ".webp": fmt = "WEBP"
-        else: fmt = "PNG"
+        fmt = get_image_format_from_ext(file_path)
         
         # Detection of full-frame capture for optimization
         is_full_frame = (intersected.width() == source_pixmap.width() and 
@@ -609,39 +607,7 @@ class ImageViewer(BaseViewer):
                     return
 
             if fmt in ["JPEG", "WEBP"]:
-                # Binary search for best quality
-                low, high = 0, 100
-                best_data = None
-                
-                for _ in range(8):
-                    mid = (low + high) // 2
-                    ba = QByteArray()
-                    buf = QBuffer(ba)
-                    buf.open(QBuffer.OpenModeFlag.WriteOnly)
-                    img.save(buf, fmt, mid)
-                    if ba.size() <= target_bytes:
-                        best_data = ba
-                        low = mid + 1
-                    else:
-                        high = mid - 1
-                
-                if best_data is None:
-                    # Need to downscale because even quality 0 is too large
-                    scale = 0.9
-                    curr_img = img
-                    while True:
-                        w = int(curr_img.width() * scale)
-                        h = int(curr_img.height() * scale)
-                        if w < 10 or h < 10: break
-                        curr_img = curr_img.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                        ba = QByteArray()
-                        buf = QBuffer(ba)
-                        buf.open(QBuffer.OpenModeFlag.WriteOnly)
-                        curr_img.save(buf, fmt, 0)
-                        if ba.size() <= target_bytes:
-                            best_data = ba
-                            break
-                            
+                best_data = compress_qimage_to_size(img, target_bytes, fmt)
                 if best_data:
                     try:
                         with open(file_path, "wb") as f:
