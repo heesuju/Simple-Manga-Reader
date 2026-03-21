@@ -6,7 +6,6 @@ from PIL import Image, ImageQt, ImageFilter
 
 from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF, QBuffer, QIODevice
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption, QImageReader
-import math
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
 from src.utils.str_utils import natural_sort_key

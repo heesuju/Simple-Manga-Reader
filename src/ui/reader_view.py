@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QFrame
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, QMargins, QPropertyAnimation, pyqtSignal, QSize, QUrl, QRectF, QSizeF
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, pyqtSignal, QSize, QRectF
 from src.utils.resource_utils import resource_path
 from src.ui.styles import FLAT_BUTTON_STYLE
 

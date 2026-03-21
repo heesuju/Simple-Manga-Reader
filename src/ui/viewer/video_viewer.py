@@ -222,11 +222,6 @@ class VideoViewer(BaseViewer):
             # Ensure FramePanel knows we might be seeking to a different range
             # but usually it's already showing the frame we clicked.
 
-    def _set_video_position(self, position):
-        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
-            self.media_player.pause()
-        self.media_player.setPosition(position)
-
     def _step_video_frame(self, step):
         panel = self.reader_view.video_control_panel
         if panel.fps <= 0: return

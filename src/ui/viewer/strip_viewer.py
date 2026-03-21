@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QLabel, QSizePolicy, QWidget, QAbstractSlider
-from PyQt6.QtGui import QPixmap, QMouseEvent, QWheelEvent, QImage
-from PyQt6.QtCore import Qt, QTimer, QCoreApplication, QEvent
+from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtCore import Qt, QTimer, QEvent
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.workers.view_workers import PixmapLoader, AsyncScaleWorker

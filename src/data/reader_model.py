@@ -8,7 +8,6 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from src.enums import ViewMode
 from src.utils.img_utils import get_chapter_number
-from src.core.thumbnail_worker import get_default_view_mode
 from src.data.page import Page
 from src.core.alt_manager import AltManager
 

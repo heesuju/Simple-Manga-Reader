@@ -7,7 +7,7 @@ from PIL import Image, ImageQt
 
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem
 from PyQt6.QtGui import QPixmap, QMovie, QImage, QBrush, QPainter, QColor, QFont, QPen, QTextOption
-from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QThreadPool, QSize
+from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder, get_image_format_from_ext, compress_qimage_to_size
@@ -81,9 +81,6 @@ class ImageViewer(BaseViewer):
         self.pixmap_item = None
         self.scaled_pixmap_item = None
         self.clear_overlays()
-
-    def _clear_scene_pixmaps(self):
-        self._purge_stale_pixmaps()
 
     def load(self, item):
         self._stop_movie()
