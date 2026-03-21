@@ -29,8 +29,6 @@ class PagePanel(CollapsiblePanel):
         self.page_thumbnail_widgets = []
         self.current_page_thumbnails = []
         self.edit_selected_indices: Set[int] = set()
-
-        self.edit_selected_indices: Set[int] = set()
         # Map thumbnail index -> (real_page_index, is_double)
         # For Double Mode: index -> (base_index, is_double)
         self.thumbnail_to_page_map = [] 
