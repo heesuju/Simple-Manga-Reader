@@ -15,6 +15,18 @@ _ARCHIVE_LOCKS = {}
 _LOCKS_LOCK = threading.Lock()
 _GLOBAL_7Z_SEMAPHORE = threading.Semaphore(4) # Limit concurrent 7z processes
 
+def decode_zip_filename(name: str, flag_bits: int) -> str:
+    """Decode a zip entry filename with UTF-8 / CP932 fallback for non-UTF-8-flagged entries."""
+    if flag_bits & 0x800:
+        return name  # Already UTF-8
+    raw = name.encode('cp437')
+    for enc in ('utf-8', 'cp932'):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return name  # Fallback: keep CP437 interpretation
+
 def get_archive_lock(archive_path: str) -> threading.Lock:
     path_str = str(archive_path)
     with _LOCKS_LOCK:
@@ -196,21 +208,9 @@ class SevenZipHandler:
                 with zipfile.ZipFile(archive_path, 'r') as zf:
                     target_entry = None
                     for info in zf.infolist():
-                        name = info.filename
-                        if name == internal_path:
+                        decoded = decode_zip_filename(info.filename, info.flag_bits)
+                        if decoded == internal_path or info.filename == internal_path:
                             target_entry = info
-                            break
-
-                        if not (info.flag_bits & 0x800):
-                            raw = name.encode('cp437')
-                            for enc in ['utf-8', 'cp932', 'cp437']:
-                                try:
-                                    if raw.decode(enc) == internal_path:
-                                        target_entry = info
-                                        break
-                                except UnicodeDecodeError:
-                                    continue
-                        if target_entry:
                             break
 
                     if target_entry:

@@ -297,21 +297,8 @@ def load_thumbnail_from_zip(path, width=150, height=200) -> QImage:
                         # Get list of files with proper encoding fallback
                         namelist = []
                         for info in zf.infolist():
-                            name = info.filename
-                            if not (info.flag_bits & 0x800):
-                                # Multi-stage decoding for non-UTF-8 flagged entries
-                                raw = name.encode('cp437')
-                                try:
-                                    # Try UTF-8 first (many zips omit the bit)
-                                    name = raw.decode('utf-8')
-                                except UnicodeDecodeError:
-                                    try:
-                                        # Try CP932 (Windows-31J) for Japanese
-                                        name = raw.decode('cp932')
-                                    except UnicodeDecodeError:
-                                        # Fallback to original CP437
-                                        pass
-                            namelist.append((name, info.filename)) # Store (decoded, original)
+                            name = decode_zip_filename(info.filename, info.flag_bits)
+                            namelist.append((name, info.filename))
 
                         image_files = sorted([pair for pair in namelist if pair[0].lower().endswith(IMG_EXTS) and not pair[0].startswith('__MACOSX')])
                         if image_files:
@@ -427,17 +414,7 @@ def get_image_data_from_zip(virtual_path):
 
                 # Fallback: find original name by decoding CP437 -> CP932/UTF-8
                 for info in zf.infolist():
-                    decoded = info.filename
-                    if not (info.flag_bits & 0x800):
-                        raw = decoded.encode('cp437')
-                        try:
-                            decoded = raw.decode('utf-8')
-                        except UnicodeDecodeError:
-                            try:
-                                decoded = raw.decode('cp932')
-                            except UnicodeDecodeError:
-                                pass
-                    
+                    decoded = decode_zip_filename(info.filename, info.flag_bits)
                     if decoded == image_name or decoded.replace('\\', '/') == image_name_fixed:
                         with zf.open(info.filename) as f:
                             return f.read()
@@ -535,16 +512,7 @@ def _get_first_media_path(chapter_input):
                 with zipfile.ZipFile(archive_path, 'r') as zf:
                     namelist = []
                     for info in zf.infolist():
-                        name = info.filename
-                        if not (info.flag_bits & 0x800):
-                            raw = name.encode('cp437')
-                            try:
-                                name = raw.decode('utf-8')
-                            except UnicodeDecodeError:
-                                try:
-                                    name = raw.decode('cp932')
-                                except UnicodeDecodeError:
-                                    pass
+                        name = decode_zip_filename(info.filename, info.flag_bits)
                         namelist.append((name, info.filename))
                     
                     # Filter for files within the internal_path
