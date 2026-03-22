@@ -32,31 +32,46 @@ class _PageItem(QWidget):
         super().__init__(parent)
         self.page = page
         self.index = index
+        self._qimage = None
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setContentsMargins(0, 2, 0, 2)
         layout.setSpacing(1)
 
         self.thumb_label = QLabel()
         self.thumb_label.setFixedSize(_THUMB_W, _THUMB_H)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.thumb_label.setStyleSheet("background: #2a2a2a; border: 1px solid #444;")
+        self.thumb_label.setStyleSheet("background: #2a2a2a; border: 1px solid #444; border-radius: 0px;")
         layout.addWidget(self.thumb_label)
 
-        num_label = QLabel(str(index + 1))
-        num_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        num_label.setFixedWidth(_THUMB_W)
-        layout.addWidget(num_label)
+        self._num_label = QLabel(str(index + 1))
+        self._num_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._num_label)
 
         self.spread_check = QCheckBox("Spread")
         self.spread_check.setChecked(page.is_spread)
         layout.addWidget(self.spread_check, alignment=Qt.AlignmentFlag.AlignCenter)
 
+    def set_thumb_size(self, w: int, h: int):
+        self.thumb_label.setFixedSize(w, h)
+        if self._qimage:
+            pixmap = QPixmap.fromImage(self._qimage).scaled(
+                w, h,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.thumb_label.setPixmap(pixmap)
+        else:
+            self.thumb_label.clear()
+
     def set_thumbnail(self, qimage):
         if qimage and not qimage.isNull():
+            self._qimage = qimage
+            w = self.thumb_label.width()
+            h = self.thumb_label.height()
             pixmap = QPixmap.fromImage(qimage).scaled(
-                _THUMB_W, _THUMB_H,
+                w, h,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
@@ -71,9 +86,9 @@ class _EmptySlot(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.setFixedWidth(_THUMB_W + 4)
+        self.setFixedWidth(_THUMB_W)
         self.setStyleSheet(
-            "background: transparent; border: 1px dashed #333; border-radius: 2px;"
+            "background: transparent; border: 1px dashed #333;"
         )
 
 
@@ -118,9 +133,8 @@ class EditSpreadsDialog(QDialog):
 
         self.setWindowTitle(f"Edit Spreads — {self.chapter_name}")
 
-        # Width: row-nr + 2 cells + scrollbar clearance
-        cell_w = _THUMB_W + 4
-        win_w = _ROWNR_W + 2 * cell_w + 22
+        # Width: row-nr + 2 cells (no horizontal padding) + scrollbar clearance
+        win_w = _ROWNR_W + 2 * _THUMB_W + 22
         self.setFixedWidth(win_w)
         self.resize(win_w, 620)
 
@@ -270,14 +284,21 @@ class EditSpreadsDialog(QDialog):
             nr.setStyleSheet("color: #555; font-size: 10px; padding-right: 3px;")
             hl.addWidget(nr)
 
-            # Always exactly two cells — fill with _EmptySlot when no page
-            for cell in (left, right):
-                if cell is not None:
-                    cell.setParent(row)
-                    cell.show()
-                    hl.addWidget(cell)
-                else:
-                    hl.addWidget(_EmptySlot(row))
+            if left is not None and right is None and left.is_spread_checked:
+                # Spread: item spans both cells
+                left.set_thumb_size(2 * _THUMB_W, _THUMB_H)
+                left.setParent(row)
+                left.show()
+                hl.addWidget(left)
+            else:
+                for cell in (left, right):
+                    if cell is not None:
+                        cell.set_thumb_size(_THUMB_W, _THUMB_H)
+                        cell.setParent(row)
+                        cell.show()
+                        hl.addWidget(cell)
+                    else:
+                        hl.addWidget(_EmptySlot(row))
 
             self._pairs_layout.addWidget(row)
 
