@@ -400,13 +400,14 @@ class LibraryScanner:
                 sort_mode = AltManager.get_chapter_sort(str(series_path), chapter_name)
 
                 items = list(first_chapter_path.iterdir())
-                if sort_mode == 'mtime':
-                    items.sort(key=lambda p: os.path.getmtime(str(p)))
-                elif sort_mode == 'ctime':
-                    items.sort(key=lambda p: os.path.getctime(str(p)))
+                desc = sort_mode.endswith('_desc')
+                base = sort_mode[:-5] if desc else sort_mode
+                if base == 'mtime':
+                    items.sort(key=lambda p: os.path.getmtime(str(p)), reverse=desc)
+                elif base == 'ctime':
+                    items.sort(key=lambda p: os.path.getctime(str(p)), reverse=desc)
                 else:
-                    # Default: sort by chapter path natural
-                    items.sort(key=lambda p: get_chapter_number(str(p).lower()))
+                    items.sort(key=lambda p: get_chapter_number(str(p).lower()), reverse=desc)
 
                 for item in items:
                     if self.is_image_file(item):

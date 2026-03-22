@@ -322,9 +322,12 @@ class ChapterListItemWidget(QWidget):
         current_sort = AltManager.get_chapter_sort(series_path, chapter_name)
 
         SORT_OPTIONS = [
-            ('name',  'Name (A→Z)'),
-            ('mtime', 'Modified Date'),
-            ('ctime', 'Created Date'),
+            ('name',       'Name (A→Z)'),
+            ('name_desc',  'Name (Z→A)'),
+            ('mtime',      'Modified (Oldest first)'),
+            ('mtime_desc', 'Modified (Newest first)'),
+            ('ctime',      'Created (Oldest first)'),
+            ('ctime_desc', 'Created (Newest first)'),
         ]
 
         for mode, label in SORT_OPTIONS:
@@ -461,9 +464,12 @@ class FolderListItemWidget(QWidget):
         sort_menu = menu.addMenu("Sort Pages (All Chapters)...")
 
         SORT_OPTIONS = [
-            ('name',  'Name (A→Z)'),
-            ('mtime', 'Modified Date'),
-            ('ctime', 'Created Date'),
+            ('name',       'Name (A→Z)'),
+            ('name_desc',  'Name (Z→A)'),
+            ('mtime',      'Modified (Oldest first)'),
+            ('mtime_desc', 'Modified (Newest first)'),
+            ('ctime',      'Created (Oldest first)'),
+            ('ctime_desc', 'Created (Newest first)'),
         ]
         for mode, label in SORT_OPTIONS:
             action = QAction(label, self)

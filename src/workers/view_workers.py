@@ -190,41 +190,42 @@ class ChapterLoaderWorker(QRunnable):
     def _sort_image_list(self, image_list: list) -> list:
         """Sort image_list according to self.sort_mode.
 
-        Modes:
-          'name'  (default) — natural/alphanumeric sort via get_chapter_number
-          'mtime' — sort by file modification time, ascending
-          'ctime' — sort by file creation time (or mtime on Linux), ascending
+        Modes (append _desc for reverse):
+          'name'  / 'name_desc'  — natural/alphanumeric sort
+          'mtime' / 'mtime_desc' — file modification time
+          'ctime' / 'ctime_desc' — file creation time (mtime on Linux)
 
         For virtual (archive) paths the stat fields are not meaningful, so
         those always fall back to name sort.
         """
         mode = self.sort_mode or 'name'
+        desc = mode.endswith('_desc')
+        base = mode[:-5] if desc else mode
 
-        if mode == 'mtime':
+        if base == 'mtime':
             def _mtime(p):
                 real = p.split('|')[0] if '|' in p else p
                 try:
                     return os.path.getmtime(real)
                 except OSError:
                     return 0.0
-            return sorted(image_list, key=_mtime)
+            return sorted(image_list, key=_mtime, reverse=desc)
 
-        if mode == 'ctime':
+        if base == 'ctime':
             def _ctime(p):
                 real = p.split('|')[0] if '|' in p else p
                 try:
                     return os.path.getctime(real)
                 except OSError:
                     return 0.0
-            return sorted(image_list, key=_ctime)
+            return sorted(image_list, key=_ctime, reverse=desc)
 
-        # Default: natural/alphanumeric — sort by (prefix text, number, ...) so
-        # files with the same alphabetic prefix stay grouped together (a1,a2 before b1,b2).
+        # Default: natural/alphanumeric
         def _name_key(p):
             name = Path(p.split('|')[1]).name if '|' in p else Path(p).name
             return natural_sort_key(name)
 
-        return sorted(image_list, key=_name_key)
+        return sorted(image_list, key=_name_key, reverse=desc)
 
     def _detect_spreads_in_background(self, pages):
         """Perform spread detection using extracted files or ZipFile data."""
