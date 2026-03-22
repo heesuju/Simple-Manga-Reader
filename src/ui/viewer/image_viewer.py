@@ -22,6 +22,7 @@ class ImageViewer(BaseViewer):
         self.movie = None
         self.movie_buffer = None # Keep reference to buffer
         self.original_pixmap = None # Stores the full resolution source
+        self.original_qimage = None # Kept alongside original_pixmap to avoid toImage() roundtrip
         self.current_request_id = 0
         self.is_active = False # Flag to ignore late worker results
         
@@ -90,8 +91,9 @@ class ImageViewer(BaseViewer):
         
         # Reset HQ state
         self.hq_generation_id += 1
-        self.scaled_pixmap_item = False 
+        self.scaled_pixmap_item = False
         self.original_pixmap = None
+        self.original_qimage = None
         paths = []
         if isinstance(item, tuple) or (isinstance(item, list) and len(item) == 2):
              paths = [item[0], item[1]]
@@ -110,7 +112,9 @@ class ImageViewer(BaseViewer):
                     self._load_single_image_sync(paths[0])
                     return
 
-        worker = AsyncLoaderWorker(req_id, paths)
+        vp = self.reader_view.view.viewport()
+        hint_w = int(vp.width() * vp.devicePixelRatio() * 2) if vp else 0
+        worker = AsyncLoaderWorker(req_id, paths, hint_w)
         worker.signals.finished.connect(self._on_async_load_finished)
         self.reader_view.thread_pool.start(worker)
 
@@ -156,8 +160,9 @@ class ImageViewer(BaseViewer):
             else:
                 pixmap = QPixmap.fromImage(q_img)
                 self.original_pixmap = pixmap
+                self.original_qimage = q_img
                 self._set_pixmap(pixmap, path)
-                
+
             self.resize_timer.start() # Attempt to load HQ version after UI stabilizes
             
         elif len(loaded_keys) >= 2:
@@ -450,7 +455,7 @@ class ImageViewer(BaseViewer):
         
         if target_w < (original_w * 0.9):
              self.hq_generation_id += 1
-             q_image = self.original_pixmap.toImage()
+             q_image = self.original_qimage if self.original_qimage and not self.original_qimage.isNull() else self.original_pixmap.toImage()
              worker = AsyncScaleWorker(q_image, target_w, 0, self.hq_generation_id) # reusing index 0
              worker.signals.finished.connect(self._on_hq_scale_finished)
              self.reader_view.thread_pool.start(worker)
@@ -723,4 +728,5 @@ class ImageViewer(BaseViewer):
         self.resize_timer.stop()
         self.pixmap_item = None
         self.original_pixmap = None
+        self.original_qimage = None
         self.clear_overlays()

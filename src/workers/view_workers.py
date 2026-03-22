@@ -4,7 +4,7 @@ import io
 import os
 from PIL import Image, ImageQt, ImageFilter
 
-from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF, QBuffer, QIODevice
+from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF, QBuffer, QIODevice, QSize
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption, QImageReader
 
 from src.utils.img_utils import get_chapter_number, get_image_data_from_zip
@@ -568,10 +568,11 @@ class AsyncLoaderSignals(QObject):
     finished = pyqtSignal(int, dict) # request_id, results {path: QImage}
 
 class AsyncLoaderWorker(QRunnable):
-    def __init__(self, request_id: int, paths: list[str]):
+    def __init__(self, request_id: int, paths: list[str], hint_width: int = 0):
         super().__init__()
         self.request_id = request_id
         self.paths = paths
+        self.hint_width = hint_width
         self.signals = AsyncLoaderSignals()
 
     @pyqtSlot()
@@ -611,9 +612,29 @@ class AsyncLoaderWorker(QRunnable):
                 
                 q_image = QImage()
                 if image_data:
-                    q_image.loadFromData(image_data)
+                    buf = QBuffer()
+                    buf.setData(image_data if isinstance(image_data, (bytes, bytearray)) else bytes(image_data))
+                    buf.open(QIODevice.OpenModeFlag.ReadOnly)
+                    reader = QImageReader(buf)
+                    reader.setAutoTransform(True)
+                    if self.hint_width > 0 and not is_anim:
+                        orig = reader.size()
+                        if orig.isValid() and orig.width() > self.hint_width:
+                            aspect = orig.height() / orig.width()
+                            reader.setScaledSize(QSize(self.hint_width, int(self.hint_width * aspect)))
+                    q_image = reader.read()
                 elif os.path.exists(path_str):
-                    q_image.load(path_str)
+                    if is_anim:
+                        q_image.load(path_str)
+                    else:
+                        reader = QImageReader(path_str)
+                        reader.setAutoTransform(True)
+                        if self.hint_width > 0:
+                            orig = reader.size()
+                            if orig.isValid() and orig.width() > self.hint_width:
+                                aspect = orig.height() / orig.width()
+                                reader.setScaledSize(QSize(self.hint_width, int(self.hint_width * aspect)))
+                        q_image = reader.read()
                 
                 if not q_image.isNull() and crop:
                     w = q_image.width()
@@ -657,11 +678,11 @@ class AsyncScaleWorker(QRunnable):
                 self.signals.finished.emit(self.index, scaled, self.generation_id)
                 return
 
-            # 1. Convert QImage -> PIL
-            buffer = QBuffer()
-            buffer.open(QBuffer.OpenModeFlag.ReadWrite)
-            self.q_image.save(buffer, "PNG")
-            pil_img = Image.open(io.BytesIO(buffer.data().data()))
+            # 1. Convert QImage -> PIL directly via raw pixel buffer (avoids PNG encode/decode round-trip)
+            q_img = self.q_image.convertToFormat(QImage.Format.Format_RGBA8888)
+            ptr = q_img.bits()
+            ptr.setsize(q_img.sizeInBytes())
+            pil_img = Image.frombuffer('RGBA', (q_img.width(), q_img.height()), bytes(ptr), 'raw', 'RGBA', 0, 1)
             
             w_percent = (self.target_width / float(pil_img.size[0]))
             h_size = int((float(pil_img.size[1]) * float(w_percent)))
