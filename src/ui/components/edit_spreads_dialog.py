@@ -13,8 +13,8 @@ from src.core.alt_manager import AltManager
 from src.workers.thumbnail_worker import ThumbnailWorker
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path
 
-_THUMB_W = 100
-_THUMB_H = 140
+_THUMB_W = 150
+_THUMB_H = 210
 _ROWNR_W = 24
 
 _SORT_OPTIONS = [
