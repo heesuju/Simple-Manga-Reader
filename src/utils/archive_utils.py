@@ -222,7 +222,7 @@ class SevenZipHandler:
                 print(f"Error extracting {internal_path} from {archive_path}: {e}")
 
         # 2. Fallback: Use zipfile for .zip/.cbz (works without 7-zip, also handles encoding mismatches)
-        if archive_path.lower().endswith(('.zip', '.cbz')):
+        if Path(archive_path).suffix.lower() in ZIP_EXTS:
             import zipfile
             try:
                 with zipfile.ZipFile(archive_path, 'r') as zf:

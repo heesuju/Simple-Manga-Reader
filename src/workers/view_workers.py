@@ -359,7 +359,7 @@ class ChapterLoaderWorker(QRunnable):
                                 imgs.append(f"{zip_path}|{f}")
 
                 # zipfile fallback
-                if not imgs and zip_path.lower().endswith(('.zip', '.cbz')):
+                if not imgs and Path(zip_path).suffix.lower() in ZIP_EXTS:
                     with zipfile.ZipFile(zip_path, 'r') as zf:
                         all_zip_entries = []
                         for info in zf.infolist():

@@ -857,7 +857,7 @@ class ChapterListView(QWidget):
 
         from src.utils.str_utils import natural_sort_key
         for f in sorted(list(folders_at_level), key=natural_sort_key):
-            is_archive_folder = f.lower().endswith(archive_exts) or in_archive
+            is_archive_folder = Path(f).suffix.lower() in ARCHIVE_EXTS or in_archive
             self.display_items.append({'is_folder': True, 'name': f, 'is_archive_content': is_archive_folder})
 
         chapters_at_level.sort(key=lambda x: natural_sort_key(x['name']))

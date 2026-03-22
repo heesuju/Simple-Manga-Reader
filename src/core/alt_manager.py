@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from src.data.page import Page
+from src.utils.archive_utils import split_virtual_path
 class AltManager:
     INFO_FILE_NAME = "info.json"
     _file_lock = threading.Lock()
@@ -52,7 +53,7 @@ class AltManager:
             name = Path(path).name
             
             if '|' in path:
-                internal_path = path.split('|', 1)[1]
+                _, internal_path = split_virtual_path(path)
                 internal_parts = [p.lower() for p in Path(internal_path).parts]
                 if 'alts' in internal_parts or 'translations' in internal_parts:
                     continue

@@ -4,7 +4,7 @@ from PyQt6.QtCore import QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog
 from PyQt6.QtGui import QAction, QCursor, QKeySequence, QPixmap
 
-from src.ui.base.collapsible_panel import CollapsiblePanel
+from src.ui.components.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
 from src.ui.double_page_thumbnail import DoublePageThumbnail
 from src.workers.thumbnail_worker import ThumbnailWorker

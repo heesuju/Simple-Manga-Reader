@@ -3,6 +3,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable
 from PyQt6.QtGui import QPixmap, QImage
 from src.utils.img_utils import is_image_folder, load_thumbnail_from_path, load_thumbnail_from_zip, load_thumbnail_from_virtual_path, get_chapter_number, is_image_monotone
+from src.utils.archive_utils import ARCHIVE_EXTS
 
 class ItemLoaderSignals(QObject):
     item_loaded = pyqtSignal(QImage, object, int, int, str)  # qimg, path, idx, gen, item_type
@@ -85,7 +86,7 @@ class ItemLoader(QRunnable):
                 media_path = _get_first_media_path(path_str)
                 if media_path:
                     if '|' in media_path:
-                        item_type = 'archive' if media_path.split('|')[0].lower().endswith(('.zip', '.cbz', '.7z', '.rar')) else 'image'
+                        item_type = 'archive' if Path(media_path.split('|')[0]).suffix.lower() in ARCHIVE_EXTS else 'image'
                         qimg = load_thumbnail_from_virtual_path(media_path, self.thumb_width, self.thumb_height, crop)
                     elif Path(media_path).is_dir():
                         item_type = 'folder'

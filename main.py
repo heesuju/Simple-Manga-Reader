@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtCore import Qt
 
-from src.folder_grid import FolderGrid
+from src.ui.folder_grid import FolderGrid
 from src.ui.chapter_list import ChapterListView
 from src.utils.img_utils import get_chapter_number
 from pathlib import Path

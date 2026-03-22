@@ -22,7 +22,7 @@ from src.ui.chapter_panel import ChapterPanel
 from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
 from src.ui.video_control_panel import VideoControlPanel
-from src.ui.image_view import ImageView
+from src.ui.viewer.image_view import ImageView
 from src.ui.frame_panel import FramePanel
 from src.enums import Language
 from src.ui.components.selection_panel import SelectionPanel

@@ -19,6 +19,7 @@ from src.ui.clickable_label import ClickableLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
 from src.core.item_loader import ItemLoader
 from src.utils.img_utils import get_chapter_number
+from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS
 from src.enums import ViewMode
 import math
 import json
@@ -807,7 +808,7 @@ class FolderGrid(QWidget):
     def handle_web_access_click(self):
         # Ensure server is running
         if not self.web_server_process or not self.web_server_process.is_alive():
-            from src.web_server import run_server
+            from src.core.web_server import run_server
             self.web_server_process = multiprocessing.Process(target=run_server, daemon=True)
             self.web_server_process.start()
             self.web_access_btn.set_status("running")
@@ -974,7 +975,7 @@ class FolderGrid(QWidget):
                 for f in os.scandir(folder):
                     if f.is_dir():
                         subfolders.append(f.path)
-                    elif f.is_file() and f.name.lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')):
+                    elif f.is_file() and Path(f.name).suffix.lower() in ARCHIVE_EXTS:
                         subfolders.append(f.path)
                 
                 if not subfolders:
@@ -1014,7 +1015,7 @@ class FolderGrid(QWidget):
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            if any(Path(url.toLocalFile()).is_dir() or url.toLocalFile().lower().endswith(('.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7')) for url in urls):
+            if any(Path(url.toLocalFile()).is_dir() or Path(url.toLocalFile()).suffix.lower() in ARCHIVE_EXTS for url in urls):
                 event.acceptProposedAction()
 
     def dropEvent(self, event):
