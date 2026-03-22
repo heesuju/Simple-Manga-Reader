@@ -113,7 +113,8 @@ class TranslateWorker(QRunnable):
                 })
             
             # --- Save Translation as Alt ---
-            if full_pil_img and overlays:
+            has_translations = any(o['text'] and o['text'] != "[No Text Detected]" for o in overlays)
+            if full_pil_img and has_translations:
                 try:
                     # Convert PIL Image to QImage for drawing
                     # (We already have full_pil_img loaded)

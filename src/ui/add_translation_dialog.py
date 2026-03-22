@@ -457,11 +457,20 @@ class AddTranslationDialog(QDialog):
         chapter_alts = alt_config.get(self.chapter_path.name, {})
         
         valid_exts = {'.jpg', '.jpeg', '.jpe', '.png', '.webp', '.bmp', '.gif'}
-        images = [str(p) for p in self.chapter_path.iterdir() 
+        images = [str(p) for p in self.chapter_path.iterdir()
                   if p.is_file() and p.suffix.lower() in valid_exts and p.stem.lower() != 'cover']
-        
-        # Sort to match ReaderView logic (which uses get_chapter_number)
-        images = sorted(images, key=get_chapter_number)
+
+        # Sort respecting the chapter's stored sort mode
+        sort_mode = AltManager.get_chapter_sort(self.series_path, self.chapter_path.name)
+        desc = sort_mode.endswith('_desc')
+        base = sort_mode[:-5] if desc else sort_mode
+        if base == 'mtime':
+            images = sorted(images, key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0.0, reverse=desc)
+        elif base == 'ctime':
+            images = sorted(images, key=lambda p: os.path.getctime(p) if os.path.exists(p) else 0.0, reverse=desc)
+        else:
+            from src.utils.str_utils import natural_sort_key
+            images = sorted(images, key=lambda p: natural_sort_key(Path(p).name), reverse=desc)
         
         grouped_pages = AltManager.group_images(images, chapter_alts)
         self.pages = grouped_pages

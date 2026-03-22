@@ -1,5 +1,6 @@
 
 import os
+import time
 import requests
 import json
 from dotenv import load_dotenv
@@ -44,7 +45,23 @@ class Translator:
         except Exception:
             self.api_url = os.getenv("LLAMA_API_URL", "http://localhost:8080/completion")
 
+    def _ensure_server_running(self) -> bool:
+        manager = LLMServerManager.instance()
+        if manager.is_running():
+            return True
+        print("LLM server not running, attempting to start...")
+        manager.start()
+        for _ in range(120):  # up to 60 s
+            time.sleep(0.5)
+            if manager.check_health():
+                print("LLM server ready.")
+                return True
+        print("LLM server did not become ready in time.")
+        return False
+
     def _perform_translation(self, prompt: str, stop_tokens: list, retries: int = 3) -> str:
+        if not self._ensure_server_running():
+            return ""
         data = {
             "prompt": prompt,
             "n_predict": 100,
