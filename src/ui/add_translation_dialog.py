@@ -170,7 +170,17 @@ class MappingRow(QWidget):
         
         main_layout.addWidget(self.main_thumb, 1)
         main_layout.addWidget(self.main_lbl)
-        
+
+        # Order badge overlay (shown on top of thumbnail when selected)
+        self.order_badge = QLabel(self.main_frame)
+        self.order_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.order_badge.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-size: 13px; font-weight: bold; border-radius: 13px;"
+        )
+        self.order_badge.setFixedSize(26, 26)
+        self.order_badge.move(4, 4)
+        self.order_badge.hide()
+
         # Arrow
         arrow = QLabel("→")
         arrow.setStyleSheet("color: #aaa; font-size: 20px; font-weight: bold;")
@@ -197,6 +207,14 @@ class MappingRow(QWidget):
     def set_status(self, status: str, color: str = "#aaa"):
         self.status_label.setText(status)
         self.status_label.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
+
+    def set_order_badge(self, order: int | None):
+        if order is None:
+            self.order_badge.hide()
+        else:
+            self.order_badge.setText(str(order))
+            self.order_badge.show()
+            self.order_badge.raise_()
 
     def _on_slot_changed(self):
         self.translation_changed.emit()
@@ -356,12 +374,22 @@ class AddTranslationDialog(QDialog):
     def _update_button_state(self):
         selected_rows = [row for row in self.rows if row.checkbox.isChecked()]
         any_selected = bool(selected_rows)
-        
+
         self.translate_btn.setEnabled(any_selected)
-        
+
         # Only enable remove if at least one selected row has a translation
         any_removable = any(row.get_translation_path() is not None for row in selected_rows)
         self.remove_selected_btn.setEnabled(any_removable)
+
+        # Update order badges — number reflects translation order (shared history)
+        selected_set = {id(r) for r in selected_rows}
+        order = 1
+        for row in self.rows:
+            if id(row) in selected_set:
+                row.set_order_badge(order)
+                order += 1
+            else:
+                row.set_order_badge(None)
 
     def _on_select_all(self, state):
         checked = state == Qt.CheckState.Checked.value

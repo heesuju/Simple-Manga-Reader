@@ -90,8 +90,10 @@ class TranslateWorker(QRunnable):
                 
                 translated_text = ""
                 if detected_text:
+                    print(f"[OCR] Detected: {repr(detected_text)}")
                     try:
                         translated_text = translator.translate_contextual(detected_text, self.history, target_lang=self.target_lang)
+                        print(f"[TL] Translated: {repr(translated_text)}")
                         # Append to history ONLY if translation succeeded
                         if translated_text:
                              self.history.append((detected_text, translated_text))
