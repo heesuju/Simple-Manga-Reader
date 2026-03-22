@@ -4,7 +4,8 @@ import re
 from PyQt6.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 from src.core.alt_manager import AltManager
 from src.utils.str_utils import natural_sort_key
-from src.utils.archive_utils import ARCHIVE_EXTS
+import zipfile
+from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS
 
 # prefer treating images and video separately for cover-selection vs listing
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif'}
@@ -106,6 +107,28 @@ class LibraryScanner:
     def is_image_file(self, path: Path):
         """Return True only for actual image file extensions (used for cover selection)."""
         return path.is_file() and path.suffix.lower() in IMAGE_EXTS
+
+    def _archive_has_media(self, archive_path: Path) -> bool:
+        """Return True if the archive contains at least one supported media file."""
+        from src.utils.archive_utils import SevenZipHandler
+        try:
+            if archive_path.suffix.lower() in ZIP_EXTS:
+                with zipfile.ZipFile(archive_path, 'r') as zf:
+                    return any(
+                        Path(name).suffix.lower() in ALL_MEDIA_EXTS
+                        and not name.startswith('__MACOSX')
+                        for name in zf.namelist()
+                    )
+            if SevenZipHandler.is_available():
+                files = SevenZipHandler.list_files(str(archive_path))
+                return any(
+                    Path(f).suffix.lower() in ALL_MEDIA_EXTS
+                    and not f.startswith('__MACOSX')
+                    for f in files
+                )
+        except Exception:
+            pass
+        return False
 
     def has_valid_chapter_content(self, chapter_path: Path):
         """Check if chapter folder has media files other than cover.jpg/png."""
@@ -330,8 +353,8 @@ class LibraryScanner:
                     archive_chapters = self.scan_archive(item)
                     if archive_chapters:
                         chapters.extend(archive_chapters)
-                    else:
-                        # Fallback to whole archive as one chapter
+                    elif self._archive_has_media(item):
+                        # Fallback: whole archive is one chapter (all media at root)
                         chapters.append({
                             "name": item.stem,
                             "path": str(item)
