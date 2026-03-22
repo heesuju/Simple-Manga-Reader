@@ -367,6 +367,7 @@ class AddTranslationDialog(QDialog):
         self._update_button_state()
         
         self.is_translating = False
+        self._pending_tasks = 0
 
         # Connect to TranslationService signals to update row status if dialog is open
         TranslationService.instance().task_status_changed.connect(self._on_task_status_changed)
@@ -428,6 +429,7 @@ class AddTranslationDialog(QDialog):
         shared_history = []
         
         # Submit all tasks to TranslationService
+        self._pending_tasks = len(selected_rows)
         for row in selected_rows:
             row.set_status("Queued", "#aaa")
             worker = TranslateWorker(
@@ -444,17 +446,14 @@ class AddTranslationDialog(QDialog):
 
     def _on_worker_finished(self, row: MappingRow, saved_path):
         if saved_path:
-            row.set_status("Done", "#4CAF50") # Green
+            row.set_status("Done", "#4CAF50")
             row.set_translation(saved_path)
         else:
-            row.set_status("Failed", "#F44336") 
-        
-        # Check if all done for this batch? 
-        # TranslationService might have other tasks. 
-        # We can check if any rows are still "Queued" or "Translating..."?
-        # A simple check:
-        if self.is_translating and TranslationService.instance().active_tasks() == 0:
-             self._on_batch_finished()
+            row.set_status("Failed", "#F44336")
+
+        self._pending_tasks = max(0, self._pending_tasks - 1)
+        if self.is_translating and self._pending_tasks == 0:
+            self._on_batch_finished()
 
     def _on_task_status_changed(self, image_path, lang_code, status):
          for row in self.rows:

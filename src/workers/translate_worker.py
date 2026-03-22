@@ -4,7 +4,7 @@ from pathlib import Path
 import io
 
 from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption
+from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QFontMetrics, QColor, QTextOption
 
 from src.core.translator import Translator
 from src.core.ocr_server_manager import OCRServerManager
@@ -142,54 +142,22 @@ class TranslateWorker(QRunnable):
                             rect = QRectF(x, y, w, h)
                             painter.drawRect(rect)
                             
-                            # Draw Text using QTextDocument for consistency with UI
-                            from PyQt6.QtGui import QTextDocument, QTextCursor
-                            
-                            doc = QTextDocument()
-                            doc.setPlainText(text)
-                            
-                            # Fix: Ensure text is black and opaque using text cursor and char format
-                            cursor = QTextCursor(doc)
-                            cursor.select(QTextCursor.SelectionType.Document)
-                            fmt = cursor.charFormat()
-                            fmt.setForeground(QColor("black"))
-                            cursor.mergeCharFormat(fmt)
-                            
-                            opt = QTextOption()
-                            opt.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                            opt.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-                            doc.setDefaultTextOption(opt)
-                            
-                            # Dynamic font sizing
-                            font_size = 30 # Start max
-                            min_font_size = 6
-                            font = QFont("Arial", font_size)
-                            
-                            final_font_size = min_font_size
-                            
-                            # Iteratively find best fit
-                            for size in range(font_size, min_font_size - 1, -2):
-                                font.setPointSize(size)
-                                doc.setDefaultFont(font)
-                                doc.setTextWidth(w)
-                                
-                                if doc.size().height() <= h:
-                                    final_font_size = size
+                            # Dynamic font sizing using QPainter.drawText (thread-safe)
+                            text_flags = Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignCenter
+                            text_rect = QRectF(x, y, w, h).toRect()
+
+                            final_font = QFont("Arial", 6)
+                            for size in range(30, 5, -2):
+                                font = QFont("Arial", size)
+                                fm = QFontMetrics(font)
+                                br = fm.boundingRect(text_rect, int(text_flags), text)
+                                if br.height() <= h:
+                                    final_font = font
                                     break
-                                    
-                            font.setPointSize(final_font_size)
-                            doc.setDefaultFont(font)
-                            doc.setTextWidth(w)
-                            
-                            # Center vertically
-                            doc_h = doc.size().height()
-                            y_offset = (h - doc_h) / 2
-                            if y_offset < 0: y_offset = 0
-                            
-                            painter.save()
-                            painter.translate(x, y + y_offset)
-                            doc.drawContents(painter)
-                            painter.restore()
+
+                            painter.setFont(final_font)
+                            painter.setPen(QColor("black"))
+                            painter.drawText(text_rect, int(text_flags), text)
                                 
                         painter.end()
                         
