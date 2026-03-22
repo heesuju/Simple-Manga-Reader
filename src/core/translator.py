@@ -65,7 +65,10 @@ class Translator:
         data = {
             "prompt": prompt,
             "n_predict": 100,
-            "temperature": 0.1,
+            "temperature": 0.7,
+            "top-p": 0.8, 
+            "top-k": 20, 
+            "min-p": 0,
             "stop": stop_tokens
         }
         
@@ -76,9 +79,9 @@ class Translator:
                     res_json = response.json()
                     content = res_json.get("content", "")
                     if not content:
-                         choices = res_json.get("choices", [])
-                         if choices:
-                             content = choices[0].get("text", "") or choices[0].get("message", {}).get("content", "")
+                        choices = res_json.get("choices", [])
+                        if choices:
+                            content = choices[0].get("text", "") or choices[0].get("message", {}).get("content", "")
                     
                     # Post-processing
                     content = content.strip()
@@ -151,8 +154,8 @@ class Translator:
         context_prompt = ""
         if history:
             context_prompt = "Previous context:\n"
-            # Use last 5 items
-            recent_history = history[-5:]
+            # Use last 10 items
+            recent_history = history[-10:]
             for src, tr in recent_history:
                 context_prompt += f"Text: {src}\nTranslation: {tr}\n"
             context_prompt += "\n"
