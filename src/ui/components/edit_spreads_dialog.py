@@ -112,7 +112,8 @@ class EditSpreadsDialog(QDialog):
         root.setContentsMargins(0, 0, 0, 6)
         root.setSpacing(0)
 
-        scroll = QScrollArea()
+        self._scroll = QScrollArea()
+        scroll = self._scroll
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -178,11 +179,14 @@ class EditSpreadsDialog(QDialog):
         return pairs
 
     def _rebuild_pairs_view(self):
+        vbar = self._scroll.verticalScrollBar()
+        saved_pos = vbar.value()
         self._container.setUpdatesEnabled(False)
         try:
             self._do_rebuild()
         finally:
             self._container.setUpdatesEnabled(True)
+            vbar.setValue(saved_pos)
 
     def _do_rebuild(self):
         # Detach all page items so they survive row deletion
