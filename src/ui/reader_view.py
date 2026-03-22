@@ -68,7 +68,7 @@ class ReaderView(QWidget):
         self._restore_page_path = None
 
         self._last_total_scale = 1.0
-        
+
         # Main viewer pool: image loading/rescaling + video extraction (mutually exclusive)
         self.thread_pool = QThreadPool()
         self.thread_pool.setMaxThreadCount(4)
@@ -1117,7 +1117,6 @@ class ReaderView(QWidget):
                 self.model.current_index = 0
 
         self.model.refresh()
-
 
     def back_to_grid(self):
         self.page_panel.stop_loading_thumbnails()

@@ -163,9 +163,6 @@ class ChapterLoaderWorker(QRunnable):
                 else:
                     initial_image = None
 
-        # Background Spread Detection
-        self._detect_spreads_in_background(grouped_pages)
-
         result = {
             "manga_dir": self.manga_dir,
             "images": grouped_pages,

@@ -164,6 +164,7 @@ class ChapterListItemWidget(QWidget):
     chapter_selected = pyqtSignal(object)
     group_pages_requested = pyqtSignal(object, object) # chapter, widget
     add_translation_requested = pyqtSignal(object, object) # chapter, widget
+    edit_spreads_requested = pyqtSignal(object) # chapter
 
     def __init__(self, chapter, series, chapter_name, library_manager, parent=None):
         super().__init__(parent)
@@ -300,10 +301,14 @@ class ChapterListItemWidget(QWidget):
             group_action = QAction("Group Pages (Auto-Alt)", self)
             group_action.triggered.connect(lambda: self.group_pages_requested.emit(self.chapter, self))
             menu.addAction(group_action)
-            
+
             trans_action = QAction("Edit Translations", self)
             trans_action.triggered.connect(lambda: self.add_translation_requested.emit(self.chapter, self))
             menu.addAction(trans_action)
+
+        edit_spreads_action = QAction("Edit Spreads...", self)
+        edit_spreads_action.triggered.connect(lambda: self.edit_spreads_requested.emit(self.chapter))
+        menu.addAction(edit_spreads_action)
 
         sort_menu = menu.addMenu("Sort Pages...")
         series_path = str(self.series['path'])
@@ -922,6 +927,7 @@ class ChapterListView(QWidget):
                 item_widget.chapter_selected.connect(self.on_chapter_selected)
                 item_widget.group_pages_requested.connect(self.on_group_pages_requested)
                 item_widget.add_translation_requested.connect(self.on_add_translation_requested)
+                item_widget.edit_spreads_requested.connect(self.on_edit_spreads_requested)
                 self.content_layout.addWidget(item_widget)
                 self.chapter_widgets.append(item_widget)
 
@@ -1064,6 +1070,12 @@ class ChapterListView(QWidget):
             worker.signals.error.connect(on_error)
             
             QThreadPool.globalInstance().start(worker)
+
+    def on_edit_spreads_requested(self, chapter):
+        from src.ui.components.edit_spreads_dialog import EditSpreadsDialog
+        series_path = str(self.series['path'])
+        dialog = EditSpreadsDialog(self, chapter, series_path)
+        dialog.exec()
 
     def on_thumbnail_loaded(self, qimg, item, index, generation, item_type):
         widget = getattr(self, '_chapter_loader_map', {}).get(index)
