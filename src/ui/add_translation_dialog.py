@@ -58,9 +58,9 @@ class TranslationSlot(QFrame):
     def set_image(self, path: str):
         self.current_path = path
         if path:
-            pix = load_thumbnail_from_path(path, 110, 120)
-            if pix:
-                self.preview.setPixmap(pix)
+            img = load_thumbnail_from_path(path, 110, 120)
+            if img and not img.isNull():
+                self.preview.setPixmap(QPixmap.fromImage(img))
             else:
                 self.preview.setText("No Preview")
             self.preview.setStyleSheet("border: none; background: transparent;")
@@ -154,9 +154,9 @@ class MappingRow(QWidget):
         
         self.main_thumb = QLabel()
         self.main_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pix = load_thumbnail_from_path(main_page_path, 110, 120)
-        if pix:
-            self.main_thumb.setPixmap(pix)
+        img = load_thumbnail_from_path(main_page_path, 110, 120)
+        if img and not img.isNull():
+            self.main_thumb.setPixmap(QPixmap.fromImage(img))
         else:
             self.main_thumb.setText("No Image")
             
