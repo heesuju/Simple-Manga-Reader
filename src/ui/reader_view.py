@@ -72,6 +72,10 @@ class ReaderView(QWidget):
         self.thread_pool = QThreadPool()
         self.thread_pool.setMaxThreadCount(4)
 
+        # Dedicated pool for video workers so they never queue behind image loading/scaling
+        self.video_thread_pool = QThreadPool()
+        self.video_thread_pool.setMaxThreadCount(2)
+
         self.original_view_mouse_press = None
         self.is_zoomed = False
 
@@ -237,7 +241,7 @@ class ReaderView(QWidget):
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
         self.alt_panel = AltPanel(self, model=self.model, thread_pool=self.thread_pool)
-        self.frame_panel = FramePanel(self, thread_pool=self.thread_pool)
+        self.frame_panel = FramePanel(self, thread_pool=self.video_thread_pool)
         self.selection_panel = SelectionPanel(self)
 
         # Add panels to the layout
@@ -762,7 +766,7 @@ class ReaderView(QWidget):
                 self.loading_label.show()
                 worker = VideoExtractionWorker(path)
                 worker.signals.finished.connect(self._on_video_extracted_finished)
-                self.thread_pool.start(worker)
+                self.video_thread_pool.start(worker)
             return
 
         resolved_path = self.resolve_path(path)

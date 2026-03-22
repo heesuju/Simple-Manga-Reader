@@ -107,7 +107,7 @@ class VideoViewer(BaseViewer):
             self.active_meta_worker.cancelled = True
         self.active_meta_worker = VideoMetadataWorker(path)
         self.active_meta_worker.signals.finished.connect(self._on_video_metadata)
-        self.reader_view.thread_pool.start(self.active_meta_worker)
+        self.reader_view.video_thread_pool.start(self.active_meta_worker)
 
         self.media_player.setVideoOutput(self.video_item)
         self.media_player.setSource(QUrl.fromLocalFile(path))
@@ -451,7 +451,7 @@ class VideoViewer(BaseViewer):
                 source_path = self.media_player.source().toLocalFile()
                 worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
                 worker.signals.finished.connect(self._on_frame_saved)
-                self.reader_view.thread_pool.start(worker)
+                self.reader_view.video_thread_pool.start(worker)
             elif was_playing:
                 # Resume if user cancelled and it was playing
                 self.media_player.play()
@@ -490,7 +490,7 @@ class VideoViewer(BaseViewer):
             worker.signals.finished.connect(
                 lambda s, img, p: self._on_area_frame_extracted(idx=None, img=img, save_path=p, rect=scene_rect, limit=size_limit_mb)
             )
-            self.reader_view.thread_pool.start(worker)
+            self.reader_view.video_thread_pool.start(worker)
 
     def _on_area_frame_extracted(self, idx, img, save_path, rect, limit):
         # Crop
