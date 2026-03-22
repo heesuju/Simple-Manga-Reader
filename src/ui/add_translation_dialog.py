@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QListWidget, QDialogButtonBox,
     QPushButton, QHBoxLayout, QWidget, QComboBox, QAbstractItemView,
     QListWidgetItem, QScrollArea, QFrame, QMenu, QCheckBox, QProgressBar,
-    QPlainTextEdit
+    QPlainTextEdit, QSplitter
 )
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QMimeData, QThreadPool
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
@@ -131,6 +131,7 @@ class TranslationSlot(QFrame):
 
 class MappingRow(QWidget):
     translation_changed = pyqtSignal()
+    thumbnail_clicked = pyqtSignal()
 
     def __init__(self, main_page_path, page_num, parent=None):
         super().__init__(parent)
@@ -196,6 +197,10 @@ class MappingRow(QWidget):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self._had_translation = False
+
+        # Make thumbnail frame clickable for preview
+        self.main_frame.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.main_frame.mousePressEvent = lambda _: self.thumbnail_clicked.emit()
 
         # Connect slot changed/cleared signals to button visibility
         self.slot.file_dropped.connect(self._on_slot_changed)
@@ -267,7 +272,7 @@ class AddTranslationDialog(QDialog):
     def __init__(self, series_path: str, chapter_path: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add Translations (Drag & Drop)")
-        self.resize(820, 750)
+        self.resize(1000, 750)
         self.setAcceptDrops(True) # Global drop for folders
         
         self.series_path = series_path
@@ -343,21 +348,53 @@ class AddTranslationDialog(QDialog):
         self.layout.addLayout(top_controls_layout)
 
         
-        # 3. Scroll Area for Rows
-        
-        # 3. Scroll Area for Rows
+        # 3. Splitter: rows on left, preview on right
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        # -- Left: scroll area with rows --
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setStyleSheet(SCROLL_AREA_TRANSPARENT)
-        
+
         self.container = QWidget()
         self.container.setStyleSheet("background: transparent;")
         self.rows_layout = QVBoxLayout(self.container)
         self.rows_layout.setSpacing(10)
-        self.rows_layout.addStretch() # Push items up
-        
+        self.rows_layout.addStretch()
+
         self.scroll.setWidget(self.container)
-        self.layout.addWidget(self.scroll)
+        splitter.addWidget(self.scroll)
+
+        # -- Right: preview panel --
+        preview_panel = QFrame()
+        preview_panel.setStyleSheet("background: #1a1a1a; border-left: 1px solid #333;")
+        preview_layout = QVBoxLayout(preview_panel)
+        preview_layout.setContentsMargins(8, 8, 8, 8)
+
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet("color: #aaa; font-size: 11px; font-weight: bold;")
+        preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_layout.addWidget(preview_title)
+
+        self._preview_label = QLabel("Select a page to preview")
+        self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._preview_label.setStyleSheet("color: #555; font-size: 11px;")
+        self._preview_label.setMinimumWidth(200)
+        preview_layout.addWidget(self._preview_label, 1)
+
+        self._preview_path = QLabel("")
+        self._preview_path.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._preview_path.setStyleSheet("color: #666; font-size: 10px;")
+        self._preview_path.setWordWrap(True)
+        preview_layout.addWidget(self._preview_path)
+
+        splitter.addWidget(preview_panel)
+        splitter.setSizes([620, 340])
+
+        self.layout.addWidget(splitter, 1)  # stretch=1 so only splitter grows
+        self._preview_row = None
+        self._preview_pixmap = None
 
         
         # 4. Buttons Layout (Bottom Row)
@@ -491,6 +528,8 @@ class AddTranslationDialog(QDialog):
         if saved_path:
             row.set_status("Done", "#4CAF50")
             row.set_translation(saved_path)
+            if self._preview_row is row:
+                self._show_preview(row)
         else:
             row.set_status("Failed", "#F44336")
 
@@ -558,9 +597,9 @@ class AddTranslationDialog(QDialog):
              num = extract_page_number(main_img)
              
              row = MappingRow(main_img, num)
-             # Connect checkbox change to button update
              row.checkbox.stateChanged.connect(self._update_button_state)
              row.translation_changed.connect(self._update_button_state)
+             row.thumbnail_clicked.connect(lambda r=row: self._show_preview(r))
              self.rows_layout.addWidget(row)
              self.rows.append(row)
         
@@ -597,6 +636,46 @@ class AddTranslationDialog(QDialog):
             event.ignore()
         else:
             super().closeEvent(event)
+
+    def _show_preview(self, row):
+        self._preview_row = row
+        if row is None:
+            self._preview_label.setText("Select a page to preview")
+            self._preview_label.setPixmap(QPixmap())
+            self._preview_path.setText("")
+            return
+
+        path = row.get_translation_path() or str(row.main_path)
+        if not path or not os.path.exists(path):
+            self._preview_label.setText("No preview available")
+            self._preview_label.setPixmap(QPixmap())
+            self._preview_path.setText("")
+            return
+
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            self._preview_label.setText("Could not load image")
+            self._preview_path.setText("")
+            return
+
+        self._preview_pixmap = pixmap
+        self._scale_preview()
+        self._preview_path.setText(Path(path).name)
+
+    def _scale_preview(self):
+        if not self._preview_pixmap:
+            return
+        available = self._preview_label.size()
+        scaled = self._preview_pixmap.scaled(
+            available,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        self._preview_label.setPixmap(scaled)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._scale_preview()
 
     def get_selected_language(self) -> Language:
         return self.lang_combo.currentData()
