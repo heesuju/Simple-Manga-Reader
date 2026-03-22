@@ -17,6 +17,7 @@ class ChapterPanel(CollapsiblePanel):
         super().__init__(parent, "Chapter")
         self.model = model
         self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(2)
         self.on_chapter_changed = on_chapter_changed
         self.chapter_thumbnail_widgets = []
         self.current_chapter_thumbnail = None

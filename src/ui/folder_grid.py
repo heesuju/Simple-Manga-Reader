@@ -100,6 +100,7 @@ class FolderGrid(QWidget):
         self.recent_loader = None
         
         self.threadpool = QThreadPool()
+        self.threadpool.setMaxThreadCount(3)
         self._active_loaders = [] # Track regular item loaders
         self._active_recent_loaders = [] # Track recent item loaders
         self._active_scanners = [] # Track scanner workers

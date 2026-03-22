@@ -70,6 +70,7 @@ class ReaderView(QWidget):
         self._last_total_scale = 1.0
         
         self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(4)
 
         self.original_view_mouse_press = None
         self.is_zoomed = False
