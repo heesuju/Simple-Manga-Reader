@@ -194,6 +194,8 @@ class MappingRow(QWidget):
         self.status_label.setFixedWidth(60)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
+        self._had_translation = False
+
         # Connect slot changed/cleared signals to button visibility
         self.slot.file_dropped.connect(self._on_slot_changed)
         self.slot.removed.connect(self._on_slot_changed) 
@@ -227,6 +229,8 @@ class MappingRow(QWidget):
 
     def set_translation(self, path):
         self.slot.set_image(path)
+        if path is not None:
+            self._had_translation = True
         self._on_slot_changed()
 
 
@@ -551,7 +555,10 @@ class AddTranslationDialog(QDialog):
         mapping = []
         for row in self.rows:
             trans_path = row.get_translation_path()
-            # Send ALL rows. Processing worker will handle None as delete/unlink.
+            # Skip rows that never had a translation — no link or unlink needed.
+            # Only include if there's an active translation, or if one was explicitly removed.
+            if trans_path is None and not row._had_translation:
+                continue
             mapping.append((row.get_main_filename(), trans_path))
         return mapping
 
