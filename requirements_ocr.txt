@@ -1,0 +1,5 @@
+Pillow
+requests
+ultralytics
+huggingface_hub
+manga-ocr

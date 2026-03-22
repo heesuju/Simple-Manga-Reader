@@ -6,9 +6,8 @@ import io
 from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption
 
-from src.core.text_detector import TextDetector
 from src.core.translator import Translator
-from src.core.ocr import OCR
+from src.core.ocr_server_manager import OCRServerManager
 from PIL import Image, ImageQt
 from src.enums import Language
 from src.core.alt_manager import AltManager
@@ -34,15 +33,6 @@ class TranslateWorker(QRunnable):
         try:
             self.signals.started.emit(self.target_lang.value)
             print("Starting translation worker...")
-            detector = TextDetector()
-            # Initialize  lazily or here. It might take time to load model.
-            try:
-                ocr_engine = OCR()
-            except Exception as e:
-                print(f"OCR Init failed: {e}")
-                self.signals.finished.emit(self.image_path, None, [], self.target_lang.value, self.history)
-                return
-
             translator = Translator()
             
             target_path = self.image_path
@@ -88,48 +78,15 @@ class TranslateWorker(QRunnable):
                  # Should fail gracefully or handle object
                  pass
 
-            # Run Detection on the Full Image
-            # YOLO expects file path or PIL Image
+            # Run detection + OCR via OCR server (returns sorted results)
             if full_pil_img:
-                detections = detector.detect(full_pil_img)
+                detections = OCRServerManager.instance().detect(full_pil_img)
             else:
-                detections = detector.detect(target_path)
-
-            # Sort Detections: Top-to-Bottom, then Right-to-Left
-            # A Y threshold (e.g. 50px) is used to group bubbles into "rows" or "panels" slightly.
-            # This prevents a slightly lower Right bubble from being processed after a slightly higher Left bubble in the same panel.
-            # key: (y, -x)
-            if detections:
-                detections.sort(key=lambda d: (d['bbox'][1], -d['bbox'][0]))
+                detections = []
 
             for det in detections:
-                bbox = det['bbox'] # [x, y, w, h] (top-left x, top-left y, width, height)
-                
-                # Perform OCR
-                detected_text = ""
-                if full_pil_img:
-                    x, y, w, h = bbox
-                    # Crop the text bubble
-                    # Ensure coordinates are within bounds
-                    img_w, img_h = full_pil_img.size
-                    x1 = max(0, int(x))
-                    y1 = max(0, int(y))
-                    x2 = min(img_w, int(x + w))
-                    y2 = min(img_h, int(y + h))
-                    
-                    if x2 > x1 and y2 > y1:
-                        crop = full_pil_img.crop((x1, y1, x2, y2))
-                        try:
-                            detected_text = ocr_engine.process(crop)
-                            print(f"OCR: {detected_text}")
-                        except Exception as e:
-                            print(f"OCR failed for bubble: {e}")
-                            detected_text = ""
-                    else:
-                        detected_text = ""
-                else:
-                    # If we don't have PIL image (e.g. video frame or something), skip OCR
-                    detected_text = "" 
+                bbox = det['bbox']  # [x, y, w, h]
+                detected_text = det.get('text', '')
                 
                 translated_text = ""
                 if detected_text:
