@@ -3,12 +3,12 @@ import time
 import shutil
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
-from PyQt6.QtGui import QPixmap, QAction, QImage
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMenu, QFileDialog, QGraphicsPixmapItem
-from PyQt6.QtCore import QUrl, QSizeF, QRectF, Qt, pyqtSignal, QPointF
+from PyQt6.QtCore import QUrl, QSizeF, QRectF, pyqtSignal, QPointF
 
 from src.ui.viewer.base_viewer import BaseViewer
-from src.workers.view_workers import VideoFrameExtractorWorker, VideoMetadataWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
+from src.workers.view_workers import VideoMetadataWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
 from src.utils.img_utils import get_image_format_from_ext, compress_qimage_to_size
 
 class VideoItem(QGraphicsVideoItem):
@@ -27,16 +27,14 @@ class VideoViewer(BaseViewer):
         self.media_player.setAudioOutput(self.audio_output)
         
         self.video_item: VideoItem | None = None
-        self.video_last_frame_item: QGraphicsPixmapItem | None = None
-        self.last_frame_pixmap: QPixmap | None = None
-        
+
         self.active_meta_worker = None
-        self.active_last_frame_worker = None
         
         self.playback_speeds = [1.0, 1.25, 1.5, 1.75, 2.0, 0.5, 0.75]
         self.current_speed_index = 0
         self.video_repeat = True
         self.auto_play = False
+        self._near_end_paused = False
         
         self._connect_signals()
 
@@ -45,7 +43,7 @@ class VideoViewer(BaseViewer):
         self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
         self.media_player.durationChanged.connect(self.reader_view.video_control_panel.set_duration)
         self.media_player.positionChanged.connect(self.reader_view.video_control_panel.set_position)
-        self.media_player.positionChanged.connect(self._check_underlay_visibility)
+        self.media_player.positionChanged.connect(self._check_near_end)
 
         # Connect panel signals
         panel = self.reader_view.video_control_panel
@@ -75,8 +73,6 @@ class VideoViewer(BaseViewer):
             self._stop_video()
             if self.video_item:
                 self.video_item.setVisible(False)
-            if self.video_last_frame_item:
-                self.video_last_frame_item.setVisible(False)
             self.reader_view.video_control_panel.hide()
 
     def load(self, path: str):
@@ -88,25 +84,15 @@ class VideoViewer(BaseViewer):
             self.video_item.context_menu_requested.connect(self._show_context_menu)
             self.video_item.nativeSizeChanged.connect(self._on_native_size_changed)
             
-        if self.video_last_frame_item is None:
-            self.video_last_frame_item = QGraphicsPixmapItem()
-            self.video_last_frame_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
-            self.video_last_frame_item.setZValue(-1)
-
         if self.video_item.scene() != self.reader_view.scene:
-            self.video_item.setZValue(1) # Ensure video is on top of potential underlays/stale pixmaps
             self.reader_view.scene.addItem(self.video_item)
-            
-        if self.video_last_frame_item.scene() != self.reader_view.scene:
-            self.video_last_frame_item.setZValue(0) # Underlay below active video
-            self.reader_view.scene.addItem(self.video_last_frame_item)
 
     def _play_video(self, path: str):
         self._ensure_items_in_scene()
         
         # Purge any stale pixmaps from other viewers (like ImageViewer)
-        to_remove = [item for item in self.reader_view.scene.items() 
-                     if isinstance(item, QGraphicsPixmapItem) and item != self.video_last_frame_item]
+        to_remove = [item for item in self.reader_view.scene.items()
+                     if isinstance(item, QGraphicsPixmapItem)]
         for item in to_remove:
             self.reader_view.scene.removeItem(item)
             
@@ -115,28 +101,17 @@ class VideoViewer(BaseViewer):
         except Exception:
             pass
 
-        self.video_last_frame_item.setVisible(False)
-        self.video_last_frame_item.setPixmap(QPixmap()) # Clear stale content
-        self.last_frame_pixmap = None
+        self._near_end_paused = False
 
-        # Fast: read frame_count + fps without decoding any frame.
-        # This populates the frame panel almost immediately.
         if self.active_meta_worker:
             self.active_meta_worker.cancelled = True
         self.active_meta_worker = VideoMetadataWorker(path)
         self.active_meta_worker.signals.finished.connect(self._on_video_metadata)
         self.reader_view.thread_pool.start(self.active_meta_worker)
 
-        # Slow: seek to last frame for the end-of-video underlay pixmap.
-        # Runs independently; the frame panel doesn't wait for this.
-        if self.active_last_frame_worker:
-            self.active_last_frame_worker.cancelled = True
-        self.active_last_frame_worker = VideoFrameExtractorWorker(path)
-        self.active_last_frame_worker.signals.finished.connect(self._on_last_frame_extracted)
-        self.reader_view.thread_pool.start(self.active_last_frame_worker)
-
         self.media_player.setVideoOutput(self.video_item)
         self.media_player.setSource(QUrl.fromLocalFile(path))
+        self.media_player.setLoops(QMediaPlayer.Loops.Infinite if self.video_repeat else 1)
         self.video_item.setData(0, path)
         self.video_item.setVisible(True)
         
@@ -169,9 +144,6 @@ class VideoViewer(BaseViewer):
         if self.active_meta_worker:
             self.active_meta_worker.cancelled = True
             self.active_meta_worker = None
-        if self.active_last_frame_worker:
-            self.active_last_frame_worker.cancelled = True
-            self.active_last_frame_worker = None
 
     def _on_video_metadata(self, path, total_frames, fps):
         """Called quickly after opening a video — no frame decode performed.
@@ -193,23 +165,6 @@ class VideoViewer(BaseViewer):
             else:
                 self.reader_view.frame_panel.hide()
             self.reader_view._update_side_panels_geometry()
-
-    def _on_last_frame_extracted(self, path, q_image, total_frames, fps):
-        """Called after the slow last-frame seek. Only updates the underlay pixmap."""
-        if self.active_last_frame_worker and self.active_last_frame_worker.path == path:
-            self.active_last_frame_worker = None
-
-        if not self.media_player.source().toLocalFile():
-            return
-            
-        # Normalize paths for comparison
-        path_norm = os.path.normcase(os.path.normpath(path))
-        current_norm = os.path.normcase(os.path.normpath(self.media_player.source().toLocalFile()))
-        
-        if path_norm == current_norm:
-            pixmap = QPixmap.fromImage(q_image)
-            self.last_frame_pixmap = pixmap
-            self._update_video_underlay_geometry() # Prime it in the background
 
     def _seek_to_frame(self, frame_index):
         panel = self.reader_view.video_control_panel
@@ -236,37 +191,19 @@ class VideoViewer(BaseViewer):
         target_pos_ms = int((target_frame + 0.5) * 1000 / panel.fps)
         self._set_video_position(target_pos_ms)
 
-    def _check_underlay_visibility(self, position):
-        if (self.video_last_frame_item and 
-            self.last_frame_pixmap and 
-            not self.video_last_frame_item.isVisible() and 
-            position > 100):
-            
-            self.video_last_frame_item.setVisible(True)
-            self._update_video_underlay_geometry()
-
-    def _update_video_underlay_geometry(self):
-        if not (self.video_last_frame_item and self.last_frame_pixmap):
+    def _check_near_end(self, position):
+        """Pause one frame before the end so the backend never clears the video buffer.
+        Only needed in non-repeat mode; repeat mode uses setLoops(Infinite) instead."""
+        if self.video_repeat or self._near_end_paused:
             return
-
-        # Use actual video item size for underlay, or scene rect since they match now
-        scene_rect = self.reader_view.scene.sceneRect()
-        if scene_rect.width() <= 0: return
-
-        if self.last_frame_pixmap.isNull():
+        duration = self.media_player.duration()
+        if duration <= 0:
             return
-
-        scaled_pixmap = self.last_frame_pixmap.scaled(
-            int(scene_rect.width()), int(scene_rect.height()), 
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding, 
-            Qt.TransformationMode.SmoothTransformation
-        )
-        
-        self.video_last_frame_item.setPixmap(scaled_pixmap)
-        # Center if aspect ratio differs (unlikely for frame from same video)
-        x = (scene_rect.width() - scaled_pixmap.width()) / 2
-        y = (scene_rect.height() - scaled_pixmap.height()) / 2
-        self.video_last_frame_item.setPos(x, y)
+        fps = self.reader_view.video_control_panel.fps
+        frame_ms = int(1000 / fps) if fps > 0 else 40
+        if position >= duration - frame_ms:
+            self._near_end_paused = True
+            self.media_player.pause()
 
     def on_resize(self, event):
         self.reader_view._reposition_video_control_panel()
@@ -316,6 +253,8 @@ class VideoViewer(BaseViewer):
 
     def _on_media_playback_state_changed(self, state):
         self.reader_view.video_control_panel.set_playing(state == QMediaPlayer.PlaybackState.PlayingState)
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self._near_end_paused = False
         if state == QMediaPlayer.PlaybackState.StoppedState:
             if self.video_repeat:
                 self.media_player.play()
@@ -325,18 +264,15 @@ class VideoViewer(BaseViewer):
                 self._play_next_video()
 
     def _on_media_status_changed(self, status):
-        # Fallback for formats that reach EndOfMedia but don't reliably trigger StoppedState
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            if self.video_repeat:
-                self.media_player.setPosition(0)
-                self.media_player.play()
-            elif self.auto_play:
+        # Repeat mode is handled by setLoops(Infinite) — EndOfMedia won't fire for it.
+        # This is a fallback for non-repeat mode on backends that don't trigger StoppedState.
+        if status == QMediaPlayer.MediaStatus.EndOfMedia and not self.video_repeat:
+            if self.auto_play:
                 self._play_next_video()
-            else:
-                # Stay at end, but ensure we keep the frame visible for seeking
-                # some backends clear the buffer on stop, so we stay in paused state at end
+            elif not self._near_end_paused:
+                # _check_near_end didn't catch it in time; pause here as last resort
+                self._near_end_paused = True
                 self.media_player.pause()
-                self.media_player.setPosition(self.media_player.duration())
 
     def _play_next_video(self):
         # Logic extracted from ReaderView._on_media_playback_state_changed
@@ -373,6 +309,8 @@ class VideoViewer(BaseViewer):
 
     def _set_video_repeat(self, repeat):
         self.video_repeat = repeat
+        self._near_end_paused = False
+        self.media_player.setLoops(QMediaPlayer.Loops.Infinite if repeat else 1)
 
     def _set_auto_play(self, enabled):
         self.auto_play = enabled
