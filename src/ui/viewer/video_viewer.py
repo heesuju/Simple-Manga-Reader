@@ -281,7 +281,7 @@ class VideoViewer(BaseViewer):
         images = self.reader_view.model.images
         for i in range(start_index, len(images)):
             next_file = images[i]
-            ext = os.path.splitext(next_file)[1].lower()
+            ext = os.path.splitext(next_file.path)[1].lower()
             if ext in VIDEO_EXTS:
                 found_index = i
                 break
