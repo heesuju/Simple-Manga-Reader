@@ -524,20 +524,15 @@ class VideoViewer(BaseViewer):
                     QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
                     return
 
-            if fmt in ["JPEG", "WEBP"]:
-                best_data = compress_qimage_to_size(cropped, target_bytes, fmt)
-                if best_data:
-                    try:
-                        with open(save_path, "wb") as f:
-                            f.write(best_data.data())
-                    except Exception as e:
-                        QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
-                else:
-                    QMessageBox.warning(self.reader_view, "Error", "Could not compress to the target size.")
+            best_data = compress_qimage_to_size(cropped, target_bytes, fmt)
+            if best_data:
+                try:
+                    with open(save_path, "wb") as f:
+                        f.write(best_data.data())
+                except Exception as e:
+                    QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
             else:
-                cropped.save(save_path, "PNG")
-                if os.path.getsize(save_path) > target_bytes:
-                    QMessageBox.warning(self.reader_view, "Warning", "Saved PNG exceeds the size limit. Use JPEG or WebP for better compression.")
+                QMessageBox.warning(self.reader_view, "Error", "Could not compress image to the target size.")
         else:
             quality = 95 if fmt in ["JPEG", "WEBP"] else -1
             cropped.save(save_path, fmt, quality)

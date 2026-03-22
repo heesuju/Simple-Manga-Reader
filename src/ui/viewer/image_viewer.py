@@ -603,23 +603,15 @@ class ImageViewer(BaseViewer):
                     QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
                     return
 
-            if fmt in ["JPEG", "WEBP"]:
-                best_data = compress_qimage_to_size(img, target_bytes, fmt)
-                if best_data:
-                    try:
-                        with open(file_path, "wb") as f:
-                            f.write(best_data.data())
-                    except Exception as e:
-                        QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
-                else:
-                    QMessageBox.warning(self.reader_view, "Error", "Could not compress to the target size.")
-            else:
-                # PNG - already tried fast path and it was too big
+            best_data = compress_qimage_to_size(img, target_bytes, fmt)
+            if best_data:
                 try:
-                    cropped.save(file_path, "PNG")
-                    QMessageBox.warning(self.reader_view, "Warning", "Saved PNG exceeds the size limit. Use JPEG or WebP for better compression.")
+                    with open(file_path, "wb") as f:
+                        f.write(best_data.data())
                 except Exception as e:
                     QMessageBox.warning(self.reader_view, "Error", f"Failed to save file:\n{e}")
+            else:
+                QMessageBox.warning(self.reader_view, "Error", "Could not compress image to the target size.")
         else:
             # ORIGINAL size requested
             # Optimization: If full frame and same format, just copy original

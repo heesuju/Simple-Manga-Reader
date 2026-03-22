@@ -117,8 +117,28 @@ def get_image_format_from_ext(path: str) -> str:
 def compress_qimage_to_size(img: QImage, target_bytes: int, fmt: str) -> Optional[QByteArray]:
     """Compress a QImage to fit within target_bytes via binary-search quality then downscaling.
 
-    Only meaningful for JPEG/WEBP formats. Returns None if compression failed.
+    JPEG/WEBP: tries quality reduction first, then downscaling.
+    PNG: lossless, so only downscaling is possible.
+    Returns None if the image cannot be made small enough.
     """
+    if fmt == "PNG":
+        curr_img = img
+        scale = 1.0
+        while True:
+            ba = QByteArray()
+            buf = QBuffer(ba)
+            buf.open(QBuffer.OpenModeFlag.WriteOnly)
+            curr_img.save(buf, "PNG")
+            if ba.size() <= target_bytes:
+                return ba
+            scale *= 0.9
+            w = int(img.width() * scale)
+            h = int(img.height() * scale)
+            if w < 10 or h < 10:
+                break
+            curr_img = img.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        return None
+
     if fmt not in ("JPEG", "WEBP"):
         return None
 

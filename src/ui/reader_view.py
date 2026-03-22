@@ -859,6 +859,8 @@ class ReaderView(QWidget):
 
     def start_area_selection(self):
         """Triggers the area selection UI on the current view."""
+        if self.current_viewer == self.video_viewer:
+            self.video_viewer.media_player.pause()
         if hasattr(self.view, 'start_area_selection'):
             self.view.start_area_selection()
 
