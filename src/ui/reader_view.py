@@ -69,12 +69,17 @@ class ReaderView(QWidget):
 
         self._last_total_scale = 1.0
         
+        # Main viewer pool: image loading/rescaling + video extraction (mutually exclusive)
         self.thread_pool = QThreadPool()
         self.thread_pool.setMaxThreadCount(4)
 
-        # Dedicated pool for video workers so they never queue behind image loading/scaling
-        self.video_thread_pool = QThreadPool()
-        self.video_thread_pool.setMaxThreadCount(2)
+        # Pool for chapter/page panel thumbnails
+        self.thumbnail_pool = QThreadPool()
+        self.thumbnail_pool.setMaxThreadCount(2)
+
+        # Pool for alt/frame panel thumbnails
+        self.secondary_pool = QThreadPool()
+        self.secondary_pool.setMaxThreadCount(2)
 
         self.original_view_mouse_press = None
         self.is_zoomed = False
@@ -234,14 +239,14 @@ class ReaderView(QWidget):
 
         # 1. Create all panel widgets first
         self.top_panel = TopPanel(self)
-        self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page)
+        self.page_panel = PagePanel(self, model=self.model, on_page_changed=self.change_page, thread_pool=self.thumbnail_pool)
         self.page_panel.reload_requested.connect(self.reload_chapter)
         self.video_control_panel = VideoControlPanel(self)
         self.video_control_panel.raise_()
         self.slider_panel = SliderPanel(self, model=self.model)
-        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter)
-        self.alt_panel = AltPanel(self, model=self.model, thread_pool=self.thread_pool)
-        self.frame_panel = FramePanel(self, thread_pool=self.video_thread_pool)
+        self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter, thread_pool=self.thumbnail_pool)
+        self.alt_panel = AltPanel(self, model=self.model, thread_pool=self.secondary_pool)
+        self.frame_panel = FramePanel(self, thread_pool=self.secondary_pool)
         self.selection_panel = SelectionPanel(self)
 
         # Add panels to the layout
@@ -766,7 +771,7 @@ class ReaderView(QWidget):
                 self.loading_label.show()
                 worker = VideoExtractionWorker(path)
                 worker.signals.finished.connect(self._on_video_extracted_finished)
-                self.video_thread_pool.start(worker)
+                self.thread_pool.start(worker)
             return
 
         resolved_path = self.resolve_path(path)

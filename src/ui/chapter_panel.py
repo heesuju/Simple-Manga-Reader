@@ -4,20 +4,19 @@ import os
 import subprocess
 from PyQt6.QtWidgets import QLabel, QMenu
 
-from PyQt6.QtCore import Qt, QThreadPool, QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QCursor, QKeySequence, QPixmap
 from src.ui.components.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
-from src.workers.thumbnail_worker import ThumbnailWorker
-from src.utils.img_utils import _get_first_media_path, draw_text_on_image, load_thumbnail_from_path, load_thumbnail_from_virtual_path
+from src.workers.thumbnail_worker import ChapterThumbnailWorker
+from src.utils.img_utils import draw_text_on_image, load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.data.reader_model import ReaderModel
 
 class ChapterPanel(CollapsiblePanel):
-    def __init__(self, parent=None, model:ReaderModel=None, on_chapter_changed=None):
+    def __init__(self, parent=None, model:ReaderModel=None, on_chapter_changed=None, thread_pool=None):
         super().__init__(parent, "Chapter")
         self.model = model
-        self.thread_pool = QThreadPool()
-        self.thread_pool.setMaxThreadCount(2)
+        self.thread_pool = thread_pool
         self.on_chapter_changed = on_chapter_changed
         self.chapter_thumbnail_widgets = []
         self.current_chapter_thumbnail = None
@@ -107,14 +106,12 @@ class ChapterPanel(CollapsiblePanel):
                 self.thumbnails_layout.insertWidget(self.thumbnails_layout.count(), widget)
                 self.chapter_thumbnail_widgets.append(widget)
 
-                first_image_path = _get_first_media_path(chapter)
-                if first_image_path:
-                    worker = ThumbnailWorker(i, first_image_path, self._load_thumbnail)
-                    gen = self._thumb_generation
-                    worker.signals.finished.connect(
-                        lambda idx, img, g=gen: self._on_chapter_thumbnail_loaded(idx, img, g)
-                    )
-                    self.thread_pool.start(worker)
+                gen = self._thumb_generation
+                worker = ChapterThumbnailWorker(i, chapter, self._load_thumbnail)
+                worker.signals.finished.connect(
+                    lambda idx, img, g=gen: self._on_chapter_thumbnail_loaded(idx, img, g)
+                )
+                self.thread_pool.start(worker)
         finally:
              self.content_area.setUpdatesEnabled(True)
 

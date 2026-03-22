@@ -1,6 +1,6 @@
 import os
 from typing import Set, List
-from PyQt6.QtCore import QThreadPool, QTimer, Qt, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog
 from PyQt6.QtGui import QAction, QCursor, QKeySequence, QPixmap
 
@@ -20,11 +20,11 @@ class PagePanel(CollapsiblePanel):
     reload_requested = pyqtSignal()
     expand_toggled = pyqtSignal(bool) 
 
-    def __init__(self, parent=None, model:ReaderModel=None, on_page_changed=None):
+    def __init__(self, parent=None, model:ReaderModel=None, on_page_changed=None, thread_pool=None):
         super().__init__(parent, "Page")
         self.thumbnails_layout.setSpacing(0)
-        self.thread_pool = QThreadPool()
-        self.thread_pool.setMaxThreadCount(2)
+        self.thread_pool = thread_pool
+        self._thumb_generation = 0
         self.model = model
         self.on_page_changed = on_page_changed
         self.page_thumbnail_widgets = []
@@ -102,12 +102,13 @@ class PagePanel(CollapsiblePanel):
 
     def stop_loading_thumbnails(self):
         self.batch_timer.stop()
-        self.thread_pool.clear()
+        self._thumb_generation += 1
         self.image_paths_to_load = []
         
     def _update_page_thumbnails(self, model:ReaderModel):
         self.batch_timer.stop()
-        
+        self._thumb_generation += 1
+
         while self.thumbnails_layout.count():
             item = self.thumbnails_layout.takeAt(0)
             if item.widget():
@@ -161,6 +162,7 @@ class PagePanel(CollapsiblePanel):
     def _add_next_thumbnail_batch(self):
         start_index = self.current_batch_index
         end_index = min(start_index + self.BATCH_SIZE, len(self.image_paths_to_load))
+        gen = self._thumb_generation
 
         self.content_area.setUpdatesEnabled(False)
         try:
@@ -224,7 +226,7 @@ class PagePanel(CollapsiblePanel):
                             self.page_thumbnail_widgets[i].set_pixmap(empty_placeholder())
                     else:
                         worker = ThumbnailWorker(i, page_obj.path, self._load_thumbnail)
-                        worker.signals.finished.connect(self._on_page_thumbnail_loaded)
+                        worker.signals.finished.connect(lambda idx, img, g=gen: self._on_page_thumbnail_loaded(idx, img, g))
                         self.thread_pool.start(worker)
 
         except Exception as e:
@@ -240,7 +242,9 @@ class PagePanel(CollapsiblePanel):
             self._update_page_selection(self.model.current_index, snap=True)
 
 
-    def _on_page_thumbnail_loaded(self, index, qimg):
+    def _on_page_thumbnail_loaded(self, index, qimg, generation=None):
+        if generation != self._thumb_generation:
+            return
         if index < len(self.page_thumbnail_widgets):
             widget = self.page_thumbnail_widgets[index]
             if isinstance(widget, (PageThumbnail, DoublePageThumbnail)):
