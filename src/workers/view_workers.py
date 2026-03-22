@@ -487,14 +487,17 @@ class VideoFrameExtractorWorker(QRunnable):
             print(f"Error in async video extraction: {e}")
 
 class VideoMetadataSignals(QObject):
-    finished = pyqtSignal(str, int, float)  # path, total_frames, fps
+    finished = pyqtSignal(str, int, float, dict)  # path, total_frames, fps, initial_frames
 
 class VideoMetadataWorker(QRunnable):
-    """Reads total_frames and fps from a video without decoding any frame.
-    Much faster than VideoFrameExtractorWorker for long videos."""
-    def __init__(self, path: str):
+    """Reads metadata and extracts the first page of frame thumbnails in one pass.
+    Avoids a second cv2.VideoCapture open in VideoBatchFrameExtractorWorker."""
+    def __init__(self, path: str, thumb_w: int = 120, thumb_h: int = 160, first_page_size: int = 50):
         super().__init__()
         self.path = path
+        self.thumb_w = thumb_w
+        self.thumb_h = thumb_h
+        self.first_page_size = first_page_size
         self.cancelled = False
         self.signals = VideoMetadataSignals()
 
@@ -503,22 +506,52 @@ class VideoMetadataWorker(QRunnable):
         try:
             import cv2
             cap = cv2.VideoCapture(self.path)
-            if cap.isOpened():
-                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                fps = float(cap.get(cv2.CAP_PROP_FPS))
-                if frame_count <= 0 and not self.cancelled:
-                    # Chrome-produced webm files have Duration: N/A so frame_count=0.
-                    # Count frames by reading through the video.
-                    counted = 0
-                    while not self.cancelled:
-                        ok = cap.grab()
-                        if not ok:
-                            break
-                        counted += 1
-                    frame_count = counted
+            if not cap.isOpened():
+                return
+
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = float(cap.get(cv2.CAP_PROP_FPS))
+
+            if frame_count <= 0 and not self.cancelled:
+                # Chrome-produced webm files have Duration: N/A so frame_count=0.
+                # Count frames by reading through the video.
+                counted = 0
+                while not self.cancelled:
+                    ok = cap.grab()
+                    if not ok:
+                        break
+                    counted += 1
+                frame_count = counted
+                # Reopen to seek back to start for frame extraction
                 cap.release()
-                if not self.cancelled:
-                    self.signals.finished.emit(self.path, frame_count, fps)
+                cap = cv2.VideoCapture(self.path)
+                if not cap.isOpened():
+                    if not self.cancelled:
+                        self.signals.finished.emit(self.path, frame_count, fps, {})
+                    return
+
+            # Extract first page of thumbnails while the cap is already open
+            initial_frames = {}
+            end_idx = min(self.first_page_size, frame_count)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            for idx in range(end_idx):
+                if self.cancelled:
+                    break
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                h, w = frame.shape[:2]
+                scale = min(self.thumb_w / w, self.thumb_h / h)
+                nw, nh = int(w * scale), int(h * scale)
+                resized = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
+                rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                rh, rw, _ = rgb.shape
+                q_image = QImage(rgb.data, rw, rh, rgb.strides[0], QImage.Format.Format_RGB888)
+                initial_frames[idx] = q_image.copy()
+
+            cap.release()
+            if not self.cancelled:
+                self.signals.finished.emit(self.path, frame_count, fps, initial_frames)
         except Exception as e:
             print(f"Error in VideoMetadataWorker: {e}")
 

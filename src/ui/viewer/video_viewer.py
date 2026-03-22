@@ -145,9 +145,8 @@ class VideoViewer(BaseViewer):
             self.active_meta_worker.cancelled = True
             self.active_meta_worker = None
 
-    def _on_video_metadata(self, path, total_frames, fps):
-        """Called quickly after opening a video — no frame decode performed.
-        Sets up the frame panel and control panel metadata immediately."""
+    def _on_video_metadata(self, path, total_frames, fps, initial_frames):
+        """Called after opening a video — metadata and first page of frame thumbnails ready."""
         if self.active_meta_worker and self.active_meta_worker.path == path:
             self.active_meta_worker = None
 
@@ -159,7 +158,7 @@ class VideoViewer(BaseViewer):
 
         if path_norm == current_norm:
             self.reader_view.video_control_panel.set_video_metadata(total_frames, fps)
-            self.reader_view.frame_panel.set_video(path, total_frames)
+            self.reader_view.frame_panel.set_video(path, total_frames, initial_frames)
             if self.reader_view.panels_visible:
                 self.reader_view.frame_panel.show()
             else:

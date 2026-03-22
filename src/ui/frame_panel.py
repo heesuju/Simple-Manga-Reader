@@ -180,16 +180,19 @@ class FramePanel(QWidget):
         if hasattr(self.parent(), '_update_side_panels_geometry'):
             QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
 
-    def set_video(self, path, total_frames):
+    def set_video(self, path, total_frames, initial_frames: dict = None):
         if self.video_path == path and self.total_frames == total_frames:
-            return  # Prevent redundant reload
+            # Still apply pre-extracted frames if provided (e.g. first load)
+            if initial_frames:
+                self._apply_frames(initial_frames)
+            return
 
         self.video_path = path
         self.total_frames = total_frames
         self.current_page = 0
-        self._update_ui()
+        self._update_ui(initial_frames=initial_frames)
 
-    def _update_ui(self):
+    def _update_ui(self, initial_frames: dict = None):
         if not self.video_path or self.total_frames <= 0:
             self.hide()
             return
@@ -200,26 +203,37 @@ class FramePanel(QWidget):
         self.next_btn.setEnabled(self.current_page < total_pages - 1)
 
         self._clear_thumbnails()
-        
-        # Determine range for current page
+
         start_idx = self.current_page * PAGE_SIZE
         end_idx = min(start_idx + PAGE_SIZE, self.total_frames)
-        
         indices = list(range(start_idx, end_idx))
-        
+
         for idx in indices:
             thumb = FrameThumbnail(self.scroll_content, idx, on_click=self.seek_requested.emit)
             self.scroll_layout.addWidget(thumb)
             self.thumbnails[idx] = thumb
 
-        # Trigger async extraction for this batch
+        # Use pre-extracted frames for page 0 if available, otherwise fall back to worker
+        if initial_frames and self.current_page == 0:
+            self._apply_frames(initial_frames)
+            # Still need a worker if we didn't get all frames (e.g. cancelled early)
+            missing = [i for i in indices if i not in initial_frames]
+            if not missing:
+                return
+
         if self.thread_pool:
             if self.active_worker:
                 self.active_worker.cancelled = True
-                
-            self.active_worker = VideoBatchFrameExtractorWorker(self.video_path, indices, THUMB_W, THUMB_H)
-            self.active_worker.signals.finished.connect(self._on_frames_extracted)
-            self.thread_pool.start(self.active_worker)
+            to_fetch = [i for i in indices if i not in (initial_frames or {})]
+            if to_fetch:
+                self.active_worker = VideoBatchFrameExtractorWorker(self.video_path, to_fetch, THUMB_W, THUMB_H)
+                self.active_worker.signals.finished.connect(self._on_frames_extracted)
+                self.thread_pool.start(self.active_worker)
+
+    def _apply_frames(self, frames: dict):
+        for idx, qimage in frames.items():
+            if idx in self.thumbnails:
+                self.thumbnails[idx].set_qimage(qimage)
 
     def _on_frames_extracted(self, path, results, start_idx, end_idx):
         if self.active_worker and getattr(self.active_worker, 'path', None) == path:
