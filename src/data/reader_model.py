@@ -29,8 +29,9 @@ class ReaderModel(QObject):
         self._image_map = {} # Maps image path -> page_index
         
         # Double Mode Virtual Layout Logic
-        self._layout_pairs = [] 
+        self._layout_pairs = []
         self._page_to_layout_index = {} # Maps Real Page Index -> Layout Index
+        self._rtl = True  # Right-to-left reading direction (default)
 
         from src.utils.str_utils import natural_sort_key
         
@@ -106,7 +107,17 @@ class ReaderModel(QObject):
         
         # Build Map
         self._rebuild_map()
-        
+
+        # Load RTL setting for this chapter
+        if self.series and self.manga_dir:
+            if isinstance(self.manga_dir, dict):
+                cp = self.manga_dir.get('path', '')
+                ch_name = self.manga_dir.get('name', Path(cp.split('|')[0]).stem if '|' in cp else Path(cp).name)
+            else:
+                ch_name = Path(str(self.manga_dir)).name
+            series_path_str = str(self.series['path']) if isinstance(self.series, dict) else str(self.series)
+            self._rtl = AltManager.get_chapter_rtl(series_path_str, ch_name)
+
         # Build Layout (Initial)
         self._build_double_layout()
 
@@ -182,9 +193,10 @@ class ReaderModel(QObject):
             else:
                 if buffer:
                     # Current (i) is logically AFTER Preceding.
-                    # RTL: [Left=Current, Right=Preceding]
+                    # RTL: [Left=Current(newer), Right=Preceding(older)]
+                    # LTR: [Left=Preceding(older), Right=Current(newer)]
                     pre_idx, pre_page = buffer.pop(0)
-                    pair = (page, pre_page)
+                    pair = (page, pre_page) if self._rtl else (pre_page, page)
                     self._layout_pairs.append(pair)
                     self._page_to_layout_index[i] = len(self._layout_pairs) - 1
                     self._page_to_layout_index[pre_idx] = len(self._layout_pairs) - 1

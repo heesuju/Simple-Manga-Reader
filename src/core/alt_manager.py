@@ -451,6 +451,39 @@ class AltManager:
         AltManager.save_alts(series_path, data)
 
     @staticmethod
+    def get_chapter_rtl(series_path: str, chapter_name: str) -> bool:
+        """Return True (RTL) if not explicitly set to LTR. Default is RTL."""
+        data = AltManager.load_alts(series_path)
+        meta = data.get(chapter_name, {}).get('__meta__', {})
+        return meta.get('rtl', True)
+
+    @staticmethod
+    def save_chapter_rtl(series_path: str, chapter_name: str, rtl: bool):
+        """
+        Save the RTL setting for a chapter. True = RTL (default), False = LTR.
+        If rtl is True (the default), removes the stored value to keep the file clean.
+        """
+        data = AltManager.load_alts(series_path)
+        if chapter_name not in data:
+            data[chapter_name] = {}
+
+        if rtl:
+            # Default — no need to store
+            if '__meta__' in data[chapter_name]:
+                meta = data[chapter_name]['__meta__']
+                meta.pop('rtl', None)
+                if not meta:
+                    del data[chapter_name]['__meta__']
+            if not data[chapter_name]:
+                del data[chapter_name]
+        else:
+            if '__meta__' not in data[chapter_name]:
+                data[chapter_name]['__meta__'] = {}
+            data[chapter_name]['__meta__']['rtl'] = False
+
+        AltManager.save_alts(series_path, data)
+
+    @staticmethod
     def save_spread_states(series_path: str, chapter_name: str, updates: Dict[str, bool]):
         """
         Batch update the is_spread flag for multiple pages.

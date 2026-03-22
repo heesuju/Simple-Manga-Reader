@@ -3,7 +3,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QScrollArea, QWidget,
-    QPushButton, QLabel, QCheckBox, QFrame, QSizePolicy
+    QPushButton, QLabel, QCheckBox, QFrame, QSizePolicy, QComboBox,
+    QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtGui import QPixmap
@@ -15,6 +16,15 @@ from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_vi
 _THUMB_W = 100
 _THUMB_H = 140
 _ROWNR_W = 24
+
+_SORT_OPTIONS = [
+    ('name',       'Name (A→Z)'),
+    ('name_desc',  'Name (Z→A)'),
+    ('mtime',      'Modified (Oldest first)'),
+    ('mtime_desc', 'Modified (Newest first)'),
+    ('ctime',      'Created (Oldest first)'),
+    ('ctime_desc', 'Created (Newest first)'),
+]
 
 
 class _PageItem(QWidget):
@@ -61,20 +71,20 @@ class _EmptySlot(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        # Match _PageItem's fixed width; height matches via the layout
         self.setFixedWidth(_THUMB_W + 4)
         self.setStyleSheet(
             "background: transparent; border: 1px dashed #333; border-radius: 2px;"
         )
 
 
-def _load_pages(chapter: dict, series_path: str) -> tuple:
+def _load_pages(chapter: dict, series_path: str, sort_mode: str = None) -> tuple:
     from src.workers.view_workers import ChapterLoaderWorker
 
     chapter_path = str(chapter['path'])
     chapter_name = Path(chapter_path.split('|')[0]).stem if '|' in chapter_path else Path(chapter_path).name
 
-    sort_mode = AltManager.get_chapter_sort(series_path, chapter_name)
+    if sort_mode is None:
+        sort_mode = AltManager.get_chapter_sort(series_path, chapter_name)
     worker = ChapterLoaderWorker(
         manga_dir=chapter_path, series_path=series_path,
         start_from_end=False, sort_mode=sort_mode
@@ -91,6 +101,7 @@ class EditSpreadsDialog(QDialog):
     def __init__(self, parent, chapter: dict, series_path: str):
         super().__init__(parent)
         self.series_path = series_path
+        self._chapter = chapter
         self.items: list = []
         self._pool = QThreadPool()
         self._pool.setMaxThreadCount(4)
@@ -100,13 +111,18 @@ class EditSpreadsDialog(QDialog):
         self._rebuild_timer.timeout.connect(self._rebuild_pairs_view)
 
         self.pages, self.chapter_name = _load_pages(chapter, series_path)
+
+        # Pending (not yet applied) settings
+        self._pending_sort = AltManager.get_chapter_sort(series_path, self.chapter_name)
+        self._pending_rtl = AltManager.get_chapter_rtl(series_path, self.chapter_name)
+
         self.setWindowTitle(f"Edit Spreads — {self.chapter_name}")
 
         # Width: row-nr + 2 cells + scrollbar clearance
         cell_w = _THUMB_W + 4
         win_w = _ROWNR_W + 2 * cell_w + 22
         self.setFixedWidth(win_w)
-        self.resize(win_w, 600)
+        self.resize(win_w, 620)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 6)
@@ -127,6 +143,38 @@ class EditSpreadsDialog(QDialog):
         scroll.setWidget(self._container)
         root.addWidget(scroll, 1)
 
+        # Settings bar
+        settings_bar = QHBoxLayout()
+        settings_bar.setContentsMargins(6, 4, 6, 2)
+        settings_bar.setSpacing(6)
+
+        settings_bar.addWidget(QLabel("Sort:"))
+        self._sort_combo = QComboBox()
+        for mode, label in _SORT_OPTIONS:
+            self._sort_combo.addItem(label, mode)
+        # Select current sort
+        current_sort_idx = next((i for i, (m, _) in enumerate(_SORT_OPTIONS) if m == self._pending_sort), 0)
+        self._sort_combo.setCurrentIndex(current_sort_idx)
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        settings_bar.addWidget(self._sort_combo)
+
+        settings_bar.addSpacing(10)
+        settings_bar.addWidget(QLabel("Reading:"))
+
+        self._rtl_radio = QRadioButton("R→L")
+        self._ltr_radio = QRadioButton("L→R")
+        self._rtl_radio.setChecked(self._pending_rtl)
+        self._ltr_radio.setChecked(not self._pending_rtl)
+        self._dir_group = QButtonGroup(self)
+        self._dir_group.addButton(self._rtl_radio)
+        self._dir_group.addButton(self._ltr_radio)
+        self._rtl_radio.toggled.connect(self._on_rtl_toggled)
+        settings_bar.addWidget(self._rtl_radio)
+        settings_bar.addWidget(self._ltr_radio)
+        settings_bar.addStretch()
+
+        root.addLayout(settings_bar)
+
         # Bottom bar
         bar = QHBoxLayout()
         bar.setContentsMargins(6, 4, 6, 0)
@@ -143,22 +191,28 @@ class EditSpreadsDialog(QDialog):
         bar.addWidget(cancel_btn)
         root.addLayout(bar)
 
+        self._build_items()
+        self._rebuild_pairs_view()
+        self._start_thumbnail_loading()
+
+    # ------------------------------------------------------------------
+    def _build_items(self):
+        """Create _PageItem widgets for current self.pages."""
+        for item in self.items:
+            item.deleteLater()
+        self.items = []
         for i, page in enumerate(self.pages):
             item = _PageItem(i, page, self)
             item.hide()
             item.spread_check.stateChanged.connect(lambda _: self._rebuild_timer.start())
             self.items.append(item)
 
-        self._rebuild_pairs_view()
-        self._start_thumbnail_loading()
-
-    # ------------------------------------------------------------------
     def _compute_pairs(self) -> list:
         """
         Returns list of (left, right) where each is a _PageItem or None.
-        Spread   → (item, None)  item.is_spread_checked=True
-        Pair     → (item, item)
-        Orphan   → (None, item)  matches _build_double_layout placeholder behaviour
+        Spread   → (item, None)
+        Pair     → (left_item, right_item) — order depends on _pending_rtl
+        Orphan   → (None, item)
         """
         pairs = []
         buffer = None
@@ -170,7 +224,10 @@ class EditSpreadsDialog(QDialog):
                 pairs.append((item, None))          # spread, full row
             else:
                 if buffer is not None:
-                    pairs.append((buffer, item))
+                    if self._pending_rtl:
+                        pairs.append((item, buffer))    # RTL: newer=left, older=right
+                    else:
+                        pairs.append((buffer, item))    # LTR: older=left, newer=right
                     buffer = None
                 else:
                     buffer = item
@@ -239,6 +296,22 @@ class EditSpreadsDialog(QDialog):
             )
             self._pool.start(worker)
 
+    def _on_sort_changed(self, index: int):
+        self._pending_sort = self._sort_combo.itemData(index)
+        self._reload_pages()
+
+    def _reload_pages(self):
+        """Reload pages with pending sort, rebuild items and thumbnails."""
+        self._pool.clear()
+        self.pages, _ = _load_pages(self._chapter, self.series_path, self._pending_sort)
+        self._build_items()
+        self._rebuild_pairs_view()
+        self._start_thumbnail_loading()
+
+    def _on_rtl_toggled(self, __: bool):
+        self._pending_rtl = self._rtl_radio.isChecked()
+        self._rebuild_pairs_view()
+
     def _auto_detect(self):
         from PyQt6.QtGui import QImageReader
 
@@ -275,10 +348,22 @@ class EditSpreadsDialog(QDialog):
         self._rebuild_pairs_view()
 
     def _apply_and_accept(self):
+        # Save spread states
         updates = {}
         for item in self.items:
             if item.page.is_spread != item.is_spread_checked:
                 updates[item.page.path] = item.is_spread_checked
         if updates:
             AltManager.save_spread_states(self.series_path, self.chapter_name, updates)
+
+        # Save sort (only if changed from currently stored value)
+        stored_sort = AltManager.get_chapter_sort(self.series_path, self.chapter_name)
+        if self._pending_sort != stored_sort:
+            AltManager.save_chapter_sort(self.series_path, self.chapter_name, self._pending_sort)
+
+        # Save RTL (only if changed from currently stored value)
+        stored_rtl = AltManager.get_chapter_rtl(self.series_path, self.chapter_name)
+        if self._pending_rtl != stored_rtl:
+            AltManager.save_chapter_rtl(self.series_path, self.chapter_name, self._pending_rtl)
+
         self.accept()
