@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QListWidget, QDialogButtonBox, 
+    QDialog, QVBoxLayout, QLabel, QListWidget, QDialogButtonBox,
     QPushButton, QHBoxLayout, QWidget, QComboBox, QAbstractItemView,
-    QListWidgetItem, QScrollArea, QFrame, QMenu, QCheckBox, QProgressBar
+    QListWidgetItem, QScrollArea, QFrame, QMenu, QCheckBox, QProgressBar,
+    QPlainTextEdit
 )
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QMimeData, QThreadPool
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
@@ -11,7 +12,7 @@ from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QPixmap, QDrag
 from src.utils.img_utils import load_thumbnail_from_path, extract_page_number, get_chapter_number
 from src.enums import Language
 from src.core.alt_manager import AltManager
-from src.workers.translate_worker import TranslateWorker
+from src.workers.translate_worker import TranslateWorker, paint_and_save_overlays
 from src.core.translation_service import TranslationService
 
 class TranslationSlot(QFrame):
@@ -200,15 +201,43 @@ class MappingRow(QWidget):
         self.slot.file_dropped.connect(self._on_slot_changed)
         self.slot.removed.connect(self._on_slot_changed) 
         
+        # Context input — shown when row is selected so the user can describe the scene
+        self.context_input = QPlainTextEdit()
+        self.context_input.setPlaceholderText(
+            "Describe what's happening in this page (optional).\n"
+            "The LLM will use this as scene context when translating."
+        )
+        self.context_input.setFixedSize(210, 160)
+        self.context_input.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: rgba(255, 255, 255, 12);
+                color: #ddd;
+                border: 1px solid #555;
+                border-radius: 4px;
+                font-size: 11px;
+                padding: 4px;
+            }
+        """)
+        self.context_input.hide()
+
+        self.checkbox.stateChanged.connect(self._on_checkbox_state_changed)
+
         layout.addWidget(self.main_frame)
         layout.addWidget(arrow)
         layout.addWidget(self.slot)
-        layout.addWidget(self.status_label) # Add status label
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.context_input)
         layout.addStretch()
 
     def set_status(self, status: str, color: str = "#aaa"):
         self.status_label.setText(status)
         self.status_label.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
+
+    def _on_checkbox_state_changed(self, state):
+        self.context_input.setVisible(state == Qt.CheckState.Checked.value)
+
+    def get_context(self) -> str:
+        return self.context_input.toPlainText().strip()
 
     def set_order_badge(self, order: int | None):
         if order is None:
@@ -238,7 +267,7 @@ class AddTranslationDialog(QDialog):
     def __init__(self, series_path: str, chapter_path: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add Translations (Drag & Drop)")
-        self.resize(500, 700)
+        self.resize(820, 750)
         self.setAcceptDrops(True) # Global drop for folders
         
         self.series_path = series_path
@@ -333,20 +362,19 @@ class AddTranslationDialog(QDialog):
         
         # 4. Buttons Layout (Bottom Row)
         bottom_layout = QHBoxLayout()
-        
-        self.bg_btn = QPushButton("Continue in Background")
-        self.bg_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3; color: white; padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-        """)
-        self.bg_btn.clicked.connect(self.accept) # Close dialog means "Continue in Background"
-        self.bg_btn.hide() 
-        
-        bottom_layout.addWidget(self.bg_btn)
+
+        self.progress_label = QLabel("Translating...")
+        self.progress_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        self.progress_label.hide()
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)  # indeterminate
+        self.progress_bar.setFixedWidth(160)
+        self.progress_bar.setFixedHeight(14)
+        self.progress_bar.hide()
+
+        bottom_layout.addWidget(self.progress_label)
+        bottom_layout.addWidget(self.progress_bar)
         bottom_layout.addStretch()
         
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -425,7 +453,8 @@ class AddTranslationDialog(QDialog):
         self.select_all_cb.setEnabled(False)
         self.button_box.setEnabled(False)
         
-        self.bg_btn.show()
+        self.progress_label.show()
+        self.progress_bar.show()
 
         target_lang = self.get_selected_language()
         
@@ -437,18 +466,28 @@ class AddTranslationDialog(QDialog):
         for row in selected_rows:
             row.set_status("Queued", "#aaa")
             worker = TranslateWorker(
-                image_path=str(row.main_path), 
-                series_path=self.series_path, 
-                chapter_name=self.chapter_path.name, 
+                image_path=str(row.main_path),
+                series_path=self.series_path,
+                chapter_name=self.chapter_path.name,
                 target_lang=target_lang,
-                history=shared_history # Shared list reference
+                history=shared_history,
+                page_context=row.get_context()
             )
             # Connect to UI update
-            worker.signals.finished.connect(lambda orig, saved, overlays, lang, hist, r=row: self._on_worker_finished(r, saved))
+            worker.signals.finished.connect(lambda orig, saved, overlays, lang, hist, r=row: self._on_worker_finished(r, orig, overlays, lang))
             
             TranslationService.instance().submit(worker)
 
-    def _on_worker_finished(self, row: MappingRow, saved_path):
+    def _on_worker_finished(self, row: MappingRow, orig_path: str, overlays: list, lang_code: str):
+        try:
+            lang = Language(lang_code)
+            saved_path = paint_and_save_overlays(
+                orig_path, overlays, self.series_path, self.chapter_path.name, lang
+            )
+        except Exception as e:
+            print(f"Error compositing translation: {e}")
+            saved_path = None
+
         if saved_path:
             row.set_status("Done", "#4CAF50")
             row.set_translation(saved_path)
@@ -471,7 +510,8 @@ class AddTranslationDialog(QDialog):
         self.remove_selected_btn.setEnabled(True)
         self.select_all_cb.setEnabled(True)
         self.button_box.setEnabled(True)
-        self.bg_btn.hide()
+        self.progress_label.hide()
+        self.progress_bar.hide()
         
         # Auto-deselect
         self.select_all_cb.blockSignals(True)
@@ -546,6 +586,17 @@ class AddTranslationDialog(QDialog):
                     row.set_translation(trans_path)
                 else:
                     row.set_translation(None) # Clear slot if no translation
+
+    def reject(self):
+        if self.is_translating:
+            return  # Block Escape / Cancel while translating
+        super().reject()
+
+    def closeEvent(self, event):
+        if self.is_translating:
+            event.ignore()
+        else:
+            super().closeEvent(event)
 
     def get_selected_language(self) -> Language:
         return self.lang_combo.currentData()

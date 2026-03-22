@@ -4,7 +4,7 @@ from pathlib import Path
 import io
 
 from PyQt6.QtCore import Qt, QRunnable, pyqtSlot, QObject, pyqtSignal, QRectF
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QFontMetrics, QColor, QTextOption
+from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor, QTextOption, QTextDocument, QTextCursor
 
 from src.core.translator import Translator
 from src.core.ocr_server_manager import OCRServerManager
@@ -17,13 +17,14 @@ class TranslateSignals(QObject):
     started = pyqtSignal(str) # lang_code
 
 class TranslateWorker(QRunnable):
-    def __init__(self, image_path: str, series_path: str, chapter_name: str, target_lang: Language = Language.ENG, history: list = None):
+    def __init__(self, image_path: str, series_path: str, chapter_name: str, target_lang: Language = Language.ENG, history: list = None, page_context: str = ""):
         super().__init__()
         self.image_path = image_path
         self.series_path = series_path
         self.chapter_name = chapter_name
         self.target_lang = target_lang
         self.history = history if history is not None else []
+        self.page_context = page_context
         self.signals = TranslateSignals()
 
     @pyqtSlot()
@@ -92,7 +93,7 @@ class TranslateWorker(QRunnable):
                 if detected_text:
                     print(f"[OCR] Detected: {repr(detected_text)}")
                     try:
-                        translated_text = translator.translate_contextual(detected_text, self.history, target_lang=self.target_lang)
+                        translated_text = translator.translate_contextual(detected_text, self.history, target_lang=self.target_lang, page_context=self.page_context)
                         print(f"[TL] Translated: {repr(translated_text)}")
                         # Append to history ONLY if translation succeeded
                         if translated_text:
@@ -114,84 +115,109 @@ class TranslateWorker(QRunnable):
                     'text': translated_text
                 })
             
-            # --- Save Translation as Alt ---
-            has_translations = any(o['text'] and o['text'] != "[No Text Detected]" for o in overlays)
-            if full_pil_img and has_translations:
-                try:
-                    # Convert PIL Image to QImage for drawing
-                    # (We already have full_pil_img loaded)
-                    im_data = io.BytesIO()
-                    full_pil_img.save(im_data, format='PNG')
-                    q_img = QImage.fromData(im_data.getvalue())
-                    
-                    if not q_img.isNull():
-                        painter = QPainter(q_img)
-                        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-                        
-                        for overlay in overlays:
-                            if not overlay['text'] or overlay['text'] == "[No Text Detected]":
-                                continue
-                                
-                            x, y, w, h = overlay['bbox']
-                            text = overlay['text']
-                            
-                            # Draw Background (White, Opaque)
-                            painter.setBrush(QColor(255, 255, 255, 255))
-                            painter.setPen(Qt.PenStyle.NoPen)
-                            rect = QRectF(x, y, w, h)
-                            painter.drawRect(rect)
-                            
-                            # Dynamic font sizing using QPainter.drawText (thread-safe)
-                            text_flags = Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignCenter
-                            text_rect = QRectF(x, y, w, h).toRect()
-
-                            final_font = QFont("Arial", 6)
-                            for size in range(30, 5, -2):
-                                font = QFont("Arial", size)
-                                fm = QFontMetrics(font)
-                                br = fm.boundingRect(text_rect, int(text_flags), text)
-                                if br.height() <= h:
-                                    final_font = font
-                                    break
-
-                            painter.setFont(final_font)
-                            painter.setPen(QColor("black"))
-                            painter.drawText(text_rect, int(text_flags), text)
-                                
-                        painter.end()
-                        
-                        # Determine Save Path
-                        # Logic assumes we are working with standard file paths (not zips) for saving new files.
-                        if '|' not in self.image_path:
-                            original_path = Path(self.image_path)
-                            chapter_dir = original_path.parent
-                            lang_suffix = self.target_lang.value # "ENG", "KOR"
-                            
-                            # Update: Use language subfolder
-                            translations_dir = chapter_dir / "translations" / lang_suffix
-                            translations_dir.mkdir(parents=True, exist_ok=True)
-                            
-                            new_filename = f"{original_path.stem}_{lang_suffix}.jpg"
-                            save_path = translations_dir / new_filename
-                            
-                            q_img.save(str(save_path), "JPG")
-                            saved_path_str = str(save_path)
-                            
-                            # Register with AltManager using explicit series/chapter info
-                            AltManager.link_translation(self.series_path, self.chapter_name, str(original_path), self.target_lang, str(save_path))
-                            print(f"Saved translated page to {save_path}")
-
-                except Exception as e:
-                    print(f"Error saving translated image: {e}")
-                    import traceback
-                    traceback.print_exc()
-
-            # Emit results (now with saved path and language and history)
-            self.signals.finished.emit(self.image_path, saved_path_str, overlays, self.target_lang.value, self.history)
+            # Painting must run on the main thread (QTextDocument is not thread-safe on Windows).
+            # Emit overlays to the caller; the caller is responsible for compositing.
+            self.signals.finished.emit(self.image_path, None, overlays, self.target_lang.value, self.history)
             
         except Exception as e:
             print(f"Error in translation worker: {e}")
             import traceback
             traceback.print_exc()
             self.signals.finished.emit(self.image_path, None, [], self.target_lang.value, self.history)
+
+
+def paint_and_save_overlays(image_path: str, overlays: list, series_path: str, chapter_name: str, target_lang: Language) -> str | None:
+    """
+    Composite translated text overlays onto the source image and save.
+    Must be called from the main thread — uses QTextDocument for text layout.
+    Returns the saved file path, or None on failure.
+    """
+    has_translations = any(o['text'] and o['text'] != "[No Text Detected]" for o in overlays)
+    if not has_translations or '|' in image_path:
+        return None
+
+    try:
+        pil_img = Image.open(image_path).convert('RGB')
+        im_data = io.BytesIO()
+        pil_img.save(im_data, format='PNG')
+        q_img = QImage.fromData(im_data.getvalue())
+
+        if q_img.isNull():
+            return None
+
+        painter = QPainter(q_img)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        for overlay in overlays:
+            if not overlay['text'] or overlay['text'] == "[No Text Detected]":
+                continue
+
+            x, y, w, h = overlay['bbox']
+            text = overlay['text']
+
+            # White background
+            painter.setBrush(QColor(255, 255, 255, 255))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRect(QRectF(x, y, w, h))
+
+            # Find largest font that fits using QTextDocument
+            final_font_size = 6
+            for size in range(30, 5, -2):
+                doc = QTextDocument()
+                doc.setPlainText(text)
+                font = QFont("Arial", size)
+                doc.setDefaultFont(font)
+                doc.setTextWidth(w)
+                opt = QTextOption()
+                opt.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                opt.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+                doc.setDefaultTextOption(opt)
+                cursor = QTextCursor(doc)
+                cursor.select(QTextCursor.SelectionType.Document)
+                fmt = cursor.charFormat()
+                fmt.setForeground(QColor("black"))
+                cursor.mergeCharFormat(fmt)
+                if doc.size().height() <= h:
+                    final_font_size = size
+                    break
+
+            doc = QTextDocument()
+            doc.setPlainText(text)
+            font = QFont("Arial", final_font_size)
+            doc.setDefaultFont(font)
+            doc.setTextWidth(w)
+            opt = QTextOption()
+            opt.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            opt.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+            doc.setDefaultTextOption(opt)
+            cursor = QTextCursor(doc)
+            cursor.select(QTextCursor.SelectionType.Document)
+            fmt = cursor.charFormat()
+            fmt.setForeground(QColor("black"))
+            cursor.mergeCharFormat(fmt)
+
+            doc_h = doc.size().height()
+            y_offset = max(0, (h - doc_h) / 2)
+            painter.save()
+            painter.translate(x, y + y_offset)
+            doc.drawContents(painter)
+            painter.restore()
+
+        painter.end()
+
+        original_path = Path(image_path)
+        translations_dir = original_path.parent / "translations" / target_lang.value
+        translations_dir.mkdir(parents=True, exist_ok=True)
+        save_path = translations_dir / f"{original_path.stem}_{target_lang.value}.jpg"
+        q_img.save(str(save_path), "JPG")
+
+        AltManager.link_translation(series_path, chapter_name, image_path, target_lang, str(save_path))
+        print(f"Saved translated page to {save_path}")
+        return str(save_path)
+
+    except Exception as e:
+        print(f"Error painting translated image: {e}")
+        import traceback
+        traceback.print_exc()
+        return None

@@ -11,28 +11,28 @@ from src.core.llm_server import LLMServerManager
 load_dotenv()
 
 class Translator:
+    # Few-shot examples in the exact Text/Translation format the model must complete.
+    # These prime the pattern when no history is available yet.
     EXAMPLES = {
         Language.ENG: (
-            "Example 1:\n"
             "Text: こんにちは\n"
             "Translation: Hello\n\n"
-            "Example 2:\n"
             "Text: 何をしているの？\n"
             "Translation: What are you doing?\n\n"
-            "Example 3:\n"
             "Text: やめろ！\n"
             "Translation: Stop it!\n\n"
+            "Text: お前には関係ない。\n"
+            "Translation: It's none of your business.\n\n"
         ),
         Language.KOR: (
-            "Example 1:\n"
             "Text: こんにちは\n"
             "Translation: 안녕하세요\n\n"
-            "Example 2:\n"
             "Text: 何をしているの？\n"
             "Translation: 뭐 하고 있어?\n\n"
-            "Example 3:\n"
             "Text: やめろ！\n"
             "Translation: 그만해!\n\n"
+            "Text: お前には関係ない。\n"
+            "Translation: 너랑 상관없어.\n\n"
         )
     }
 
@@ -100,7 +100,10 @@ class Translator:
                     print(f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
             except Exception as e:
                 print(f"Attempt {attempt+1} error: {e}")
-                
+
+            if attempt < retries - 1:
+                time.sleep(1)
+
         return ""
 
     def translate(self, text: str, target_lang: Language = Language.ENG) -> str:
@@ -117,23 +120,22 @@ class Translator:
 
         target_name = map_lang.get(target_lang, "English")
 
-        # Few-shot examples
         examples = self.EXAMPLES.get(target_lang, "")
 
         prompt = (
-            f"You are a professional manga translator. Translate the Japanese text below to {target_name}.\n"
-            "Output only the final translation. Do not provide lists, or alternatives.\n\n"
+            f"Japanese to {target_name} manga translation.\n\n"
             f"{examples}"
             f"Text: {text}\n"
             "Translation:"
         )
-        
+
         return self._perform_translation(prompt, ["\n", "Text:", "Translation:"])
 
-    def translate_contextual(self, text: str, history: list, target_lang: Language = Language.ENG) -> str:
+    def translate_contextual(self, text: str, history: list, target_lang: Language = Language.ENG, page_context: str = "") -> str:
         """
         Translate text using local Llama.CPP with conversation context.
         history: list of tuples (source_text, translated_text)
+        page_context: optional scene description to guide the translation
         """
         if not text or not text.strip():
             return ""
@@ -145,30 +147,26 @@ class Translator:
 
         target_name = map_lang.get(target_lang, "English")
 
-        # Few-shot examples (Base examples) - Only if no history
-        examples = ""
-        if not history:
-            examples = self.EXAMPLES.get(target_lang, "")
-
-        # Context from history
-        context_prompt = ""
+        # Use fixed examples to prime the pattern when there is no history yet.
+        # Once history exists it replaces the examples — same format, real context.
         if history:
-            context_prompt = "Previous context:\n"
-            # Use last 10 items
-            recent_history = history[-10:]
-            for src, tr in recent_history:
-                context_prompt += f"Text: {src}\nTranslation: {tr}\n"
-            context_prompt += "\n"
+            shots = ""
+            for src, tr in history[-10:]:
+                shots += f"Text: {src}\nTranslation: {tr}\n\n"
+        else:
+            shots = self.EXAMPLES.get(target_lang, "")
+
+        # Scene note sits directly above the current text so the model reads
+        # context immediately before it translates.
+        scene_note = f"[Scene: {page_context}]\n" if page_context else ""
 
         prompt = (
-            f"You are a professional manga translator. Translate the Japanese text below to {target_name}.\n"
-            "Output only the final translation. Do not provide lists, or alternatives.\n"
-            "Use the previous context to ensure continuity in the conversation.\n\n"
-            f"{examples}"
-            f"{context_prompt}"
-            f"Current Text: {text}\n"
+            f"Japanese to {target_name} manga translation.\n\n"
+            f"{shots}"
+            f"{scene_note}"
+            f"Text: {text}\n"
             "Translation:"
         )
-        
-        return self._perform_translation(prompt, ["\n", "Text:", "Translation:", "Current Text:"])
+
+        return self._perform_translation(prompt, ["\n", "Text:", "Translation:"])
 
