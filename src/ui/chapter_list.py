@@ -690,8 +690,6 @@ class ChapterListView(QWidget):
             except RuntimeError:
                 pass
 
-        self._create_tag_row("Formats", "format", self.series.get('formats', []), "#B2D8B2")
-
     def _get_rel_parts(self, chapter_path: str) -> list[str]:
         series_root_dir = str(self.series['path'])
         
