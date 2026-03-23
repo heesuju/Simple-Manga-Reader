@@ -9,7 +9,7 @@ import io
 import qrcode
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, QSizePolicy,
-    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter
+    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter, QStackedWidget
 )
 from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon, QCursor, QPainter, QBrush, QColor, QImage
 from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent, QSize
@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool
 from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
 from src.ui.thumbnail_widget import ThumbnailWidget
+from src.ui.group_view import GroupView
 from src.core.item_loader import ItemLoader
 from src.utils.img_utils import get_chapter_number
 from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS
@@ -70,7 +71,7 @@ class StatusButton(QPushButton):
                 # Adjust rect to bottom right quadrant
                 target_rect = rect.adjusted(12, 12, 0, 0)
                 painter.drawText(target_rect, Qt.AlignmentFlag.AlignCenter, icon_text)
-                
+
 from src.core.llm_server import LLMServerManager
 
 class FolderGrid(QWidget):
@@ -119,6 +120,15 @@ class FolderGrid(QWidget):
     def on_llm_status_changed(self, status):
         if hasattr(self, 'llm_config_btn'):
             self.llm_config_btn.set_status(status)
+
+    def _switch_tab(self, key):
+        for k, btn in self._tab_buttons.items():
+            btn.setStyleSheet(self._tab_active_style if k == key else self._tab_inactive_style)
+        if key == 'all':
+            self.view_stack.setCurrentIndex(0)
+        else:
+            self.view_stack.setCurrentIndex(1)
+            self.group_view.set_field(key)
 
     def init_ui(self):
         self.setWindowTitle("Manga Browser")
@@ -189,13 +199,41 @@ class FolderGrid(QWidget):
         top_layout.addWidget(self.web_access_btn)
         top_layout.addWidget(self.llm_config_btn)
         main_layout.addLayout(top_layout)
-        
+
+        # Tab row
+        _TAB_ACTIVE = "QPushButton { border: none; border-bottom: 2px solid white; background: transparent; padding: 4px 14px; color: white; font-size: 13px; }"
+        _TAB_INACTIVE = "QPushButton { border: none; border-bottom: 2px solid transparent; background: transparent; padding: 4px 14px; color: rgba(170, 170, 170, 180); font-size: 13px; }"
+        self._tab_active_style = _TAB_ACTIVE
+        self._tab_inactive_style = _TAB_INACTIVE
+        tab_row = QHBoxLayout()
+        tab_row.setContentsMargins(0, 0, 0, 0)
+        tab_row.setSpacing(0)
+        self._tab_buttons = {}
+        for key, label in [('all', 'All'), ('author', 'Author'), ('genre', 'Genre'), ('theme', 'Theme'), ('format', 'Format')]:
+            btn = QPushButton(label)
+            btn.setStyleSheet(_TAB_ACTIVE if key == 'all' else _TAB_INACTIVE)
+            btn.clicked.connect(lambda checked, k=key: self._switch_tab(k))
+            self._tab_buttons[key] = btn
+            tab_row.addWidget(btn)
+        tab_row.addStretch()
+        main_layout.addLayout(tab_row)
+
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setStyleSheet("border: none;")
         self.scroll_content = QWidget()
         self.scroll.setWidget(self.scroll_content)
-        main_layout.addWidget(self.scroll)
+        self.group_view = GroupView(self.library_manager)
+        self.group_view.series_selected.connect(self.item_selected)
+        self.group_view.remove_requested.connect(self.remove_series)
+        self.group_view.rescan_requested.connect(self.rescan_series)
+        self.group_view.clear_cache_requested.connect(self.clear_series_cache)
+
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.scroll)
+        self.view_stack.addWidget(self.group_view)
+        main_layout.addWidget(self.view_stack)
+
 
         # Footer
         self.footer_container = QWidget()

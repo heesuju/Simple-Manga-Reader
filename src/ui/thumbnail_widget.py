@@ -219,7 +219,7 @@ class ThumbnailWidget(QWidget):
         rescan_action = menu.addAction("Rescan Series")
         clear_cache_action = menu.addAction("Clear Extraction Cache")
         remove_action = menu.addAction("Remove")
-        get_info_action = menu.addAction("Get Info")
+        get_info_action = menu.addAction("Edit Info")
         action = menu.exec(event.globalPos())
 
         if action == open_action:

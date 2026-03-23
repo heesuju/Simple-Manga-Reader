@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QTextEdit, QFileDialog
+    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QTextEdit, QFileDialog, QComboBox
 )
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
@@ -16,7 +16,7 @@ class InfoDialog(QDialog):
         self.library_manager = library_manager
         self.fetched_info = {}
 
-        self.setWindowTitle("Get Manga Info")
+        self.setWindowTitle("Edit Info")
         self.layout = QVBoxLayout(self)
 
         # Title input
@@ -49,13 +49,21 @@ class InfoDialog(QDialog):
         self.description_text = QTextEdit()
         self.description_text.setText(series.get('description', ''))
         self.genres_label = QLabel("Genres:")
-        self.genres_input = QLineEdit(", ".join(series.get('genres', [])))
+        self.genres_input = QComboBox()
+        self.genres_input.setEditable(True)
+        self.genres_input.setCurrentText(", ".join(series.get('genres', [])))
         self.themes_label = QLabel("Themes:")
-        self.themes_input = QLineEdit(", ".join(series.get('themes', [])))
+        self.themes_input = QComboBox()
+        self.themes_input.setEditable(True)
+        self.themes_input.setCurrentText(", ".join(series.get('themes', [])))
         self.formats_label = QLabel("Formats:")
-        self.formats_input = QLineEdit(", ".join(series.get('formats', [])))
+        self.formats_input = QComboBox()
+        self.formats_input.setEditable(True)
+        self.formats_input.setCurrentText(", ".join(series.get('formats', [])))
         self.authors_label = QLabel("Authors:")
-        self.authors_input = QLineEdit(", ".join(series.get('authors', [])))
+        self.authors_input = QComboBox()
+        self.authors_input.setEditable(True)
+        self.authors_input.setCurrentText(", ".join(series.get('authors', [])))
 
         self.layout.addWidget(self.description_label)
         self.layout.addWidget(self.description_text)
@@ -84,20 +92,28 @@ class InfoDialog(QDialog):
 
     def setup_completers(self):
         all_authors = self.library_manager.get_all_authors()
+        self.authors_input.addItems(all_authors)
+        self.authors_input.setCurrentText(", ".join(self.series.get('authors', [])))
         author_completer = CsvCompleter(all_authors, self)
-        self.authors_input.setCompleter(author_completer)
+        self.authors_input.lineEdit().setCompleter(author_completer)
 
         all_genres = self.library_manager.get_all_genres()
+        self.genres_input.addItems(all_genres)
+        self.genres_input.setCurrentText(", ".join(self.series.get('genres', [])))
         genre_completer = CsvCompleter(all_genres, self)
-        self.genres_input.setCompleter(genre_completer)
+        self.genres_input.lineEdit().setCompleter(genre_completer)
 
         all_themes = self.library_manager.get_all_themes()
+        self.themes_input.addItems(all_themes)
+        self.themes_input.setCurrentText(", ".join(self.series.get('themes', [])))
         theme_completer = CsvCompleter(all_themes, self)
-        self.themes_input.setCompleter(theme_completer)
+        self.themes_input.lineEdit().setCompleter(theme_completer)
 
         all_formats = self.library_manager.get_all_formats()
+        self.formats_input.addItems(all_formats)
+        self.formats_input.setCurrentText(", ".join(self.series.get('formats', [])))
         format_completer = CsvCompleter(all_formats, self)
-        self.formats_input.setCompleter(format_completer)
+        self.formats_input.lineEdit().setCompleter(format_completer)
 
     def load_current_cover(self):
         cover_path = self.series.get('cover_image')
@@ -140,15 +156,15 @@ class InfoDialog(QDialog):
         self.fetched_info['description'] = description
 
         genres = [tag["attributes"]["name"]["en"] for tag in attributes.get("tags", []) if tag["attributes"]["group"] == "genre"]
-        self.genres_input.setText(", ".join(genres))
+        self.genres_input.setCurrentText(", ".join(genres))
         self.fetched_info['genres'] = genres
 
         themes = [tag["attributes"]["name"]["en"] for tag in attributes.get("tags", []) if tag["attributes"]["group"] == "theme"]
-        self.themes_input.setText(", ".join(themes))
+        self.themes_input.setCurrentText(", ".join(themes))
         self.fetched_info['themes'] = themes
 
         formats = [tag["attributes"]["name"]["en"] for tag in attributes.get("tags", []) if tag["attributes"]["group"] == "format"]
-        self.formats_input.setText(", ".join(formats))
+        self.formats_input.setCurrentText(", ".join(formats))
         self.fetched_info['formats'] = formats
 
         creator_ids = set()
@@ -157,7 +173,7 @@ class InfoDialog(QDialog):
                 creator_ids.add(rel["id"])
 
         author_names = [get_manga_dex_author(creator_id) for creator_id in creator_ids]
-        self.authors_input.setText(", ".join(filter(None, author_names)))
+        self.authors_input.setCurrentText(", ".join(filter(None, author_names)))
         self.fetched_info['authors'] = author_names
 
         # Cover art
@@ -179,10 +195,10 @@ class InfoDialog(QDialog):
         new_info = {
             'name': self.title_input.text(),
             'description': self.description_text.toPlainText(),
-            'authors': [author.strip() for author in self.authors_input.text().split(',') if author.strip()],
-            'genres': [genre.strip() for genre in self.genres_input.text().split(',') if genre.strip()],
-            'themes': [theme.strip() for theme in self.themes_input.text().split(',') if theme.strip()],
-            'formats': [format.strip() for format in self.formats_input.text().split(',') if format.strip()]
+            'authors': [a.strip() for a in self.authors_input.currentText().split(',') if a.strip()],
+            'genres': [g.strip() for g in self.genres_input.currentText().split(',') if g.strip()],
+            'themes': [t.strip() for t in self.themes_input.currentText().split(',') if t.strip()],
+            'formats': [f.strip() for f in self.formats_input.currentText().split(',') if f.strip()]
         }
 
         # Save cover image

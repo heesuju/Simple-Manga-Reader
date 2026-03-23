@@ -9,7 +9,8 @@ class CsvCompleter(QCompleter):
 
     def pathFromIndex(self, index):
         completion = super().pathFromIndex(index)
-        text = self.widget().text()
+        widget = self.widget()
+        text = widget.currentText() if hasattr(widget, 'currentText') else widget.text()
         parts = text.split(',')
         if len(parts) > 1:
             prefix = ",".join(parts[:-1])

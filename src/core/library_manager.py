@@ -455,6 +455,46 @@ class LibraryManager:
             conn.close()
 
 
+    def get_field_values_with_counts(self, field):
+        """Returns [{'name': str, 'count': int}] for authors/genres/themes/formats."""
+        field_table = {'author': 'authors', 'genre': 'genres', 'theme': 'themes', 'format': 'formats'}
+        junction = {'author': 'series_authors', 'genre': 'series_genres', 'theme': 'series_themes', 'format': 'series_formats'}
+        id_col = {'author': 'author_id', 'genre': 'genre_id', 'theme': 'theme_id', 'format': 'format_id'}
+        if field not in field_table:
+            return []
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT t.name, COUNT(j.series_id) as count
+            FROM {field_table[field]} t
+            JOIN {junction[field]} j ON t.id = j.{id_col[field]}
+            GROUP BY t.id, t.name
+            ORDER BY t.name
+        """)
+        result = [{'name': row['name'], 'count': row['count']} for row in cursor.fetchall()]
+        conn.close()
+        return result
+
+    def get_series_by_field_value(self, field, value):
+        """Returns series filtered by a specific field value."""
+        return self.search_series_with_filters('', {f'{field}s': [value]})
+
+    def get_series_without_field(self, field):
+        """Returns series that have no values for the given field (untagged)."""
+        junction = {'author': 'series_authors', 'genre': 'series_genres', 'theme': 'series_themes', 'format': 'series_formats'}
+        if field not in junction:
+            return []
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT s.* FROM series s
+            WHERE s.id NOT IN (SELECT DISTINCT series_id FROM {junction[field]})
+        """)
+        series_list = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        self._populate_metadata(series_list)
+        return series_list
+
     def _populate_metadata(self, series_list):
         if not series_list:
             return
