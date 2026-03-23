@@ -45,6 +45,7 @@ class ReaderView(QWidget):
     zoom_changed = pyqtSignal(str)
     request_fullscreen_toggle = pyqtSignal()
     current_chapter_changed = pyqtSignal(object, str)
+    hide_chapter_requested = pyqtSignal(object, object)  # series, chapter dict
 
     def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
         super().__init__()
@@ -245,6 +246,7 @@ class ReaderView(QWidget):
         self.video_control_panel.raise_()
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter, thread_pool=self.thumbnail_pool)
+        self.chapter_panel.hide_chapter_requested.connect(self._on_hide_chapter_from_panel)
         self.alt_panel = AltPanel(self, model=self.model, thread_pool=self.secondary_pool)
         self.frame_panel = FramePanel(self, thread_pool=self.secondary_pool)
         self.selection_panel = SelectionPanel(self)
@@ -1037,6 +1039,34 @@ class ReaderView(QWidget):
             self.page_panel.hide_content()
         self.chapter_panel.show_content()
         QTimer.singleShot(100, self._update_side_panels_geometry)
+
+    def _on_hide_chapter_from_panel(self, index: int):
+        if not self.model or index >= len(self.model.chapters):
+            return
+        chapter_path = self.model.chapters[index]
+        # Find the chapter dict from series
+        chapter_dict = None
+        for ch in self.model.series.get('chapters', []):
+            if ch['path'] == chapter_path:
+                chapter_dict = ch
+                break
+        if chapter_dict is None:
+            chapter_dict = {'path': chapter_path, 'name': None}
+        self.hide_chapter_requested.emit(self.model.series, chapter_dict)
+        # Remove from model's chapter list
+        self.model.chapters = [c for c in self.model.chapters if c != chapter_path]
+        # Keep chapter_index pointing at the same chapter, or navigate if current was hidden
+        if index < self.model.chapter_index:
+            # A chapter before current was removed — shift index back to stay on same chapter
+            self.model.chapter_index -= 1
+        # Clamp in case current chapter was removed or index is now out of range
+        if self.model.chapter_index >= len(self.model.chapters):
+            self.model.chapter_index = max(0, len(self.model.chapters) - 1)
+        if self.model.chapters:
+            self.model.manga_dir = self.model.chapters[self.model.chapter_index]
+            self._load_chapter_async(start_from_end=False)
+        self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
+        self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
     def set_chapter(self, chapter:int):
         if self.model.set_chapter(chapter):

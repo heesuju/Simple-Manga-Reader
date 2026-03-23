@@ -134,8 +134,19 @@ class ChapterLoaderWorker(QRunnable):
         image_list = self._sort_image_list(image_list)
 
         alt_config = AltManager.load_alts(self.series_path)
-        chapter_name = Path(self.manga_dir).name
+        path_str_for_name = str(self.manga_dir)
+        if '|' in path_str_for_name:
+            _, _internal = path_str_for_name.split('|', 1)
+            chapter_name = Path(_internal.rstrip('/')).name or Path(path_str_for_name.split('|')[0]).stem
+        else:
+            chapter_name = Path(path_str_for_name).name
         chapter_alts = alt_config.get(chapter_name, {})
+
+        # Filter blacklisted pages
+        blacklisted_pages = AltManager.get_blacklisted_pages(self.series_path, chapter_name)
+        if blacklisted_pages:
+            image_list = [p for p in image_list if Path(p.split('|')[-1]).name not in blacklisted_pages]
+
         grouped_pages = AltManager.group_images(image_list, chapter_alts)
 
         initial_index = 0

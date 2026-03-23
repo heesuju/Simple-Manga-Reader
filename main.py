@@ -140,8 +140,16 @@ class MainWindow(QMainWindow):
         self.reader_view.back_pressed.connect(self.handle_reader_back)
         self.reader_view.request_fullscreen_toggle.connect(self.toggle_fullscreen)
         self.reader_view.current_chapter_changed.connect(self.on_reader_chapter_changed)
+        self.reader_view.hide_chapter_requested.connect(self.on_reader_hide_chapter)
         self.stacked_widget.addWidget(self.reader_view)
         self.stacked_widget.setCurrentWidget(self.reader_view)
+
+    def on_reader_hide_chapter(self, series, chapter_dict):
+        series_path = str(series['path'])
+        self.library_manager.hide_chapter(series_path, chapter_dict)
+        # Keep current_series chapters in sync so the chapter list stays correct
+        if chapter_dict in self.current_series.get('chapters', []):
+            self.current_series['chapters'].remove(chapter_dict)
 
     def on_reader_chapter_changed(self, series, chapter_path):
         if series and chapter_path:

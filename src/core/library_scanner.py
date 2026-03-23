@@ -190,8 +190,11 @@ class LibraryScanner:
             except ValueError:
                 return ([], natural_sort_key(x['name']))
 
+        # Filter out blacklisted chapters
+        chapters = [c for c in chapters if not AltManager.is_chapter_blacklisted(str(item), c['name'])]
+
         sorted_chapters = sorted(chapters, key=sort_key)
-        
+
         cover_image = self.find_cover(item, sorted_chapters)
 
         return {

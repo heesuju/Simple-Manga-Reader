@@ -165,6 +165,7 @@ class ChapterListItemWidget(QWidget):
     group_pages_requested = pyqtSignal(object, object) # chapter, widget
     add_translation_requested = pyqtSignal(object, object) # chapter, widget
     edit_spreads_requested = pyqtSignal(object) # chapter
+    hide_chapter_requested = pyqtSignal(object) # chapter
 
     def __init__(self, chapter, series, chapter_name, library_manager, parent=None):
         super().__init__(parent)
@@ -309,6 +310,11 @@ class ChapterListItemWidget(QWidget):
         edit_spreads_action = QAction("Edit Spreads...", self)
         edit_spreads_action.triggered.connect(lambda: self.edit_spreads_requested.emit(self.chapter))
         menu.addAction(edit_spreads_action)
+
+        menu.addSeparator()
+        hide_action = QAction("Hide Chapter", self)
+        hide_action.triggered.connect(lambda: self.hide_chapter_requested.emit(self.chapter))
+        menu.addAction(hide_action)
 
         sort_menu = menu.addMenu("Sort Pages...")
         series_path = str(self.series['path'])
@@ -934,6 +940,7 @@ class ChapterListView(QWidget):
                 item_widget.group_pages_requested.connect(self.on_group_pages_requested)
                 item_widget.add_translation_requested.connect(self.on_add_translation_requested)
                 item_widget.edit_spreads_requested.connect(self.on_edit_spreads_requested)
+                item_widget.hide_chapter_requested.connect(self.on_hide_chapter_requested)
                 self.content_layout.addWidget(item_widget)
                 self.chapter_widgets.append(item_widget)
 
@@ -1082,6 +1089,22 @@ class ChapterListView(QWidget):
         series_path = str(self.series['path'])
         dialog = EditSpreadsDialog(self, chapter, series_path)
         dialog.exec()
+
+    def on_hide_chapter_requested(self, chapter):
+        series_path = str(self.series['path'])
+        self.library_manager.hide_chapter(series_path, chapter)
+        # Remove widget from UI
+        for widget in list(self.chapter_widgets):
+            if isinstance(widget, ChapterListItemWidget) and widget.chapter is chapter:
+                self.content_layout.removeWidget(widget)
+                widget.deleteLater()
+                self.chapter_widgets.remove(widget)
+                break
+        # Keep db_chapters in sync
+        if chapter in self.db_chapters:
+            self.db_chapters.remove(chapter)
+        if chapter in self.display_chapters:
+            self.display_chapters.remove(chapter)
 
     def on_thumbnail_loaded(self, qimg, item, index, generation, item_type):
         widget = getattr(self, '_chapter_loader_map', {}).get(index)

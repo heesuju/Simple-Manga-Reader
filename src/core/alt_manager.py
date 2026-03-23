@@ -24,8 +24,8 @@ class AltManager:
         path_map = {Path(p).name: p for p in image_paths}
 
         for main_file_name, entry in alt_config.items():
-            # Skip sentinel metadata key
-            if main_file_name == '__meta__':
+            # Skip sentinel/internal keys
+            if main_file_name in ('__meta__', '__blacklist__'):
                 continue
             # Support both exact path match (legacy) and filename match
             # If main_file_name is absolute path in config (legacy bug), try to match by name
@@ -514,6 +514,39 @@ class AltManager:
         
         if changed:
             AltManager.save_alts(series_path, data)
+
+    @staticmethod
+    def blacklist_chapter(series_path: str, chapter_name: str):
+        """Add a chapter name to the blacklist in info.json so it is skipped during scanning."""
+        data = AltManager.load_alts(series_path)
+        blacklist = data.setdefault('__blacklist__', {})
+        chapters = blacklist.setdefault('chapters', [])
+        if chapter_name not in chapters:
+            chapters.append(chapter_name)
+        AltManager.save_alts(series_path, data)
+
+    @staticmethod
+    def blacklist_page(series_path: str, chapter_name: str, page_filename: str):
+        """Add a page filename to the blacklist for a chapter in info.json."""
+        data = AltManager.load_alts(series_path)
+        blacklist = data.setdefault('__blacklist__', {})
+        pages = blacklist.setdefault('pages', {})
+        chapter_pages = pages.setdefault(chapter_name, [])
+        if page_filename not in chapter_pages:
+            chapter_pages.append(page_filename)
+        AltManager.save_alts(series_path, data)
+
+    @staticmethod
+    def is_chapter_blacklisted(series_path: str, chapter_name: str) -> bool:
+        """Return True if the chapter is in the blacklist."""
+        data = AltManager.load_alts(series_path)
+        return chapter_name in data.get('__blacklist__', {}).get('chapters', [])
+
+    @staticmethod
+    def get_blacklisted_pages(series_path: str, chapter_name: str) -> set:
+        """Return the set of blacklisted page filenames for a chapter."""
+        data = AltManager.load_alts(series_path)
+        return set(data.get('__blacklist__', {}).get('pages', {}).get(chapter_name, []))
 
     @staticmethod
     def register_alt_fix(series_path: str, chapter_name: str, main_file: str, alt_rel_path: str, fix_rel_path: str):

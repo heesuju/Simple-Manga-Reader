@@ -287,6 +287,32 @@ class LibraryManager:
         for series in series_list:
             self.update_series_info(series['id'], metadata)
 
+    def hide_chapter(self, series_path: str, chapter: dict):
+        """Remove chapter from DB and add to blacklist in info.json so it is not rescanned."""
+        from src.core.alt_manager import AltManager
+
+        chapter_path = chapter.get('path', '')
+        chapter_name = chapter.get('name')
+        if not chapter_name:
+            if '|' in chapter_path:
+                _, internal = chapter_path.split('|', 1)
+                chapter_name = Path(internal.rstrip('/')).name or Path(chapter_path.split('|')[0]).stem
+            else:
+                chapter_name = Path(chapter_path).name
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM chapters WHERE path = ?", (chapter_path,))
+            conn.commit()
+        except Exception as e:
+            print(f"Error hiding chapter: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+
+        AltManager.blacklist_chapter(series_path, chapter_name)
+
     def remove_series(self, series_to_remove):
         conn = get_db_connection()
         cursor = conn.cursor()

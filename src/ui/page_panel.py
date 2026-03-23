@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Set, List
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import QMenu, QApplication, QFileDialog
@@ -357,10 +358,15 @@ class PagePanel(CollapsiblePanel):
             save_as_action = QAction("Save As...", self)
             save_as_action.triggered.connect(lambda: self._save_page_as(index))
             menu.addAction(save_as_action)
-            
+
             open_explorer_action = QAction("Reveal in File Explorer", self)
             open_explorer_action.triggered.connect(lambda: self._open_in_explorer(index))
             menu.addAction(open_explorer_action)
+
+            menu.addSeparator()
+            hide_page_action = QAction("Hide Page", self)
+            hide_page_action.triggered.connect(lambda: self._hide_page(index))
+            menu.addAction(hide_page_action)
 
         menu.exec(QCursor.pos())
 
@@ -412,6 +418,29 @@ class PagePanel(CollapsiblePanel):
         real_idx = self._get_real_index(index)
         if real_idx != -1:
             page_utils.open_in_explorer(self.model, real_idx)
+
+    def _hide_page(self, index: int):
+        real_idx = self._get_real_index(index)
+        if real_idx == -1 or not self.model:
+            return
+        page_obj = self.model.images[real_idx]
+        page_path = page_obj.path
+        page_filename = Path(page_path.split('|')[-1]).name
+
+        if isinstance(self.model.manga_dir, dict):
+            cp = self.model.manga_dir.get('path', '')
+            chapter_name = self.model.manga_dir.get('name', Path(cp.split('|')[0]).stem if '|' in cp else Path(cp).name)
+        else:
+            md = str(self.model.manga_dir)
+            if '|' in md:
+                _, _internal = md.split('|', 1)
+                chapter_name = Path(_internal.rstrip('/')).name or Path(md.split('|')[0]).stem
+            else:
+                chapter_name = Path(md).name
+
+        series_path = str(self.model.series['path']) if isinstance(self.model.series, dict) else str(self.model.series)
+        AltManager.blacklist_page(series_path, chapter_name, page_filename)
+        self.reload_requested.emit()
 
     def refresh_thumbnail(self, index: int):
         if self.model.view_mode == ViewMode.DOUBLE:

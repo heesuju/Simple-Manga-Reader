@@ -4,7 +4,7 @@ import os
 import subprocess
 from PyQt6.QtWidgets import QLabel, QMenu
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCursor, QKeySequence, QPixmap
 from src.ui.components.collapsible_panel import CollapsiblePanel
 from src.ui.page_thumbnail import PageThumbnail
@@ -13,6 +13,8 @@ from src.utils.img_utils import draw_text_on_image, load_thumbnail_from_path, lo
 from src.data.reader_model import ReaderModel
 
 class ChapterPanel(CollapsiblePanel):
+    hide_chapter_requested = pyqtSignal(int)  # chapter index
+
     def __init__(self, parent=None, model:ReaderModel=None, on_chapter_changed=None, thread_pool=None):
         super().__init__(parent, "Chapter")
         self.model = model
@@ -77,6 +79,7 @@ class ChapterPanel(CollapsiblePanel):
             if item and item.widget():
                 item.widget().deleteLater()
         self.chapter_thumbnail_widgets.clear()
+        self.current_chapter_thumbnail = None
 
         self._thumb_generation += 1
         self.chapters_to_load = chapters
@@ -150,6 +153,12 @@ class ChapterPanel(CollapsiblePanel):
         open_explorer_action = QAction("Reveal in File Explorer", self)
         open_explorer_action.triggered.connect(lambda: self._open_in_explorer(index))
         menu.addAction(open_explorer_action)
+
+        menu.addSeparator()
+        hide_action = QAction("Hide Chapter", self)
+        hide_action.triggered.connect(lambda: self.hide_chapter_requested.emit(index))
+        menu.addAction(hide_action)
+
         menu.exec(QCursor.pos())
 
     def _open_in_explorer(self, index: int):
