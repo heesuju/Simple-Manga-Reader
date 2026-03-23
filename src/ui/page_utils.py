@@ -318,11 +318,11 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
                 shutil.move(f_temp, f_final_path)
                 f_final_rel = str(f_final_path.relative_to(chapter_dir)).replace('\\', '/')
 
-            # Determine what to use in the 'alts' list (prefer fix if it exists, as that's what the user sees)
-            if f_final_rel:
-                flat_new_paths.append(f_final_rel)
-            elif o_final_rel:
+            # Always store the original path in 'alts'; fix is tracked separately in 'alts_fix'
+            if o_final_rel:
                 flat_new_paths.append(o_final_rel)
+            elif f_final_rel:
+                flat_new_paths.append(f_final_rel)
                 
             # Update alts_fix
             if o_final_rel and f_final_rel:
@@ -399,7 +399,7 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
     existing_in_category = 0
     if specific_alts_dir.exists():
         for f in specific_alts_dir.iterdir():
-            if f.is_file() and f.stem.startswith(main_stem):
+            if f.is_file() and f.stem.startswith(main_stem) and not f.stem.endswith('_fix'):
                 existing_in_category += 1
                 
     start_index = existing_in_category + 1

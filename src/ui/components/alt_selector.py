@@ -174,11 +174,19 @@ class AltSelector(QWidget):
 
                 # 2. TIER 2: Numbers for active category
                 active_paths = categories[active_cat]
+                original_path = page.images[0]
+                non_orig_count = 0
                 for cat_v_idx, variant_path in enumerate(active_paths):
                     # Find true global variant index to pass to logic
                     true_v_idx = page.images.index(variant_path)
-                    
-                    btn = QPushButton(str(cat_v_idx + 1))
+
+                    is_orig = (variant_path == original_path)
+                    if is_orig:
+                        btn_label = "◎"
+                    else:
+                        non_orig_count += 1
+                        btn_label = str(non_orig_count)
+                    btn = QPushButton(btn_label)
                     btn.setFixedSize(24, 24)
                     btn.setCheckable(True)
                     

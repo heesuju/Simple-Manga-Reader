@@ -364,11 +364,16 @@ class AltPanel(QWidget):
         else:
             active_paths = sorted(active_paths, key=lambda p: natural_sort_key(Path(p).name))
             
+        non_orig_count = 0
         for cat_v_idx, variant_path in enumerate(active_paths):
             true_v_idx = page.images.index(variant_path)
             is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
             is_original = (variant_path == original_image_path)
-            display_label = "ORIG" if is_original else cat_v_idx + 1
+            if is_original:
+                display_label = "ORIG"
+            else:
+                non_orig_count += 1
+                display_label = non_orig_count
 
             thumb = AltThumbnail(
                 self.scroll_content,
@@ -674,5 +679,8 @@ class AltPanel(QWidget):
             manga_dir=manga_dir
         )
         if dlg.exec():
-            # Refresh model to show new fixes
-            self.model.refresh()
+            current_variant_idx = page.current_variant_index
+            self.model.update_page_variants(page_idx)
+            new_page = self.model.images[page_idx]
+            restore_idx = min(current_variant_idx, len(new_page.images) - 1)
+            self.model.change_variant(page_idx, restore_idx)
