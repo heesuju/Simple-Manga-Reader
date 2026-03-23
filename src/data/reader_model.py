@@ -8,6 +8,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from src.enums import ViewMode
 from src.utils.img_utils import get_chapter_number
+from src.utils.str_utils import natural_sort_key
 from src.data.page import Page
 from src.core.alt_manager import AltManager
 
@@ -546,7 +547,7 @@ class ReaderModel(QObject):
                 if suffix in ANIM_EXTS: return 1
                 return 0 # Image
             
-            found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), Path(p).name.lower()))
+            found_alts.sort(key=lambda p: (get_priority(p), Path(p).suffix.lower(), natural_sort_key(Path(p).name.lower())))
             new_variants.extend(found_alts)
 
         # 2. Update the Page object

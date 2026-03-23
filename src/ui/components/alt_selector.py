@@ -1,8 +1,10 @@
+from pathlib import Path
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QIcon
 from src.enums import ViewMode
 from src.utils.resource_utils import resource_path
+from src.utils.str_utils import natural_sort_key
 
 
 class AltSelector(QWidget):
@@ -142,7 +144,7 @@ class AltSelector(QWidget):
 
                 # Get categorized variants
                 categories = page.get_categorized_variants()
-                cat_names = sorted(list(categories.keys()))
+                cat_names = sorted(list(categories.keys()), key=lambda c: (0 if c == "Main" else 1, natural_sort_key(c)))
                 
                 # Always sync active category to whichever category contains the current variant
                 # This ensures tab-cycling updates the highlighted category automatically
@@ -173,8 +175,13 @@ class AltSelector(QWidget):
                     self.layout.addWidget(arrow)
 
                 # 2. TIER 2: Numbers for active category
-                active_paths = categories[active_cat]
                 original_path = page.images[0]
+                raw_paths = categories[active_cat]
+                if active_cat == "Main" and original_path in raw_paths:
+                    other = sorted([p for p in raw_paths if p != original_path], key=lambda p: natural_sort_key(Path(p).name))
+                    active_paths = [original_path] + other
+                else:
+                    active_paths = sorted(raw_paths, key=lambda p: natural_sort_key(Path(p).name))
                 non_orig_count = 0
                 for cat_v_idx, variant_path in enumerate(active_paths):
                     # Find true global variant index to pass to logic

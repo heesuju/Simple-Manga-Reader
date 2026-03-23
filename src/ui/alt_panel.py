@@ -314,7 +314,7 @@ class AltPanel(QWidget):
 
         # Get categories
         categories = page.get_categorized_variants()
-        cat_names = sorted(list(categories.keys()), key=natural_sort_key)
+        cat_names = sorted(list(categories.keys()), key=lambda c: (0 if c == "Main" else 1, natural_sort_key(c)))
 
         if not cat_names:
             self.hide()

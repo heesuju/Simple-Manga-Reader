@@ -84,9 +84,9 @@ class EditAltsDialog(QDialog):
         """Load a small thumbnail as a QIcon for tree items."""
         resolved = self._resolve_path(path_str)
         try:
-            pixmap = load_thumbnail_from_path(resolved, THUMB_SIZE, THUMB_SIZE)
-            if pixmap and not pixmap.isNull():
-                return QIcon(pixmap)
+            qimg = load_thumbnail_from_path(resolved, THUMB_SIZE, THUMB_SIZE)
+            if qimg and not qimg.isNull():
+                return QIcon(QPixmap.fromImage(qimg))
         except Exception:
             pass
         return QIcon()
@@ -97,7 +97,7 @@ class EditAltsDialog(QDialog):
         if not self.page_obj: return
         
         categories = self.page_obj.get_categorized_variants()
-        cat_names = sorted(list(categories.keys()), key=natural_sort_key)
+        cat_names = sorted(list(categories.keys()), key=lambda c: (0 if c == "Main" else 1, natural_sort_key(c)))
         
         for cat_name in cat_names:
             items = categories[cat_name]

@@ -89,7 +89,7 @@ def link_selected_pages(model: ReaderModel, indices: Set[int], on_reload: Callab
     existing_in_category = 0
     if specific_alts_dir.exists():
         for f in specific_alts_dir.iterdir():
-            if f.is_file() and f.stem.startswith("main"):
+            if f.is_file() and f.stem.startswith("main") and not f.stem.endswith('_fix'):
                 existing_in_category += 1
     
     start_index = existing_in_category + 1
