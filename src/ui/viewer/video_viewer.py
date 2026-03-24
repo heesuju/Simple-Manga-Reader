@@ -542,5 +542,3 @@ class VideoViewer(BaseViewer):
     def reset(self):
         self._stop_video()
         self.video_item = None
-        self.video_last_frame_item = None
-        self.last_frame_pixmap = None
