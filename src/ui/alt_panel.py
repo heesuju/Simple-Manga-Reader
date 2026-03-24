@@ -290,10 +290,41 @@ class AltPanel(QWidget):
             QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
 
     def _clear_content(self):
-        """Remove all thumbnail widgets."""
+        """Remove all thumbnail and group-label widgets."""
         for w in self.alt_widgets:
             w.deleteLater()
         self.alt_widgets.clear()
+
+    def _make_group_label(self, text: str) -> QLabel:
+        lbl = QLabel(text.upper())
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setFixedHeight(18)
+        lbl.setStyleSheet(
+            "color: rgba(255, 200, 100, 200); font-size: 9px; font-weight: bold;"
+            "background: rgba(255,255,255,15); border-radius: 2px; padding: 2px 0;"
+        )
+        return lbl
+
+    def _load_thumb_for_widget(self, thumb: 'AltThumbnail', resolved_path: str):
+        """Start async (or sync) thumbnail loading, targeting a specific widget."""
+        def _apply(_, img, w=thumb):
+            if img and not img.isNull():
+                try:
+                    w.set_pixmap(QPixmap.fromImage(img))
+                except RuntimeError:
+                    pass  # widget was deleted before the worker finished
+
+        if self.thread_pool:
+            worker = ThumbnailWorker(0, resolved_path, self._load_thumbnail)
+            worker.signals.finished.connect(_apply)
+            self.thread_pool.start(worker)
+        else:
+            qimg = self._load_thumbnail(resolved_path)
+            if qimg and not qimg.isNull():
+                try:
+                    thumb.set_pixmap(QPixmap.fromImage(qimg))
+                except RuntimeError:
+                    pass
 
     def _update_panel(self, primary_index):
         self._clear_content()
@@ -320,25 +351,30 @@ class AltPanel(QWidget):
             self.hide()
             return
 
-        # Always sync active category to whichever category contains the current variant
-        current_path = page.images[page.current_variant_index]
-        active_cat = cat_names[0]
-        for cat, paths in categories.items():
-            if current_path in paths:
-                active_cat = cat
-                break
+        # Restore user's last selection for this page; default to "All"
+        active_cat = self.active_categories.get(idx, "All")
         self.active_categories[idx] = active_cat
 
         # Update combo box (block signals to avoid triggering _on_combo_changed during population)
         self.cat_combo.blockSignals(True)
         self.cat_combo.clear()
+        self.cat_combo.addItem("ALL", "All")
+        self.cat_combo.insertSeparator(1)
         for cat in cat_names:
-            self.cat_combo.addItem(cat.upper(), cat)  # display text uppercase, data is original
-        # Select active category
-        for i in range(self.cat_combo.count()):
-            if self.cat_combo.itemData(i) == active_cat:
-                self.cat_combo.setCurrentIndex(i)
-                break
+            self.cat_combo.addItem(cat.upper(), cat)
+        # Select active entry
+        if active_cat == "All":
+            self.cat_combo.setCurrentIndex(0)
+        else:
+            for i in range(self.cat_combo.count()):
+                if self.cat_combo.itemData(i) == active_cat:
+                    self.cat_combo.setCurrentIndex(i)
+                    break
+            else:
+                # Fallback if stored category no longer exists
+                self.cat_combo.setCurrentIndex(0)
+                active_cat = "All"
+                self.active_categories[idx] = "All"
         self.cat_combo.blockSignals(False)
 
         # Update play button state
@@ -352,51 +388,52 @@ class AltPanel(QWidget):
             self.play_btn.setIcon(self.play_icon)
             self.play_btn.setText("")
 
-        # Build thumbnail rows for active category
-        active_paths = categories.get(active_cat, [])
         original_image_path = page.images[0]
-        
-        if active_cat == "Main" and original_image_path in active_paths:
-            # Keep original at top, sort the rest
-            other_paths = [p for p in active_paths if p != original_image_path]
-            other_paths = sorted(other_paths, key=lambda p: natural_sort_key(Path(p).name))
-            active_paths = [original_image_path] + other_paths
-        else:
-            active_paths = sorted(active_paths, key=lambda p: natural_sort_key(Path(p).name))
-            
+
+        # Determine which categories to render
+        cats_to_render = cat_names if active_cat == "All" else ([active_cat] if active_cat in categories else cat_names)
+        show_group_labels = active_cat == "All" and len(cat_names) > 1
+
         non_orig_count = 0
-        for cat_v_idx, variant_path in enumerate(active_paths):
-            true_v_idx = page.images.index(variant_path)
-            is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
-            is_original = (variant_path == original_image_path)
-            if is_original:
-                display_label = "ORIG"
-            else:
-                non_orig_count += 1
-                display_label = non_orig_count
+        for cat in cats_to_render:
+            cat_paths = list(categories.get(cat, []))
 
-            thumb = AltThumbnail(
-                self.scroll_content,
-                variant_path,
-                display_index=display_label,
-                is_selected=is_selected,
-                on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
-                on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
-            )
-            self.scroll_layout.addWidget(thumb)
-            self.alt_widgets.append(thumb)
-
-            # Load thumbnail async (or synchronously if no thread pool)
-            resolved = self._resolve_path(variant_path)
-            if self.thread_pool:
-                worker = ThumbnailWorker(len(self.alt_widgets) - 1, resolved, self._load_thumbnail)
-                worker.signals.finished.connect(self._on_thumbnail_loaded)
-                self.thread_pool.start(worker)
+            if cat == "Main" and original_image_path in cat_paths:
+                other_paths = sorted(
+                    [p for p in cat_paths if p != original_image_path],
+                    key=lambda p: natural_sort_key(Path(p).name)
+                )
+                cat_paths = [original_image_path] + other_paths
             else:
-                qimg = self._load_thumbnail(resolved)
-                if qimg and not qimg.isNull():
-                    pixmap = QPixmap.fromImage(qimg)
-                    thumb.set_pixmap(pixmap)
+                cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
+
+            if show_group_labels:
+                lbl = self._make_group_label(cat)
+                self.scroll_layout.addWidget(lbl)
+                self.alt_widgets.append(lbl)
+
+            for variant_path in cat_paths:
+                true_v_idx = page.images.index(variant_path)
+                is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
+                is_original = (variant_path == original_image_path)
+                if is_original:
+                    display_label = "ORIG"
+                else:
+                    non_orig_count += 1
+                    display_label = non_orig_count
+
+                thumb = AltThumbnail(
+                    self.scroll_content,
+                    variant_path,
+                    display_index=display_label,
+                    is_selected=is_selected,
+                    on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
+                    on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
+                )
+                self.scroll_layout.addWidget(thumb)
+                self.alt_widgets.append(thumb)
+
+                self._load_thumb_for_widget(thumb, self._resolve_path(variant_path))
 
         # Show panel
         if hasattr(self.parent(), "panels_visible"):
@@ -418,11 +455,6 @@ class AltPanel(QWidget):
         except Exception:
             return None
 
-    def _on_thumbnail_loaded(self, index, qimg):
-        if qimg and not qimg.isNull() and index < len(self.alt_widgets):
-            pixmap = QPixmap.fromImage(qimg)
-            self.alt_widgets[index].set_pixmap(pixmap)
-
     def _resolve_path(self, path_str):
         """Resolve relative path to absolute using model's manga_dir."""
         p = Path(path_str)
@@ -436,19 +468,30 @@ class AltPanel(QWidget):
             return
         category = self.cat_combo.itemData(index)
         if not category:
-            return
+            return  # separator row
         page_index = self.model.current_index if self.model else 0
         self.active_categories[page_index] = category
+        if category == "All":
+            self._update_panel(page_index)
+            return
         if self.model and 0 <= page_index < len(self.model.images):
             page = self.model.images[page_index]
             categories = page.get_categorized_variants()
             if category in categories and categories[category]:
-                first_path = categories[category][0]
+                cat_paths = categories[category]
+                original_image_path = page.images[0]
+                if category == "Main" and original_image_path in cat_paths:
+                    sorted_paths = [original_image_path] + sorted(
+                        [p for p in cat_paths if p != original_image_path],
+                        key=lambda p: natural_sort_key(Path(p).name)
+                    )
+                else:
+                    sorted_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
                 try:
-                    first_idx = page.images.index(first_path)
+                    first_idx = page.images.index(sorted_paths[0])
                     self.model.change_variant(page_index, first_idx)
                     return
-                except ValueError:
+                except (ValueError, IndexError):
                     pass
         self._update_panel(self.model.current_index)
 
@@ -612,12 +655,13 @@ class AltPanel(QWidget):
         
         page_idx = self.model.current_index
         page = self.model.images[page_idx]
-        active_cat = self.active_categories.get(page_idx)
-        if not active_cat:
-            return
-            
+        active_cat = self.active_categories.get(page_idx, "All")
+
         categories = page.get_categorized_variants()
-        cat_paths = categories.get(active_cat, [])
+        if active_cat == "All":
+            cat_paths = [p for paths in categories.values() for p in paths]
+        else:
+            cat_paths = categories.get(active_cat, [])
         if not cat_paths:
             return
 
