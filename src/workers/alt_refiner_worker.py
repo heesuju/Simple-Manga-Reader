@@ -4,6 +4,20 @@ from pathlib import Path
 from src.utils.img_utils import imread_unicode, imwrite_unicode
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal
 
+_VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
+
+
+def _load_image_or_first_frame(path: str):
+    """Load an image, or extract the first frame if path is a video."""
+    if Path(path).suffix.lower() in _VIDEO_EXTS:
+        cap = cv2.VideoCapture(path)
+        if not cap.isOpened():
+            return None
+        ret, frame = cap.read()
+        cap.release()
+        return frame if ret else None
+    return imread_unicode(path)
+
 
 class AltRefinerSignals(QObject):
     finished = pyqtSignal(str)   # output_path
@@ -24,8 +38,8 @@ class AltRefinerWorker(QRunnable):
 
     def run(self):
         try:
-            main_img = imread_unicode(self.main_path)
-            alt_img = imread_unicode(self.alt_path)
+            main_img = _load_image_or_first_frame(self.main_path)
+            alt_img = _load_image_or_first_frame(self.alt_path)
             if main_img is None or alt_img is None:
                 self.signals.error.emit("Failed to load images.")
                 return

@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtGui import QPixmap, QImageReader
+import cv2
 
 from src.utils.img_utils import load_thumbnail_from_path
 from src.workers.alt_refiner_worker import AltRefinerWorker
@@ -15,9 +16,20 @@ from src.core.alt_manager import AltManager
 PREVIEW_W = 240
 PREVIEW_H = 320
 
+_VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
+
 
 def _read_size_str(path):
     if not path:
+        return ""
+    if Path(path).suffix.lower() in _VIDEO_EXTS:
+        cap = cv2.VideoCapture(path)
+        if cap.isOpened():
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap.release()
+            if w and h:
+                return f"{w} × {h}"
         return ""
     reader = QImageReader(path)
     sz = reader.size()
