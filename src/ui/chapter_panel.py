@@ -1,6 +1,7 @@
 from typing import List
 from pathlib import Path
 import os
+import sys
 import subprocess
 from PyQt6.QtWidgets import QLabel, QMenu
 
@@ -172,6 +173,11 @@ class ChapterPanel(CollapsiblePanel):
         chapter_path = os.path.normpath(chapter_path)
         if os.name == 'nt':
             subprocess.Popen(['explorer', '/select,', chapter_path])
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', '-R', chapter_path])
+        else:
+            # Linux: open the parent directory in the default file manager
+            subprocess.Popen(['xdg-open', os.path.dirname(chapter_path)])
 
     def eventFilter(self, source, event):
         if source == self.content_area and event.type() == event.Type.KeyPress and self.is_expanded:
