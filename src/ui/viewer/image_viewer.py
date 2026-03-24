@@ -106,8 +106,7 @@ class ImageViewer(BaseViewer):
         if len(paths) == 1:
             if paths[0].lower().endswith((".gif", ".webp")):
                 if '|' in paths[0]:
-                    # Virtual path animation - MUST use worker
-                    pass
+                    pass  # Virtual path animation - fall through to async worker below
                 else:
                     self._load_single_image_sync(paths[0])
                     return

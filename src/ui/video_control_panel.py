@@ -3,7 +3,7 @@ from src.ui.components.volume_control import VolumeControl
 from src.utils.resource_utils import resource_path
 from src.ui.styles import FLAT_BUTTON_STYLE
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer
 
 
 class SeekSlider(QSlider):
@@ -50,6 +50,11 @@ class VideoControlPanel(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._is_scrubbing = False
+        self._scrub_pending_position = None
+        self._scrub_timer = QTimer(self)
+        self._scrub_timer.setSingleShot(True)
+        self._scrub_timer.setInterval(50)
+        self._scrub_timer.timeout.connect(self._emit_scrub_seek)
         self.init_ui()
         self.is_playing = False
         self.is_repeat = True
@@ -210,9 +215,20 @@ class VideoControlPanel(QWidget):
             minutes = total_seconds // 60
             seconds = total_seconds % 60
             self.current_time_label.setText(f"{minutes:02d}:{seconds:02d}")
-            self.position_changed.emit(position)
         else:
             self.current_time_label.setText(f"F: {position}")
+        # Debounce: only emit seek after scrubbing pauses briefly
+        self._scrub_pending_position = position
+        self._scrub_timer.start()
+
+    def _emit_scrub_seek(self):
+        if self._scrub_pending_position is None:
+            return
+        position = self._scrub_pending_position
+        self._scrub_pending_position = None
+        if self.seek_mode == "time":
+            self.position_changed.emit(position)
+        else:
             self.seek_frame.emit(position)
 
     def set_playing(self, playing):

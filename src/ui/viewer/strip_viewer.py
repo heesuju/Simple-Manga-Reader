@@ -36,6 +36,7 @@ class StripViewer(BaseViewer):
         self.MAX_CONCURRENT_LOADS = 4
         self.layout_generation = 0
         self.current_model_images = None
+        self._queue_process_scheduled = False
         self.pending_anchor = None
 
         
@@ -155,6 +156,7 @@ class StripViewer(BaseViewer):
             QTimer.singleShot(0, lambda: self._scroll_to_page(self.reader_view.model.current_index))
 
     def _process_load_queue(self):
+        self._queue_process_scheduled = False
         # Sort queue based on distance to current view center to prioritize visible images
         if not self.reader_view.scroll_area.isVisible():
             return
@@ -256,8 +258,9 @@ class StripViewer(BaseViewer):
             self.reader_view._update_image_info([current_page.path])
 
         # Trigger priority update
-        if self.load_queue or self.loading_indices:
-             QTimer.singleShot(100, self._process_load_queue)
+        if (self.load_queue or self.loading_indices) and not self._queue_process_scheduled:
+            self._queue_process_scheduled = True
+            QTimer.singleShot(100, self._process_load_queue)
 
         for i, lbl in enumerate(self.page_labels):
             lbl_top = lbl.y()
