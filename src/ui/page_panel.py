@@ -444,9 +444,15 @@ class PagePanel(CollapsiblePanel):
 
     def refresh_thumbnail(self, index: int):
         if self.model.view_mode == ViewMode.DOUBLE:
-             # Refreshing Double thumbnail is trickier as index is Page Index not Widget index
-             # Find widget that contains this page
-             pass 
+            # index is a page index — find the widget whose thumbnail_to_page_map entry matches
+            for w_idx, page_idx in enumerate(self.thumbnail_to_page_map):
+                if page_idx == index and w_idx < len(self.page_thumbnail_widgets):
+                    widget = self.page_thumbnail_widgets[w_idx]
+                    page_obj = self.model.images[index]
+                    alt_count = len(page_obj.images) if page_obj else 0
+                    if hasattr(widget, 'set_alt_count'):
+                        widget.set_alt_count(alt_count)
+                    break
         else:
             if 0 <= index < len(self.page_thumbnail_widgets):
                 widget = self.page_thumbnail_widgets[index]

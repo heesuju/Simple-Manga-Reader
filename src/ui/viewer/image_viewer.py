@@ -71,8 +71,6 @@ class ImageViewer(BaseViewer):
             return
             
         video_underlay = None
-        if hasattr(self.reader_view, 'video_viewer') and self.reader_view.video_viewer:
-             video_underlay = self.reader_view.video_viewer.video_last_frame_item
 
         to_remove = [item for item in self.reader_view.scene.items() 
                      if isinstance(item, QGraphicsPixmapItem) and item != video_underlay]
@@ -342,9 +340,7 @@ class ImageViewer(BaseViewer):
         self.pixmap_item.setVisible(True)
 
     def _clear_scene_pixmaps(self):
-        video_underlay = getattr(self.reader_view, 'video_last_frame_item', None)
-        if hasattr(self.reader_view, 'video_viewer') and self.reader_view.video_viewer:
-             video_underlay = self.reader_view.video_viewer.video_last_frame_item
+        video_underlay = None
 
         items_to_remove = []
         for item in self.reader_view.scene.items():
