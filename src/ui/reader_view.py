@@ -31,7 +31,7 @@ from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
 from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, ArchiveExtractionWorker, ImageInfoWorker, VideoExtractionWorker
-# from src.workers.translate_worker import TranslateWorker
+from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
 from src.core.alt_manager import AltManager
 
@@ -125,8 +125,8 @@ class ReaderView(QWidget):
 
         # Optimization 1: Quick check if path belongs to current chapter folder
         if str(self.model.manga_dir) not in str(image_path):
-             # Not in current chapter -> ignore
-             pass
+            # Not in current chapter -> ignore
+            return
 
         # Optimization 2: Use Model's Hash Map (O(1))
         found_page_index = self.model.get_page_index(image_path)
@@ -1010,10 +1010,12 @@ class ReaderView(QWidget):
     def change_page(self, page: int):
         # page is ALWAYS 1-based raw page index
         if self.model.view_mode == ViewMode.STRIP:
-            self.strip_viewer._scroll_to_page(page - 1)
-            self.page_panel._update_page_selection(page - 1)
-            self.slider_panel.set_value(page - 1)
-            self._update_image_info([self.model.images[page - 1].path])
+            idx = page - 1
+            self.strip_viewer._scroll_to_page(idx)
+            self.page_panel._update_page_selection(idx)
+            self.slider_panel.set_value(idx)
+            if self.model.images and 0 <= idx < len(self.model.images):
+                self._update_image_info([self.model.images[idx].path])
             return
 
         self.model.change_page(page)

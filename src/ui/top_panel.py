@@ -154,7 +154,10 @@ class TopPanel(QWidget):
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def _on_translate_clicked(self):
-        lang = Language(self.lang_combo.currentText())
+        text = self.lang_combo.currentText()
+        if text == "Original":
+            return
+        lang = Language(text)
         self.translate_clicked.emit(lang)
 
     def _on_overflow_clicked(self):
