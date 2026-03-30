@@ -148,8 +148,10 @@ class SubtitleOverlay:
             raw = re.sub(r'<br\s*/?>', '\n', raw, flags=re.IGNORECASE)
             raw = re.sub(r'<[^>]+>', '', raw)
             raw = (raw.replace('&nbsp;', '').replace('&amp;', '&')
-                      .replace('&lt;', '<').replace('&gt;', '>').strip())
-            raw = re.sub(r'[ \t]+', ' ', raw)
+                      .replace('&lt;', '<').replace('&gt;', '>'))
+            # Strip each line, drop blank lines, collapse runs of spaces/tabs
+            lines = [re.sub(r'[ \t]+', ' ', ln.strip()) for ln in raw.splitlines()]
+            raw = '\n'.join(ln for ln in lines if ln)
 
             if raw:
                 entries.append((start_ms, end_ms, raw))
