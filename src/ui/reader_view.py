@@ -1161,9 +1161,8 @@ class ReaderView(QWidget):
         panel_width = int(view_width * 0.6)
         panel_height = self.video_control_panel.sizeHint().height()
         x = (view_width - panel_width) // 2
-        slider_height = self.slider_panel.height() if self.slider_panel.isVisible() else 0
         margin = 40
-        y = self.height() - panel_height - slider_height - margin
+        y = self.height() - panel_height - margin
         self.video_control_panel.setGeometry(x, y, panel_width, panel_height)
 
     def toggle_fullscreen(self):

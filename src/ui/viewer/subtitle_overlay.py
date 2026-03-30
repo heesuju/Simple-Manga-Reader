@@ -4,6 +4,8 @@ import re
 from PyQt6.QtWidgets import QLabel
 from PyQt6.QtCore import Qt
 
+FONT_SIZES = {'Small': 16, 'Normal': 24, 'Big': 36}
+
 
 class SubtitleOverlay:
     """Loads an SMI subtitle file and displays subtitles as a floating label
@@ -13,10 +15,35 @@ class SubtitleOverlay:
         self._reader_view = reader_view
         self._label: QLabel | None = None
         self._subtitles: list[tuple[int, int, str]] = []  # (start_ms, end_ms, text)
+        self._font_size: int = 16
+        self._delay_s: float = 0.0
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    @property
+    def has_subtitles(self) -> bool:
+        return bool(self._subtitles)
+
+    @property
+    def font_size(self) -> int:
+        return self._font_size
+
+    @property
+    def delay_s(self) -> float:
+        return self._delay_s
+
+    def set_font_size(self, size: int):
+        self._font_size = size
+        if self._label:
+            self._label.setStyleSheet(self._make_stylesheet())
+            self._label.adjustSize()
+            if self._label.isVisible():
+                self._reposition()
+
+    def set_delay(self, delay_s: float):
+        self._delay_s = delay_s
 
     def load(self, video_path: str):
         """Parse the .smi file that sits next to *video_path*, if any."""
@@ -37,9 +64,10 @@ class SubtitleOverlay:
                 self._label.hide()
             return
 
+        effective_ms = position_ms + int(self._delay_s * 1000)
         text = ''
         for start, end, t in self._subtitles:
-            if start <= position_ms < end:
+            if start <= effective_ms < end:
                 text = t
                 break
 
@@ -53,11 +81,6 @@ class SubtitleOverlay:
         elif self._label:
             self._label.hide()
 
-    def reposition(self):
-        """Re-place the label (call on resize or control-panel move)."""
-        if self._label and self._label.isVisible():
-            self._reposition()
-
     def hide(self):
         if self._label:
             self._label.hide()
@@ -67,15 +90,19 @@ class SubtitleOverlay:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _make_stylesheet(self) -> str:
+        return (
+            f"QLabel {{ background-color: rgba(0,0,0,180); color: white; "
+            f"font-size: {self._font_size}pt; font-weight: bold; "
+            f"padding: 6px 14px; border-radius: 4px; }}"
+        )
+
     def _ensure_widget(self):
         if self._label is not None:
             return
         self._label = QLabel(self._reader_view)
         self._label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-        self._label.setStyleSheet(
-            "QLabel { background-color: rgba(0,0,0,180); color: white; "
-            "font-size: 16pt; font-weight: bold; padding: 6px 14px; border-radius: 4px; }"
-        )
+        self._label.setStyleSheet(self._make_stylesheet())
         self._label.hide()
 
     def _reposition(self):
@@ -89,7 +116,7 @@ class SubtitleOverlay:
 
         w, h = self._label.width(), self._label.height()
         x = (self._reader_view.width() - w) // 2
-        y = panel.y() - h - 8
+        y = panel.y() - h - 8 if panel.isVisible() else panel.y()
         self._label.setGeometry(x, y, w, h)
 
     def _parse_smi(self, smi_path: str) -> list[tuple[int, int, str]]:

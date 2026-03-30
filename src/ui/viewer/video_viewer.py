@@ -4,11 +4,11 @@ import shutil
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMenu, QFileDialog, QGraphicsPixmapItem
+from PyQt6.QtWidgets import QMenu, QFileDialog, QGraphicsPixmapItem, QInputDialog
 from PyQt6.QtCore import QUrl, QSizeF, QRectF, pyqtSignal, QPointF
 
 from src.ui.viewer.base_viewer import BaseViewer
-from src.ui.viewer.subtitle_overlay import SubtitleOverlay
+from src.ui.viewer.subtitle_overlay import SubtitleOverlay, FONT_SIZES
 from src.workers.view_workers import VideoMetadataWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
 from src.utils.img_utils import get_image_format_from_ext, compress_qimage_to_size
 
@@ -339,6 +339,24 @@ class VideoViewer(BaseViewer):
         
         menu.addSeparator()
 
+        if self.subtitles.has_subtitles:
+            sub_menu = menu.addMenu("Subtitle")
+
+            size_menu = sub_menu.addMenu("Font Size")
+            for label, size in FONT_SIZES.items():
+                action = QAction(label, self.reader_view)
+                action.setCheckable(True)
+                action.setChecked(self.subtitles.font_size == size)
+                action.triggered.connect(lambda _, s=size: self.subtitles.set_font_size(s))
+                size_menu.addAction(action)
+
+            delay_label = f"Set Delay... ({self.subtitles.delay_s:+.1f}s)"
+            delay_action = QAction(delay_label, self.reader_view)
+            delay_action.triggered.connect(self._set_subtitle_delay)
+            sub_menu.addAction(delay_action)
+
+            menu.addSeparator()
+
         add_file_action = QAction("Add Alternate from File...", self.reader_view)
         add_file_action.triggered.connect(self._add_alt_from_file)
         menu.addAction(add_file_action)
@@ -352,6 +370,17 @@ class VideoViewer(BaseViewer):
         global_pos = self.reader_view.view.mapToGlobal(view_pos)
         
         menu.exec(global_pos)
+
+    def _set_subtitle_delay(self):
+        value, ok = QInputDialog.getDouble(
+            self.reader_view,
+            "Subtitle Delay",
+            "Delay in seconds (negative = earlier, positive = later):",
+            self.subtitles.delay_s,
+            -30.0, 30.0, 1,
+        )
+        if ok:
+            self.subtitles.set_delay(value)
 
     def _save_current_video(self):
         path = self.video_item.data(0)
