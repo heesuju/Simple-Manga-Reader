@@ -4,6 +4,8 @@ import re
 from PyQt6.QtWidgets import QLabel
 from PyQt6.QtCore import Qt
 
+import src.utils.app_settings as app_settings
+
 FONT_SIZES = {'Small': 16, 'Normal': 24, 'Big': 36}
 
 
@@ -15,7 +17,7 @@ class SubtitleOverlay:
         self._reader_view = reader_view
         self._label: QLabel | None = None
         self._subtitles: list[tuple[int, int, str]] = []  # (start_ms, end_ms, text)
-        self._font_size: int = 16
+        self._font_size: int = app_settings.get("subtitle_font_size", 16)
         self._delay_s: float = 0.0
 
     # ------------------------------------------------------------------
@@ -36,6 +38,7 @@ class SubtitleOverlay:
 
     def set_font_size(self, size: int):
         self._font_size = size
+        app_settings.set("subtitle_font_size", size)
         if self._label:
             self._label.setStyleSheet(self._make_stylesheet())
             self._label.adjustSize()

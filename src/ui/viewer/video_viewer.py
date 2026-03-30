@@ -119,6 +119,8 @@ class VideoViewer(BaseViewer):
         self.media_player.setLoops(QMediaPlayer.Loops.Infinite if self.video_repeat else 1)
         self.video_item.setData(0, path)
         self.subtitles.load(path)
+        if self.subtitles.has_subtitles:
+            self.subtitles.set_delay(self._load_subtitle_delay(path))
         self.video_item.setVisible(True)
         
         # Initial size might be invalid if not loaded, wait for nativeSizeChanged
@@ -371,6 +373,20 @@ class VideoViewer(BaseViewer):
         
         menu.exec(global_pos)
 
+    def _subtitle_context(self, video_path: str):
+        """Return (series_path, chapter_name, filename) for info.json storage."""
+        series_path = self.reader_view.model.manga_dir if self.reader_view.model else ''
+        chapter_name = os.path.basename(os.path.dirname(video_path))
+        filename = os.path.basename(video_path)
+        return series_path, chapter_name, filename
+
+    def _load_subtitle_delay(self, video_path: str) -> float:
+        from src.core.alt_manager import AltManager
+        series_path, chapter_name, filename = self._subtitle_context(video_path)
+        if not series_path:
+            return 0.0
+        return AltManager.get_subtitle_delay(series_path, chapter_name, filename)
+
     def _set_subtitle_delay(self):
         value, ok = QInputDialog.getDouble(
             self.reader_view,
@@ -381,6 +397,12 @@ class VideoViewer(BaseViewer):
         )
         if ok:
             self.subtitles.set_delay(value)
+            path = self.video_item.data(0) if self.video_item else None
+            if path and '|' not in path:
+                from src.core.alt_manager import AltManager
+                series_path, chapter_name, filename = self._subtitle_context(path)
+                if series_path:
+                    AltManager.save_subtitle_delay(series_path, chapter_name, filename, value)
 
     def _save_current_video(self):
         path = self.video_item.data(0)

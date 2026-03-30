@@ -582,3 +582,35 @@ class AltManager:
                 del entry["alts_fix"]
         data[chapter_name][main_name] = entry
         AltManager.save_alts(series_path, data)
+
+    @staticmethod
+    def get_subtitle_delay(series_path: str, chapter_name: str, filename: str) -> float:
+        """Return the saved subtitle delay (seconds) for a video file, or 0.0."""
+        data = AltManager.load_alts(series_path)
+        entry = data.get(chapter_name, {}).get(filename, {})
+        if isinstance(entry, dict):
+            return float(entry.get('subtitle_delay', 0.0))
+        return 0.0
+
+    @staticmethod
+    def save_subtitle_delay(series_path: str, chapter_name: str, filename: str, delay_s: float):
+        """Persist the subtitle delay for a video file into info.json."""
+        data = AltManager.load_alts(series_path)
+        if delay_s == 0.0:
+            entry = data.get(chapter_name, {}).get(filename, {})
+            if isinstance(entry, dict) and 'subtitle_delay' in entry:
+                del entry['subtitle_delay']
+                if not entry:
+                    del data[chapter_name][filename]
+                if not data.get(chapter_name):
+                    del data[chapter_name]
+                AltManager.save_alts(series_path, data)
+            return
+        if chapter_name not in data:
+            data[chapter_name] = {}
+        if filename not in data[chapter_name]:
+            data[chapter_name][filename] = {}
+        entry = AltManager._ensure_entry_structure(data[chapter_name][filename])
+        entry['subtitle_delay'] = round(delay_s, 3)
+        data[chapter_name][filename] = entry
+        AltManager.save_alts(series_path, data)
