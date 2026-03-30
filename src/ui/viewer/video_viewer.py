@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QMenu, QFileDialog, QGraphicsPixmapItem
 from PyQt6.QtCore import QUrl, QSizeF, QRectF, pyqtSignal, QPointF
 
 from src.ui.viewer.base_viewer import BaseViewer
+from src.ui.viewer.subtitle_overlay import SubtitleOverlay
 from src.workers.view_workers import VideoMetadataWorker, VideoTimestampFrameExtractorWorker, VIDEO_EXTS
 from src.utils.img_utils import get_image_format_from_ext, compress_qimage_to_size
 
@@ -35,6 +36,8 @@ class VideoViewer(BaseViewer):
         self.video_repeat = True
         self.auto_play = False
         self._near_end_paused = False
+
+        self.subtitles = SubtitleOverlay(reader_view)
         
         self._connect_signals()
 
@@ -55,6 +58,7 @@ class VideoViewer(BaseViewer):
         panel.auto_play_toggled.connect(self._set_auto_play)
         panel.seek_frame.connect(self._seek_to_frame)
         panel.step_frame.connect(self._step_video_frame)
+        self.media_player.positionChanged.connect(self.subtitles.update)
 
         # Apply saved volume/mute state (initial signal was emitted before this connection existed)
         self._set_volume(panel.volume_control.volume_slider.value())
@@ -87,6 +91,7 @@ class VideoViewer(BaseViewer):
         if self.video_item.scene() != self.reader_view.scene:
             self.reader_view.scene.addItem(self.video_item)
 
+
     def _play_video(self, path: str):
         self._ensure_items_in_scene()
         
@@ -113,6 +118,7 @@ class VideoViewer(BaseViewer):
         self.media_player.setSource(QUrl.fromLocalFile(path))
         self.media_player.setLoops(QMediaPlayer.Loops.Infinite if self.video_repeat else 1)
         self.video_item.setData(0, path)
+        self.subtitles.load(path)
         self.video_item.setVisible(True)
         
         # Initial size might be invalid if not loaded, wait for nativeSizeChanged
@@ -141,6 +147,8 @@ class VideoViewer(BaseViewer):
         if self.video_item:
             self.video_item.setData(0, None)
             
+        self.subtitles.hide()
+
         if self.active_meta_worker:
             self.active_meta_worker.cancelled = True
             self.active_meta_worker = None
