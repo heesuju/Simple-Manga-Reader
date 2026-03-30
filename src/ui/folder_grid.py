@@ -32,6 +32,7 @@ from src.ui.info_dialog import InfoDialog
 from src.ui.components.chapter_selection_dialog import ChapterSelectionDialog
 from src.utils.resource_utils import resource_path
 from src.ui.styles import FLAT_BUTTON_STYLE
+import src.utils.app_settings as app_settings
 
 class StatusButton(QPushButton):
     def __init__(self, parent=None):
@@ -426,7 +427,7 @@ class FolderGrid(QWidget):
     def apply_filters(self):
         search_text = self.search_bar.text()
         if search_text.startswith("/"):
-             search_text = ""
+            search_text = ""
         filters = self.get_filters()
 
         if search_text or filters.get('authors') or filters.get('genres') or filters.get('themes') or filters.get('formats'):
@@ -493,6 +494,13 @@ class FolderGrid(QWidget):
 
         if series_list is None:
             series_list = self.library_manager.get_series()
+
+        excluded = app_settings.get("excluded_themes", [])
+        if excluded and not app_settings.get("show_hidden_themes", False):
+            excluded_set = {t.lower() for t in excluded}
+            series_list = [s for s in series_list
+                           if not any(t.lower() in excluded_set for t in s.get('themes', []))]
+
         self.total_items_to_load = len(series_list)
         self.all_series_label.setText(f"All ({self.total_items_to_load})")
         self.received_items.clear()
@@ -530,6 +538,12 @@ class FolderGrid(QWidget):
                 item.widget().deleteLater()
 
         recent_series_list = self.library_manager.get_recently_opened_series()
+        
+        excluded = app_settings.get("excluded_themes", [])
+        if excluded and not app_settings.get("show_hidden_themes", False):
+            excluded_set = {t.lower() for t in excluded}
+            recent_series_list = [s for s in recent_series_list
+                if not any(t.lower() in excluded_set for t in s.get('themes', []))]
 
         if not recent_series_list:
             self.recent_label.hide()
@@ -920,15 +934,22 @@ class FolderGrid(QWidget):
 
     def show_llm_config(self):
         from src.ui.settings_dialog import SettingsDialog
-        dialog = SettingsDialog(self)
+        dialog = SettingsDialog(self, library_manager=self.library_manager)
         dialog.exec()
+        self.apply_filters()
 
     def show_more_options_menu(self):
         menu = QMenu(self)
         edit_action = menu.addAction("Edit")
+        show_hidden_action = menu.addAction("Show Hidden")
+        show_hidden_action.setCheckable(True)
+        show_hidden_action.setChecked(app_settings.get("show_hidden_themes", False))
         action = menu.exec(self.more_options_btn.mapToGlobal(self.more_options_btn.rect().bottomLeft()))
         if action == edit_action:
             self.toggle_selection_mode(True)
+        elif action == show_hidden_action:
+            app_settings.set("show_hidden_themes", show_hidden_action.isChecked())
+            self.apply_filters()
 
     def add_single_series(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Manga Series Folder")

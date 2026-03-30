@@ -1,8 +1,10 @@
 
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, 
-                             QHBoxLayout, QFrame, QWidget, QMessageBox, QProgressBar, QFormLayout, QLineEdit, QCheckBox)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton,
+                             QHBoxLayout, QFrame, QWidget, QMessageBox, QProgressBar,
+                             QFormLayout, QLineEdit, QCheckBox, QListWidget, QComboBox)
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from src.core.llm_server import LLMServerManager
+import src.utils.app_settings as app_settings
 
 class DownloadWorker(QThread):
     finished = pyqtSignal(bool, str)
@@ -19,11 +21,12 @@ class DownloadWorker(QThread):
             self.finished.emit(False, str(e))
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, library_manager=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedWidth(400)
+        self.setFixedWidth(440)
         self.manager = LLMServerManager.instance()
+        self.library_manager = library_manager
         self.setup_ui()
         self.check_status()
 
@@ -160,11 +163,72 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(storage_container)
 
+        # Library Section
+        library_container = QFrame()
+        library_container.setStyleSheet("background-color: #2b2b2b; border-radius: 5px; padding: 10px; margin-top: 10px;")
+        library_layout = QVBoxLayout(library_container)
+
+        library_title = QLabel("Library")
+        library_title.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
+        library_layout.addWidget(library_title)
+
+        themes_label = QLabel("Excluded Themes")
+        themes_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        library_layout.addWidget(themes_label)
+
+        add_row = QHBoxLayout()
+        self.theme_combo = QComboBox()
+        self.theme_combo.setEditable(False)
+        self.theme_combo.setStyleSheet("background-color: #3b3b3b; color: white; border: 1px solid #555; padding: 3px;")
+        if self.library_manager:
+            self.theme_combo.addItems(self.library_manager.get_all_themes())
+        add_row.addWidget(self.theme_combo, 1)
+
+        add_theme_btn = QPushButton("Add")
+        add_theme_btn.setFixedWidth(50)
+        add_theme_btn.setStyleSheet("background-color: #555; color: white; border: none; padding: 4px; border-radius: 3px;")
+        add_theme_btn.clicked.connect(self._add_excluded_theme)
+        add_row.addWidget(add_theme_btn)
+        library_layout.addLayout(add_row)
+
+        self.excluded_list = QListWidget()
+        self.excluded_list.setStyleSheet("background-color: #3b3b3b; color: white; border: 1px solid #555;")
+        self.excluded_list.setMaximumHeight(120)
+        for theme in app_settings.get("excluded_themes", []):
+            self.excluded_list.addItem(theme)
+        library_layout.addWidget(self.excluded_list)
+
+        remove_btn = QPushButton("Remove Selected")
+        remove_btn.setStyleSheet("background-color: #555; color: white; border: none; padding: 4px; border-radius: 3px;")
+        remove_btn.clicked.connect(self._remove_excluded_theme)
+        library_layout.addWidget(remove_btn)
+
+        layout.addWidget(library_container)
+
         layout.addStretch()
-        
+
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
+
+    def _add_excluded_theme(self):
+        theme = self.theme_combo.currentText().strip()
+        if not theme:
+            return
+        existing = [self.excluded_list.item(i).text() for i in range(self.excluded_list.count())]
+        if theme in existing:
+            return
+        self.excluded_list.addItem(theme)
+        self._save_excluded_themes()
+
+    def _remove_excluded_theme(self):
+        for item in self.excluded_list.selectedItems():
+            self.excluded_list.takeItem(self.excluded_list.row(item))
+        self._save_excluded_themes()
+
+    def _save_excluded_themes(self):
+        themes = [self.excluded_list.item(i).text() for i in range(self.excluded_list.count())]
+        app_settings.set("excluded_themes", themes)
 
     def save_config(self):
         repo_id = self.repo_input.text().strip()
