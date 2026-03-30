@@ -19,6 +19,7 @@ class TopPanel(QWidget):
     lang_changed = pyqtSignal(str)
     sort_changed = pyqtSignal(str)
     zoom_mode_changed = pyqtSignal(str)
+    bg_color_changed = pyqtSignal(str)
     zoom_reset = pyqtSignal()
     fullscreen_requested = pyqtSignal()
 
@@ -40,6 +41,7 @@ class TopPanel(QWidget):
         self._speed_index = 0
         self._speed_options: list[str] = ["1x", "2x", "8x"]
         self._current_sort_mode = 'name'
+        self._current_bg_color = 'Default (Gray)'
 
         # Zoom controls (view group — sits left of title)
         zoom_fit_icon = QIcon(resource_path("assets/icons/reset_zoom.svg"))
@@ -146,6 +148,9 @@ class TopPanel(QWidget):
     def set_sort_mode(self, mode: str):
         self._current_sort_mode = mode or 'name'
 
+    def set_bg_color(self, color_name: str):
+        self._current_bg_color = color_name
+
     def set_zoom_text(self, text: str):
         self.zoom_combobox.blockSignals(True)
         self.zoom_combobox.setCurrentText(text)
@@ -201,6 +206,18 @@ class TopPanel(QWidget):
 
         menu.addSeparator()
 
+        # Background Color Submenu
+        bg_menu = menu.addMenu(f"Background: {self._current_bg_color}")
+        bg_menu.setStyleSheet(menu.styleSheet())
+        for color_opt in ['Default (Gray)', 'Black', 'White']:
+            a = QAction(color_opt, self)
+            a.setCheckable(True)
+            a.setChecked(color_opt == self._current_bg_color)
+            a.triggered.connect(lambda checked, c=color_opt: self._select_bg_color(c))
+            bg_menu.addAction(a)
+
+        menu.addSeparator()
+
         # Sort submenu
         sort_menu = menu.addMenu("Sort Pages")
         sort_menu.setStyleSheet(menu.styleSheet())
@@ -232,6 +249,12 @@ class TopPanel(QWidget):
             return
         self._current_sort_mode = mode
         self.sort_changed.emit(mode)
+
+    def _select_bg_color(self, color_name: str):
+        if color_name == self._current_bg_color:
+            return
+        self._current_bg_color = color_name
+        self.bg_color_changed.emit(color_name)
 
     def update_translate_button(self, state: str = 'TRANSLATE', lang: str = ""):
         if state == 'TRANSLATING':

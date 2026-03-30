@@ -27,6 +27,7 @@ from src.ui.frame_panel import FramePanel
 from src.enums import Language
 from src.ui.components.selection_panel import SelectionPanel
 
+import src.utils.app_settings as app_settings
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
@@ -316,10 +317,39 @@ class ReaderView(QWidget):
         self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_side_panels_geometry))
         self.chapter_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_side_panels_geometry))
 
+        initial_bg = app_settings.get("reader_bg_color", "Default (Gray)")
+        self.top_panel.set_bg_color(initial_bg)
+        self.top_panel.bg_color_changed.connect(self.set_background_color)
+        self._apply_background_color()
+
         self.original_view_mouse_press = self.view.mousePressEvent
         self.original_view_mouse_release = self.view.mouseReleaseEvent
         self.view.mousePressEvent = self._overlay_mouse_press
         self.view.mouseReleaseEvent = self._overlay_mouse_release
+
+    def set_background_color(self, color_name: str):
+        app_settings.set("reader_bg_color", color_name)
+        self._apply_background_color()
+
+    def _apply_background_color(self):
+        from PyQt6.QtGui import QBrush
+        bg_color = app_settings.get("reader_bg_color", "Default (Gray)")
+        if bg_color == "Black":
+            color = "black"
+        elif bg_color == "White":
+            color = "white"
+        else:
+            color = "#1e1e1e"
+
+        brush = QBrush(QColor(color))
+            
+        self.scene.setBackgroundBrush(brush)
+        self.view.setBackgroundBrush(brush)
+        
+        if hasattr(self, 'scroll_area') and self.scroll_area:
+            self.scroll_area.setStyleSheet(f"QScrollArea {{ border: none; padding: 0px; margin: 0px; background-color: {color}; }}")
+            if hasattr(self, 'vertical_container') and self.vertical_container:
+                self.vertical_container.setStyleSheet(f"background-color: {color};")
 
     def _update_zoom(self, factor: float, update_last_mode: bool = True):
         """Zoom the view using GPU-accelerated transformation.""" 
