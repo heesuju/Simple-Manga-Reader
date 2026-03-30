@@ -393,7 +393,7 @@ class VideoViewer(BaseViewer):
             "Subtitle Delay",
             "Delay in seconds (negative = earlier, positive = later):",
             self.subtitles.delay_s,
-            -30.0, 30.0, 1,
+            -300.0, 300.0, 3,
         )
         if ok:
             self.subtitles.set_delay(value)
