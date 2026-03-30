@@ -116,8 +116,8 @@ class SubtitleOverlay:
 
         w, h = self._label.width(), self._label.height()
         x = (self._reader_view.width() - w) // 2
-        y = panel.y() - h - 8 if panel.isVisible() else panel.y()
-        self._label.setGeometry(x, y, w, h)
+        bottom = panel.y() - 8 if panel.isVisible() else panel.y() + panel.height()
+        self._label.setGeometry(x, bottom - h, w, h)
 
     def _parse_smi(self, smi_path: str) -> list[tuple[int, int, str]]:
         content = None
