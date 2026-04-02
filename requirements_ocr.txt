@@ -3,3 +3,5 @@ requests
 ultralytics
 huggingface_hub
 manga-ocr
+rembg
+onnxruntime

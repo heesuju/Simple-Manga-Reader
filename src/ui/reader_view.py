@@ -304,6 +304,7 @@ class ReaderView(QWidget):
         self.selection_panel.ratio_selected.connect(self.view.set_selection_ratio)
         self.selection_panel.apply_clicked.connect(self._apply_area_selection)
         self.selection_panel.cancel_clicked.connect(self._cancel_area_selection)
+        self.selection_panel.sticker_clicked.connect(self._apply_sticker_selection)
         self.view.ratio_changed.connect(self.selection_panel.set_ratio)
 
         self.zoom_changed.connect(self.top_panel.set_zoom_text)
@@ -923,6 +924,75 @@ class ReaderView(QWidget):
         self.view.clear_selection()
         self.selection_panel.hide()
         self._toggle_panels(visible=True)
+
+    def _apply_sticker_selection(self):
+        rect = self.view.get_selection_rect()
+        if not rect:
+            QMessageBox.information(self, "No Selection", "Please select an area first.")
+            return
+
+        # Crop the selected region from the current pixmap
+        if not (self.current_viewer and hasattr(self.current_viewer, 'original_pixmap')):
+            return
+        pixmap = self.current_viewer.original_pixmap
+        if not pixmap or pixmap.isNull():
+            return
+
+        img_rect = pixmap.rect()
+        crop_rect = rect.toRect().intersected(img_rect)
+        if crop_rect.width() <= 0 or crop_rect.height() <= 0:
+            return
+
+        cropped = pixmap.copy(crop_rect)
+
+        # Convert QPixmap → PIL Image
+        from PIL import Image
+        import io
+        from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
+        ba = QByteArray()
+        buf = QBuffer(ba)
+        buf.open(QIODevice.OpenModeFlag.WriteOnly)
+        cropped.save(buf, "PNG")
+        buf.close()
+        pil_image = Image.open(io.BytesIO(ba.data())).convert("RGBA")
+
+        self._cancel_area_selection()
+        self._sticker_original_pil = pil_image  # kept for GrabCut refinement
+
+        # Show feedback while server processes
+        self.loading_label.setText("Making sticker...")
+        self.loading_label.show()
+
+        from src.workers.sticker_worker import StickerWorker
+        worker = StickerWorker(pil_image, border=0)
+        worker.signals.finished.connect(self._on_sticker_finished)
+        self.thread_pool.start(worker)
+
+    def _on_sticker_finished(self, pil_image, error: str):
+        self.loading_label.hide()
+        if error:
+            QMessageBox.warning(self, "Sticker Error", error)
+            return
+
+        from src.ui.components.sticker_preview_dialog import StickerPreviewDialog
+        dialog = StickerPreviewDialog(self._sticker_original_pil, pil_image,
+                                      result_no_border_pil=pil_image, parent=self)
+        if dialog.exec() != StickerPreviewDialog.DialogCode.Accepted:
+            return
+
+        import os
+        import time
+        from PyQt6.QtWidgets import QFileDialog
+
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        initial_path = os.path.join(downloads_dir, f"sticker_{timestamp}.png")
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Sticker As", initial_path, "PNG Image (*.png)"
+        )
+        if file_path:
+            dialog.get_result().save(file_path, "PNG")
 
     def reset_zoom(self):
         self.set_zoom_mode("Fit Page")

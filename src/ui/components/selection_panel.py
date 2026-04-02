@@ -17,6 +17,7 @@ class SelectionPanel(QWidget):
     ratio_selected = pyqtSignal(object)  # float or None
     apply_clicked = pyqtSignal()
     cancel_clicked = pyqtSignal()
+    sticker_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -130,6 +131,24 @@ class SelectionPanel(QWidget):
         self.cancel_btn.setStyleSheet(FLAT_BUTTON_STYLE + "QPushButton { color: #ff5555; padding: 4px 12px; font-weight: bold; margin-left: 10px; }")
         self.cancel_btn.clicked.connect(self.cancel_clicked)
         main_layout.addWidget(self.cancel_btn)
+
+        self.sticker_btn = QPushButton("Make Sticker")
+        self.sticker_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #7b2fff;
+                border: none;
+                color: white;
+                padding: 8px 15px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 13px;
+                min-width: 120px;
+            }
+            QPushButton:hover { background-color: #9147ff; }
+            QPushButton:pressed { background-color: #6a1fd4; }
+        """)
+        self.sticker_btn.clicked.connect(self.sticker_clicked)
+        main_layout.addWidget(self.sticker_btn)
 
         self.apply_btn = QPushButton("Save Selection")
         self.apply_btn.setStyleSheet("""
