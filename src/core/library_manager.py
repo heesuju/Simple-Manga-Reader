@@ -328,11 +328,11 @@ class LibraryManager:
         finally:
             conn.close()
 
-    def update_last_read_chapter(self, series_id, chapter_path):
+    def update_last_read_chapter(self, series_id, chapter_path, page_index=0):
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("UPDATE series SET last_read_chapter = ?, last_opened_date = ? WHERE id = ?", (chapter_path, datetime.now(), series_id))
+            cursor.execute("UPDATE series SET last_read_chapter = ?, last_opened_date = ?, last_read_page = ? WHERE id = ?", (chapter_path, datetime.now(), page_index, series_id))
             conn.commit()
         except Exception as e:
             print(f"Error updating last read chapter: {e}")

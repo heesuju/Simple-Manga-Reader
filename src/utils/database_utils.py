@@ -108,6 +108,8 @@ def create_tables():
         cursor.execute("ALTER TABLE series ADD COLUMN last_read_chapter TEXT")
     if 'last_opened_date' not in columns:
         cursor.execute("ALTER TABLE series ADD COLUMN last_opened_date DATETIME")
+    if 'last_read_page' not in columns:
+        cursor.execute("ALTER TABLE series ADD COLUMN last_read_page INTEGER DEFAULT 0")
 
     cursor.execute("PRAGMA table_info(chapters)")
     columns = [row['name'] for row in cursor.fetchall()]

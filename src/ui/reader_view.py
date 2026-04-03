@@ -49,11 +49,12 @@ class ReaderView(QWidget):
     current_chapter_changed = pyqtSignal(object, str)
     hide_chapter_requested = pyqtSignal(object, object)  # series, chapter dict
 
-    def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None):
+    def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None, start_page: int = 0):
         super().__init__()
         self.current_viewer = None
         self.grabGesture(Qt.GestureType.PinchGesture)
 
+        self._start_page = start_page
         self.model = ReaderModel(series, manga_dirs, index, start_file, images)
         self.model.refreshed.connect(self.on_model_refreshed)
         self.model.image_loaded.connect(self._load_image)
@@ -1287,6 +1288,9 @@ class ReaderView(QWidget):
             
             if found_idx != -1:
                 self.model.current_index = found_idx
+            elif self._start_page > 0:
+                self.model.current_index = min(self._start_page, len(self.model.images) - 1)
+                self._start_page = 0
             else:
                 self.model.current_index = 0
 

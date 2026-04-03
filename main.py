@@ -85,7 +85,8 @@ class MainWindow(QMainWindow):
                 break
         
         if target_chapter:
-            self.show_reader_view(series, target_chapter)
+            start_page = series.get('last_read_page', 0) or 0
+            self.show_reader_view(series, target_chapter, start_page=start_page)
         else:
             # Fallback if chapter not found
             self.show_chapter_list(series)
@@ -94,7 +95,7 @@ class MainWindow(QMainWindow):
         self.folder_grid.load_recent_items()
         self.stacked_widget.setCurrentWidget(self.folder_grid)
 
-    def show_reader_view(self, series, chapter):
+    def show_reader_view(self, series, chapter, start_page=0):
         self.current_series = series
         if chapter:
             self.current_series_has_chapters = True
@@ -136,7 +137,7 @@ class MainWindow(QMainWindow):
                 except (NotADirectoryError, FileNotFoundError):
                     images = []
 
-        self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images)
+        self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images, start_page=start_page)
         self.reader_view.back_pressed.connect(self.handle_reader_back)
         self.reader_view.request_fullscreen_toggle.connect(self.toggle_fullscreen)
         self.reader_view.current_chapter_changed.connect(self.on_reader_chapter_changed)
@@ -153,9 +154,17 @@ class MainWindow(QMainWindow):
 
     def on_reader_chapter_changed(self, series, chapter_path):
         if series and chapter_path:
-             self.library_manager.update_last_read_chapter(series['id'], chapter_path)
+            self.library_manager.update_last_read_chapter(series['id'], chapter_path, 0)
 
     def handle_reader_back(self):
+        if hasattr(self, 'reader_view') and self.reader_view:
+            model = self.reader_view.model
+            chapter = model.manga_dir
+            chapter_path = chapter.get('path') if isinstance(chapter, dict) else str(chapter) if chapter else None
+            if chapter_path and self.current_series:
+                page = getattr(model, 'current_index', 0)
+                self.library_manager.update_last_read_chapter(self.current_series['id'], chapter_path, page)
+
         if self.current_series_has_chapters:
             if not hasattr(self, 'chapter_list') or self.chapter_list.series != self.current_series:
                 self.show_chapter_list(self.current_series)
