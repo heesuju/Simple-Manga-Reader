@@ -439,21 +439,15 @@ class ReaderView(QWidget):
         available_h = max(100, total_h - top_h - bottom_h)
         y_pos = top_h
 
-        # Tab is anchored to the center of the stable full side height so it
-        # doesn't move when bottom panels open/close.
-        stable_tab_center_y = (total_h - top_h) // 2
-
         # Update Alt Panel (Left)
         if self.alt_panel.isVisible():
             self.alt_panel.setGeometry(0, y_pos, self.alt_panel.width(), available_h)
-            self.alt_panel.set_tab_center_y(stable_tab_center_y)
             self.alt_panel.raise_()
 
         # Update Frame Panel (Right)
         if self.frame_panel.isVisible():
             panel_w = self.frame_panel.width()
             self.frame_panel.setGeometry(total_w - panel_w, y_pos, panel_w, available_h)
-            self.frame_panel.set_tab_center_y(stable_tab_center_y)
             self.frame_panel.raise_()
 
         # Keep UI controls on top
@@ -692,6 +686,10 @@ class ReaderView(QWidget):
             # Delegate other events if needed
              
         if obj is self.view.viewport():
+            if event.type() == QEvent.Type.Leave:
+                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, False)
+                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, False)
+
             if event.type() == QEvent.Type.MouseMove:
                 x = event.position().x()
                 view_width = self.width()
@@ -1295,14 +1293,16 @@ class ReaderView(QWidget):
             return False
         if self.model.view_mode == ViewMode.STRIP:
             return self.model.chapter_index > 0
-        return self.model.current_index > 0 or self.model.chapter_index > 0
+        current = getattr(self.model, 'current_index', 0)
+        return current > 0 or self.model.chapter_index > 0
 
     def _has_next(self) -> bool:
         if not self.model.images and self.model.chapter_index >= len(self.model.chapters) - 1:
             return False
         if self.model.view_mode == ViewMode.STRIP:
             return self.model.chapter_index < len(self.model.chapters) - 1
-        return self.model.current_index < len(self.model.images) - 1 or self.model.chapter_index < len(self.model.chapters) - 1
+        current = getattr(self.model, 'current_index', 0)
+        return current < len(self.model.images) - 1 or self.model.chapter_index < len(self.model.chapters) - 1
 
     def _update_nav_buttons(self):
         if not self._has_prev():

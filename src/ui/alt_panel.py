@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt, QTimer, QSize, QPoint
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
+from src.ui.components.grip_strip import GripStrip, GRIP_W
 from src.utils.resource_utils import resource_path
 from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path
 from src.utils.str_utils import natural_sort_key
@@ -16,8 +17,7 @@ from src.core.alt_manager import AltManager
 
 THUMB_W = 120
 THUMB_H = 160
-TAB_W = 16   # width of the collapse/expand tab
-TAB_H = 56   # height of the collapse/expand tab
+PANEL_W = THUMB_W + 40
 
 
 class AltThumbnail(QWidget):
@@ -98,19 +98,23 @@ class AltPanel(QWidget):
                 border: none;
             }
         """)
-        self._collapsed = False
-        self.setFixedWidth(THUMB_W + 40)
+        self._collapsed = True
+        self.setFixedWidth(GRIP_W)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
-        # Outer layout holds only the content widget; tab is a floating overlay
-        outer_layout = QVBoxLayout(self)
+        # Outer layout: content on the left, grip strip on the right
+        outer_layout = QHBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
 
         self._content_widget = QWidget(self)
         self._content_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._content_widget.setStyleSheet("background: transparent;")
+        self._content_widget.hide()
         outer_layout.addWidget(self._content_widget)
+
+        self._grip = GripStrip(self._toggle_collapse, self)
+        outer_layout.addWidget(self._grip)
 
         main_layout = QVBoxLayout(self._content_widget)
         main_layout.setContentsMargins(5, 5, 5, 5)
@@ -222,30 +226,6 @@ class AltPanel(QWidget):
         self.speeds = [2000, 1000, 500, 250]
         self.speed_labels = ["x1", "x2", "x4", "x8"]
 
-        # Collapse tab — floats on the right edge, always visible when panel is shown
-        self._tab_btn = QPushButton("‹", self)
-        self._tab_btn.setFixedSize(TAB_W, TAB_H)
-        self._tab_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._tab_btn.setToolTip("Collapse panel")
-        self._tab_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(0, 0, 0, 140);
-                color: rgba(255, 255, 255, 200);
-                border: 1px solid rgba(255, 255, 255, 40);
-                border-left: none;
-                border-radius: 0px 5px 5px 0px;
-                font-size: 13px;
-                font-weight: bold;
-                padding: 0;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 50);
-                color: white;
-            }
-        """)
-        self._tab_btn.clicked.connect(self._toggle_collapse)
-        self._tab_btn.raise_()
-
         self.hide()
 
         if self.model:
@@ -258,34 +238,10 @@ class AltPanel(QWidget):
     def _on_double_image_loaded(self, path1, path2):
         self._update_panel(self.model.current_index)
 
-    def resizeEvent(self, ev):
-        super().resizeEvent(ev)
-        self._reposition_tab()
-
-    def set_tab_center_y(self, center_y: int):
-        """Set the tab's vertical center to a viewport-relative y so it stays stable."""
-        self._tab_center_y = center_y
-        self._reposition_tab()
-
-    def _reposition_tab(self):
-        if hasattr(self, '_tab_center_y'):
-            tab_y = max(0, min(self._tab_center_y - TAB_H // 2, self.height() - TAB_H))
-        else:
-            tab_y = max(0, (self.height() - TAB_H) // 2)
-        self._tab_btn.move(self.width() - TAB_W, tab_y)
-        self._tab_btn.raise_()
-
     def _toggle_collapse(self):
         self._collapsed = not self._collapsed
         self._content_widget.setVisible(not self._collapsed)
-        if self._collapsed:
-            self.setFixedWidth(TAB_W)
-            self._tab_btn.setText("›")
-            self._tab_btn.setToolTip("Expand panel")
-        else:
-            self.setFixedWidth(THUMB_W + 40)
-            self._tab_btn.setText("‹")
-            self._tab_btn.setToolTip("Collapse panel")
+        self.setFixedWidth(GRIP_W if self._collapsed else PANEL_W + GRIP_W)
         if hasattr(self.parent(), '_update_side_panels_geometry'):
             QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
 
