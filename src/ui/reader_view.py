@@ -179,7 +179,6 @@ class ReaderView(QWidget):
         self.view = ImageView(manga_reader=self)
         self.view.viewport().setMouseTracking(True)
         self.view.setScene(self.scene)
-        self.view.viewport().installEventFilter(self)
         self.view.translate_requested.connect(self.translate_page)
         # Connect zoom signal to handle HQ restoration
         self.view.zoom_started.connect(self._on_view_zoom_started)
@@ -235,8 +234,6 @@ class ReaderView(QWidget):
         self.scroll_area.setWidget(self.vertical_container)
         
         # Note: Connection to valueChanged handled by StripViewer now
-        self.scroll_area.installEventFilter(self)
-        self.scroll_area.viewport().installEventFilter(self)
         main_layout.addWidget(self.scroll_area, 0, 0)
         self.scroll_area.hide()
 
@@ -302,6 +299,11 @@ class ReaderView(QWidget):
         self.next_nav_btn.setStyleSheet(btn_style)
         self.next_nav_btn.clicked.connect(self.show_next)
         self.next_nav_btn.hide()
+        self.prev_nav_btn.installEventFilter(self)
+        self.next_nav_btn.installEventFilter(self)
+        self.view.viewport().installEventFilter(self)
+        self.scroll_area.installEventFilter(self)
+        self.scroll_area.viewport().installEventFilter(self)
 
         self._prev_opacity = QGraphicsOpacityEffect(self.prev_nav_btn)
         self._next_opacity = QGraphicsOpacityEffect(self.next_nav_btn)
@@ -685,17 +687,25 @@ class ReaderView(QWidget):
                         return True
             # Delegate other events if needed
              
+        if obj is self.prev_nav_btn and event.type() == QEvent.Type.Leave:
+            self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, False)
+        if obj is self.next_nav_btn and event.type() == QEvent.Type.Leave:
+            self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, False)
+
         if obj is self.view.viewport():
             if event.type() == QEvent.Type.Leave:
-                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, False)
-                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, False)
+                # Delay so mouse moving onto the button itself doesn't trigger hide
+                QTimer.singleShot(50, lambda: self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, False) if not self.prev_nav_btn.underMouse() else None)
+                QTimer.singleShot(50, lambda: self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, False) if not self.next_nav_btn.underMouse() else None)
 
             if event.type() == QEvent.Type.MouseMove:
                 x = event.position().x()
                 view_width = self.width()
                 hover_zone = view_width * 0.2
-                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and self._has_prev())
-                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and self._has_next())
+                alt_open = self.alt_panel.isVisible() and not self.alt_panel._collapsed
+                frame_open = self.frame_panel.isVisible() and not self.frame_panel._collapsed
+                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and not alt_open and self._has_prev())
+                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and not frame_open and self._has_next())
 
                 if self.video_viewer.video_item and self.video_viewer.video_item.isVisible():
                     view_height = self.height()
