@@ -16,7 +16,7 @@ from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool
 
 from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
-from src.ui.thumbnail_widget import ThumbnailWidget
+from src.ui.thumbnail_widget import ThumbnailWidget, THUMB_H
 from src.ui.group_view import GroupView
 from src.core.item_loader import ItemLoader
 from src.utils.img_utils import get_chapter_number
@@ -559,7 +559,14 @@ class FolderGrid(QWidget):
                 loader.abort()
         self._active_recent_loaders.clear()
 
-        loader = ItemLoader(recent_series_list, self.recent_loading_generation, item_type='series')
+        page_items = []
+        for series in recent_series_list:
+            page_items.append({
+                'image_path': series.get('last_read_image_path'),
+                '_series': series,
+            })
+
+        loader = ItemLoader(page_items, self.recent_loading_generation, item_type='page')
         if self.recent_loader:
             try:
                 self.recent_loader.signals.item_loaded.disconnect()
@@ -575,12 +582,13 @@ class FolderGrid(QWidget):
         if loader in self._active_recent_loaders:
             self._active_recent_loaders.remove(loader)
 
-    def on_recent_item_loaded(self, qimg, series, idx, generation, item_type):
+    def on_recent_item_loaded(self, qimg, item, idx, generation, item_type):
         if generation != self.recent_loading_generation:
             return
-        
-        widget = ThumbnailWidget(series, self.library_manager, show_chapter_number=len(series["chapters"]) > 0)
-        
+
+        series = item.get('_series', item)
+        widget = ThumbnailWidget(series, self.library_manager, height=THUMB_H // 2)
+
         series_path = Path(series['path'])
         if not series_path.exists():
             widget.set_as_missing()
@@ -592,7 +600,7 @@ class FolderGrid(QWidget):
             if qimg and not qimg.isNull():
                 pixmap = QPixmap.fromImage(qimg)
                 widget.set_pixmap(pixmap)
-            widget.set_chapter_number(series)
+            widget.set_progress(series)
             widget.clicked.connect(self.recent_series_selected)
 
         widget.remove_requested.connect(self.remove_series)

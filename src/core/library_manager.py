@@ -4,6 +4,7 @@ from datetime import datetime
 from .library_scanner import LibraryScanner
 from src.utils.database_utils import get_db_connection, create_tables
 from src.utils.img_utils import get_chapter_number
+from src.utils.str_utils import natural_sort_key
 
 class LibraryManager:
     def __init__(self):
@@ -197,7 +198,6 @@ class LibraryManager:
         chapters = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
-        from src.utils.img_utils import get_chapter_number
         chapters.sort(key=lambda x: get_chapter_number(x['path']))
         
         return chapters
@@ -328,11 +328,14 @@ class LibraryManager:
         finally:
             conn.close()
 
-    def update_last_read_chapter(self, series_id, chapter_path, page_index=0):
+    def update_last_read_chapter(self, series_id, chapter_path, page_index=0, image_path=None):
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("UPDATE series SET last_read_chapter = ?, last_opened_date = ?, last_read_page = ? WHERE id = ?", (chapter_path, datetime.now(), page_index, series_id))
+            cursor.execute(
+                "UPDATE series SET last_read_chapter = ?, last_opened_date = ?, last_read_page = ?, last_read_image_path = ? WHERE id = ?",
+                (chapter_path, datetime.now(), page_index, image_path, series_id)
+            )
             conn.commit()
         except Exception as e:
             print(f"Error updating last read chapter: {e}")
@@ -528,7 +531,6 @@ class LibraryManager:
                 if sid in series_map:
                     series_map[sid]['chapters'].append(chapter)
             
-            # Sort chapters for each series
             for series in series_list:
                 chapters = series['chapters']
                 def make_sort_key(x):
@@ -537,7 +539,7 @@ class LibraryManager:
                         parent = str(Path(path.split('|')[1]).parent)
                     else:
                         parent = str(Path(path).parent)
-                    return (parent, x['name'].lower())
+                    return (parent, natural_sort_key(x['name']))
                 chapters.sort(key=make_sort_key)
 
             # Helper to fetch and map simple junctions

@@ -79,17 +79,22 @@ class ShineLabel(QLabel):
             painter.end()
 
 
+THUMB_W = 160
+THUMB_H = 260
+IMG_W = 150
+IMG_H = 210
+
+
 class ThumbnailWidget(QWidget):
     clicked = pyqtSignal(object)
     remove_requested = pyqtSignal(object)
     rescan_requested = pyqtSignal(object)
     clear_cache_requested = pyqtSignal(object)
 
-    def __init__(self, series, library_manager, parent=None, show_chapter_number=False):
+    def __init__(self, series, library_manager, parent=None, height=THUMB_H):
         super().__init__(parent)
         self.series = series
         self.library_manager = library_manager
-        self.show_chapter_number = show_chapter_number
         self.is_in_selection_mode = False
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -97,17 +102,18 @@ class ThumbnailWidget(QWidget):
 
         self.image_container = QWidget()
         self.image_container.setObjectName("image_container")
-        
+
         # Parent to self so it can expand beyond the container bounds
         self.image_label = ShineLabel(self)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setScaledContents(True)
 
-        self.original_size = QSize(160, 260)
-        self.image_container_size = QSize(150, 210)
+        ratio = height / THUMB_H
+        self.original_size = QSize(THUMB_W, height)
+        self.image_container_size = QSize(IMG_W, int(IMG_H * ratio))
         self.setFixedSize(self.original_size)
         self.image_container.setFixedSize(self.image_container_size)
-        
+
         # Original geometry relative to ThumbnailWidget
         self.image_label.setGeometry(5, 10, self.image_container_size.width(), self.image_container_size.height())
 
@@ -137,11 +143,6 @@ class ThumbnailWidget(QWidget):
 
         self.setup_animation()
 
-        if self.show_chapter_number:
-            self.chapter_label = QLabel(self)
-            self.chapter_label.setStyleSheet("background-color: rgba(0, 0, 0, 180); color: white; border-radius: 5px; padding: 2px;")
-            self.chapter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.chapter_label.hide()
 
     def set_selection_mode(self, enabled):
         self.is_in_selection_mode = enabled
@@ -155,29 +156,15 @@ class ThumbnailWidget(QWidget):
     def is_selected(self):
         return self.checkbox.isChecked()
 
-    def set_chapter_number(self, series_obj):
-        if not self.show_chapter_number or 'last_read_chapter' not in series_obj or not series_obj['last_read_chapter']:
+    def set_progress(self, series_obj):
+        chapter_path = series_obj.get('last_read_chapter')
+        if not chapter_path:
             return
-
-        chapter_path = series_obj['last_read_chapter']
-        
-        # Find index in series chapters to match ChapterList naming
         chapters = series_obj.get('chapters', [])
-        chapter_idx = -1
-        for i, ch in enumerate(chapters):
-            if ch.get('path') == chapter_path:
-                chapter_idx = i
-                break
-
+        chapter_idx = next((i for i, ch in enumerate(chapters) if ch.get('path') == chapter_path), -1)
         if chapter_idx != -1:
-            # Use 1-based index (Ch01, Ch02, etc.)
-            self.chapter_label.setText(f"Ch{chapter_idx + 1:02d}")
-            self.chapter_label.adjustSize()
-            self.chapter_label.move(self.image_container.width() - self.chapter_label.width() - 5, 5)
-            self.chapter_label.show()
-            self.chapter_label.raise_()
-        else:
-             self.chapter_label.hide()
+            page = series_obj.get('last_read_page', 0) or 0
+            self.name_label.setText(f"Ch {chapter_idx + 1} · p {page + 1}")
 
     def setup_animation(self):
         self.anim_group_grow = QParallelAnimationGroup(self)
@@ -290,8 +277,6 @@ class ThumbnailWidget(QWidget):
         self._hover = True
         self.image_label.raise_()
         self.image_label.set_hovered(True)
-        if self.show_chapter_number and hasattr(self, 'chapter_label'):
-            self.chapter_label.raise_()
         if self.is_in_selection_mode:
             self.checkbox.raise_()
         self.anim_group_shrink.stop()

@@ -163,7 +163,9 @@ class MainWindow(QMainWindow):
             chapter_path = chapter.get('path') if isinstance(chapter, dict) else str(chapter) if chapter else None
             if chapter_path and self.current_series:
                 page = getattr(model, 'current_index', 0)
-                self.library_manager.update_last_read_chapter(self.current_series['id'], chapter_path, page)
+                images = getattr(model, 'images', [])
+                image_path = images[page].images[0] if images and page < len(images) else None
+                self.library_manager.update_last_read_chapter(self.current_series['id'], chapter_path, page, image_path)
 
         if self.current_series_has_chapters:
             if not hasattr(self, 'chapter_list') or self.chapter_list.series != self.current_series:

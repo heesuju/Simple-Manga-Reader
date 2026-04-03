@@ -53,6 +53,12 @@ class ItemLoader(QRunnable):
                         qimg = load_thumbnail_from_virtual_path(cover_image, self.thumb_width, self.thumb_height)
                     else:
                         qimg = load_thumbnail_from_path(cover_image, self.thumb_width, self.thumb_height)
+            elif self.item_type == 'page':
+                item_type = 'page'
+                thumbnail_path = item.get('image_path')
+                if thumbnail_path and os.path.exists(thumbnail_path):
+                    qimg = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
                 # 1. Try existing cover_path
