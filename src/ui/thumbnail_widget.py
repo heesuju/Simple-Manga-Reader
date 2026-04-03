@@ -83,6 +83,7 @@ THUMB_W = 160
 THUMB_H = 260
 IMG_W = 150
 IMG_H = 210
+RECENT_THUMB_H = THUMB_H // 2 + 20  # slightly taller than half for label breathing room
 
 
 class ThumbnailWidget(QWidget):
@@ -98,7 +99,7 @@ class ThumbnailWidget(QWidget):
         self.is_in_selection_mode = False
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(0)
+        self.layout.setSpacing(6)
 
         self.image_container = QWidget()
         self.image_container.setObjectName("image_container")

@@ -16,7 +16,7 @@ from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool
 
 from src.ui.reader_view import ReaderView
 from src.ui.clickable_label import ClickableLabel
-from src.ui.thumbnail_widget import ThumbnailWidget, THUMB_H
+from src.ui.thumbnail_widget import ThumbnailWidget, RECENT_THUMB_H
 from src.ui.group_view import GroupView
 from src.core.item_loader import ItemLoader
 from src.utils.img_utils import get_chapter_number
@@ -317,7 +317,7 @@ class FolderGrid(QWidget):
         self.recent_scroll.viewport().setContentsMargins(0, 0, 0, 0)
         self.recent_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.recent_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.recent_scroll.setFixedHeight(260)
+        self.recent_scroll.setFixedHeight(RECENT_THUMB_H)
         self.recent_scroll.viewport().installEventFilter(self)
         container_layout.addWidget(self.recent_scroll, 0, 0)
 
@@ -587,7 +587,7 @@ class FolderGrid(QWidget):
             return
 
         series = item.get('_series', item)
-        widget = ThumbnailWidget(series, self.library_manager, height=THUMB_H // 2)
+        widget = ThumbnailWidget(series, self.library_manager, height=RECENT_THUMB_H)
 
         series_path = Path(series['path'])
         if not series_path.exists():
