@@ -1,7 +1,5 @@
-import os
 from pathlib import Path
 from datetime import datetime
-from .library_scanner import LibraryScanner
 from src.utils.database_utils import create_tables, db_cursor
 from src.utils.img_utils import get_chapter_number
 from src.utils.str_utils import natural_sort_key
@@ -72,14 +70,7 @@ class LibraryManager:
         params = []
         has_filter = False
 
-        # Each active tag filter uses a subquery to avoid JOIN conflicts
-        _FILTER_CONFIG = {
-            'authors': ('series_authors', 'authors',  'author_id'),
-            'genres':  ('series_genres',  'genres',   'genre_id'),
-            'themes':  ('series_themes',  'themes',   'theme_id'),
-            'formats': ('series_formats', 'formats',  'format_id'),
-        }
-        for key, (junction, table, fk) in _FILTER_CONFIG.items():
+        for key, (table, junction, fk) in self._TAG_CONFIG.items():
             values = filters.get(key)
             if not values:
                 continue
