@@ -10,7 +10,8 @@ from PyQt6.QtWidgets import (
     QFrame
 )
 from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut, QColor, QMovie, QImage, QMouseEvent, QIcon
-from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, pyqtSignal, QSize, QRectF
+from PyQt6.QtCore import Qt, QTimer, QEvent, QThreadPool, pyqtSignal, QSize, QRectF, QPropertyAnimation, QEasingCurve
+from PyQt6.QtWidgets import QGraphicsOpacityEffect
 from src.utils.resource_utils import resource_path
 from src.utils.archive_utils import is_archive, is_zip, split_virtual_path
 from src.ui.styles import FLAT_BUTTON_STYLE
@@ -275,6 +276,43 @@ class ReaderView(QWidget):
         self.alt_panel.setParent(self)
         self.frame_panel.setParent(self)
 
+        # Nav buttons (hover-reveal overlays)
+        btn_style = """
+            QPushButton {
+                background-color: rgba(0, 0, 0, 120);
+                color: white;
+                border: none;
+                border-radius: 20px;
+                font-size: 20px;
+            }
+            QPushButton:hover { background-color: rgba(0, 0, 0, 200); }
+        """
+        self.prev_nav_btn = QPushButton(self)
+        self.prev_nav_btn.setIcon(QIcon(resource_path("assets/icons/left.svg")))
+        self.prev_nav_btn.setIconSize(QSize(20, 20))
+        self.prev_nav_btn.setFixedSize(40, 40)
+        self.prev_nav_btn.setStyleSheet(btn_style)
+        self.prev_nav_btn.clicked.connect(self.show_prev)
+        self.prev_nav_btn.hide()
+
+        self.next_nav_btn = QPushButton(self)
+        self.next_nav_btn.setIcon(QIcon(resource_path("assets/icons/right.svg")))
+        self.next_nav_btn.setIconSize(QSize(20, 20))
+        self.next_nav_btn.setFixedSize(40, 40)
+        self.next_nav_btn.setStyleSheet(btn_style)
+        self.next_nav_btn.clicked.connect(self.show_next)
+        self.next_nav_btn.hide()
+
+        self._prev_opacity = QGraphicsOpacityEffect(self.prev_nav_btn)
+        self._next_opacity = QGraphicsOpacityEffect(self.next_nav_btn)
+        self.prev_nav_btn.setGraphicsEffect(self._prev_opacity)
+        self.next_nav_btn.setGraphicsEffect(self._next_opacity)
+        self._prev_anim = QPropertyAnimation(self._prev_opacity, b"opacity")
+        self._next_anim = QPropertyAnimation(self._next_opacity, b"opacity")
+        for anim in (self._prev_anim, self._next_anim):
+            anim.setDuration(150)
+            anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
 
         self.chapter_panel._update_chapter_thumbnails(self.model.chapters)
 
@@ -366,6 +404,7 @@ class ReaderView(QWidget):
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
+        self._reposition_nav_buttons()
         if self.current_viewer:
             self.current_viewer.on_resize(ev)
         
@@ -608,18 +647,7 @@ class ReaderView(QWidget):
 
         self.mouse_press_pos = None
 
-        w = self.view.width()
-        x = event.position().x()
-
-        left_area = w * 0.3
-        right_area = w * 0.7
-
-        if x <= left_area:
-            self.show_prev()
-        elif x >= right_area:
-            self.show_next()
-        else:
-            self._toggle_panels()
+        self._toggle_panels()
 
     def _toggle_panels(self, visible:bool=None):
         original_state = self.panels_visible
@@ -665,6 +693,12 @@ class ReaderView(QWidget):
              
         if obj is self.view.viewport():
             if event.type() == QEvent.Type.MouseMove:
+                x = event.position().x()
+                view_width = self.width()
+                hover_zone = view_width * 0.2
+                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and self._has_prev())
+                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and self._has_next())
+
                 if self.video_viewer.video_item and self.video_viewer.video_item.isVisible():
                     view_height = self.height()
                     y = event.position().y()
@@ -791,6 +825,7 @@ class ReaderView(QWidget):
         return path
 
     def _load_image(self, path: str):
+        self._update_nav_buttons()
         ext = os.path.splitext(path)[1].lower()
         is_video = ext in VIDEO_EXTS
         
@@ -1254,6 +1289,55 @@ class ReaderView(QWidget):
         if self.current_viewer:
              self.current_viewer.cleanup()
         self.back_pressed.emit()
+
+    def _has_prev(self) -> bool:
+        if not self.model.images and self.model.chapter_index == 0:
+            return False
+        if self.model.view_mode == ViewMode.STRIP:
+            return self.model.chapter_index > 0
+        return self.model.current_index > 0 or self.model.chapter_index > 0
+
+    def _has_next(self) -> bool:
+        if not self.model.images and self.model.chapter_index >= len(self.model.chapters) - 1:
+            return False
+        if self.model.view_mode == ViewMode.STRIP:
+            return self.model.chapter_index < len(self.model.chapters) - 1
+        return self.model.current_index < len(self.model.images) - 1 or self.model.chapter_index < len(self.model.chapters) - 1
+
+    def _update_nav_buttons(self):
+        if not self._has_prev():
+            self.prev_nav_btn.hide()
+        if not self._has_next():
+            self.next_nav_btn.hide()
+
+    def _reposition_nav_buttons(self):
+        margin = 16
+        cy = self.height() // 2 - 20
+        self.prev_nav_btn.move(margin, cy)
+        self.next_nav_btn.move(self.width() - 40 - margin, cy)
+
+    def _set_nav_btn_visible(self, btn, anim, visible: bool):
+        if visible:
+            if btn.isVisible() and anim.endValue() == 1.0:
+                return
+            btn.show()
+            btn.raise_()
+            anim.stop()
+            anim.setStartValue(self._btn_opacity(btn))
+            anim.setEndValue(1.0)
+            anim.start()
+        else:
+            if not btn.isVisible() or anim.endValue() == 0.0:
+                return
+            anim.stop()
+            anim.setStartValue(self._btn_opacity(btn))
+            anim.setEndValue(0.0)
+            anim.start()
+            QTimer.singleShot(160, lambda: btn.hide() if not btn.underMouse() else None)
+
+    def _btn_opacity(self, btn) -> float:
+        effect = btn.graphicsEffect()
+        return effect.opacity() if effect else 1.0
 
     def _reposition_video_control_panel(self):
         view_width = self.width()
