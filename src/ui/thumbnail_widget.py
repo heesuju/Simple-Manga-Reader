@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMenu, QGraphicsBlurEffect, QGraphicsOpacityEffect, QCheckBox
+    QWidget, QVBoxLayout, QLabel, QHBoxLayout, QMenu, QCheckBox
 )
-from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor, QLinearGradient, QBrush, QImage
-from PyQt6.QtCore import Qt, pyqtSignal, QMargins, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup, QPointF, pyqtProperty
+from PyQt6.QtGui import QPixmap, QMouseEvent, QFontMetrics, QPainter, QPainterPath, QColor, QLinearGradient
+from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QSize, QEasingCurve, QRect, QParallelAnimationGroup, pyqtProperty
 from pathlib import Path
 from src.utils.img_utils import crop_pixmap, get_chapter_number, load_thumbnail_from_zip
 from src.utils.archive_utils import ZIP_EXTS
@@ -97,9 +97,9 @@ class ThumbnailWidget(QWidget):
         self.series = series
         self.library_manager = library_manager
         self.is_in_selection_mode = False
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(6)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(6)
 
         self.image_container = QWidget()
         self.image_container.setObjectName("image_container")
@@ -131,8 +131,8 @@ class ThumbnailWidget(QWidget):
 
         self.info_layout.addWidget(self.name_label)
 
-        self.layout.addWidget(self.image_container, alignment=Qt.AlignmentFlag.AlignHCenter)
-        self.layout.addLayout(self.info_layout)
+        self.main_layout.addWidget(self.image_container, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.main_layout.addLayout(self.info_layout)
 
         self.checkbox = QCheckBox(self)
         self.checkbox.setGeometry(12, 14, 20, 20)
