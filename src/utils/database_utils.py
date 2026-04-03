@@ -1,5 +1,6 @@
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 def get_db_connection():
@@ -7,6 +8,15 @@ def get_db_connection():
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+@contextmanager
+def db_cursor():
+    """Context manager that opens a connection and yields (conn, cursor), closing on exit."""
+    conn = get_db_connection()
+    try:
+        yield conn, conn.cursor()
+    finally:
+        conn.close()
 
 def create_tables():
     conn = get_db_connection()
@@ -99,24 +109,25 @@ def create_tables():
     )
     """)
 
-    # Add columns to series table if they don't exist
-    cursor.execute("PRAGMA table_info(series)")
-    columns = [row['name'] for row in cursor.fetchall()]
-    if 'description' not in columns:
-        cursor.execute("ALTER TABLE series ADD COLUMN description TEXT")
-    if 'last_read_chapter' not in columns:
-        cursor.execute("ALTER TABLE series ADD COLUMN last_read_chapter TEXT")
-    if 'last_opened_date' not in columns:
-        cursor.execute("ALTER TABLE series ADD COLUMN last_opened_date DATETIME")
-    if 'last_read_page' not in columns:
-        cursor.execute("ALTER TABLE series ADD COLUMN last_read_page INTEGER DEFAULT 0")
-    if 'last_read_image_path' not in columns:
-        cursor.execute("ALTER TABLE series ADD COLUMN last_read_image_path TEXT")
-
-    cursor.execute("PRAGMA table_info(chapters)")
-    columns = [row['name'] for row in cursor.fetchall()]
-    if 'cover_path' not in columns:
-        cursor.execute("ALTER TABLE chapters ADD COLUMN cover_path TEXT")
+    # Add columns that don't exist yet (schema migrations)
+    _MIGRATIONS = {
+        'series': [
+            ('description',         'TEXT'),
+            ('last_read_chapter',   'TEXT'),
+            ('last_opened_date',    'DATETIME'),
+            ('last_read_page',      'INTEGER DEFAULT 0'),
+            ('last_read_image_path','TEXT'),
+        ],
+        'chapters': [
+            ('cover_path', 'TEXT'),
+        ],
+    }
+    for table, cols in _MIGRATIONS.items():
+        cursor.execute(f"PRAGMA table_info({table})")
+        existing = {row['name'] for row in cursor.fetchall()}
+        for col, col_type in cols:
+            if col not in existing:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
 
     conn.commit()
     conn.close()

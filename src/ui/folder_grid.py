@@ -1,31 +1,23 @@
-import zipfile
 from pathlib import Path
 import multiprocessing
-import sys
 import os
-import subprocess
 import socket
 import io
 import qrcode
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QScrollArea, QSizePolicy,
-    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QComboBox, QDialog, QListWidget, QListWidgetItem, QMenu, QApplication, QGridLayout, QCompleter, QStackedWidget
+    QMessageBox, QFileDialog, QLineEdit, QHBoxLayout, QDialog, QMenu, QApplication, QGridLayout, QCompleter, QStackedWidget
 )
 from PyQt6.QtGui import QPixmap, QShortcut, QKeySequence, QIcon, QCursor, QPainter, QBrush, QColor, QImage
-from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal, QRunnable, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent, QSize
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThreadPool, QSize, QStringListModel, QPropertyAnimation, QEasingCurve, QEvent
 
 from src.ui.reader_view import ReaderView
-from src.ui.clickable_label import ClickableLabel
 from src.ui.thumbnail_widget import ThumbnailWidget, RECENT_THUMB_H
 from src.ui.group_view import GroupView
 from src.core.item_loader import ItemLoader
 from src.utils.img_utils import get_chapter_number
-from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS
-from src.enums import ViewMode
-import math
-import json
+from src.utils.archive_utils import ARCHIVE_EXTS
 from src.core.library_scanner import LibraryScanner, ScannerWorker, BatchScannerWorker
-from src.core.library_manager import LibraryManager
 from src.ui.filter_token import FilterToken
 from src.ui.batch_metadata_dialog import BatchMetadataDialog
 from src.ui.info_dialog import InfoDialog
@@ -35,6 +27,14 @@ from src.ui.styles import FLAT_BUTTON_STYLE
 import src.utils.app_settings as app_settings
 
 class StatusButton(QPushButton):
+    _EMOJI_MAP = {
+        "error_install": "❌",
+        "error_model": "⚠️",
+        "downloading": "⬇️",
+        "running": "🟢",
+        "stopped": "🔴",
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.status_key = None
@@ -52,17 +52,8 @@ class StatusButton(QPushButton):
         if self.status_key:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # Map status to emoji
-            emoji_map = {
-                "error_install": "❌",
-                "error_model": "⚠️",
-                "downloading": "⬇️",
-                "running": "🟢",
-                "stopped": "🔴"
-            }
-            
-            icon_text = emoji_map.get(self.status_key)
+
+            icon_text = self._EMOJI_MAP.get(self.status_key)
             
             if icon_text:
                 painter.setFont(self.emoji_font)
@@ -488,8 +479,7 @@ class FolderGrid(QWidget):
 
         # Abort existing loaders
         for loader in self._active_loaders:
-            if hasattr(loader, 'abort'):
-                loader.abort()
+            loader.abort()
         self._active_loaders.clear()
 
         if series_list is None:
@@ -555,8 +545,7 @@ class FolderGrid(QWidget):
 
         # Abort existing recent item loaders
         for loader in self._active_recent_loaders:
-            if hasattr(loader, 'abort'):
-                loader.abort()
+            loader.abort()
         self._active_recent_loaders.clear()
 
         page_items = []
@@ -818,8 +807,7 @@ class FolderGrid(QWidget):
 
         # Abort existing loaders
         for loader in self._active_loaders:
-            if hasattr(loader, 'abort'):
-                loader.abort()
+            loader.abort()
         self._active_loaders.clear()
 
         if not chapters:
