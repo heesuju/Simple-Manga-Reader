@@ -226,6 +226,10 @@ class ImageView(QGraphicsView):
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if self.manga_reader and getattr(self.manga_reader, 'last_zoom_mode', '') == "Stretch":
+                self.manga_reader.reset_zoom()
+                return
+
             self.zoom_started.emit()
             angle = event.angleDelta().y()
             factor = 1.25 if angle > 0 else 0.8

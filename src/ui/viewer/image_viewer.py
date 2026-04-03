@@ -394,6 +394,28 @@ class ImageViewer(BaseViewer):
                 self.reader_view._update_zoom(factor, update_last_mode=False)
                 self.reader_view.zoom_changed.emit("Fit Width")
                 self._trigger_hq_rescale()
+        elif mode == "Fit Height":
+            self.reader_view.view.reset_zoom_state()
+            scene_rect = self.reader_view.scene.sceneRect()
+            if scene_rect.height() > 0:
+                view_height = self.reader_view.view.viewport().height()
+                factor = view_height / scene_rect.height()
+                self.reader_view.view._zoom_factor = factor
+                self.reader_view._update_zoom(factor, update_last_mode=False)
+                self.reader_view.zoom_changed.emit("Fit Height")
+                self._trigger_hq_rescale()
+        elif mode == "Stretch":
+            self.reader_view.view.reset_zoom_state()
+            self.reader_view.view.resetTransform()
+            scene_rect = self.reader_view.scene.sceneRect()
+            viewport_rect = self.reader_view.view.viewport().rect()
+            if scene_rect.width() > 0 and scene_rect.height() > 0:
+                scale_w = viewport_rect.width() / scene_rect.width()
+                scale_h = viewport_rect.height() / scene_rect.height()
+                self.reader_view.view.scale(scale_w, scale_h)
+                self.reader_view.view.centerOn(scene_rect.center())
+            self.reader_view.zoom_changed.emit("Stretch")
+            self._trigger_hq_rescale()
         else:
             try:
                 zoom_value = float(mode.replace('%', '')) / 100.0

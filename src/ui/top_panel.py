@@ -49,7 +49,7 @@ class TopPanel(QWidget):
 
         self.zoom_combobox = QComboBox()
         self.zoom_combobox.setEditable(True)
-        self.zoom_combobox.addItems(['Fit Page', 'Fit Width', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
+        self.zoom_combobox.addItems(['Fit Page', 'Fit Width', 'Fit Height', 'Stretch', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
         self.zoom_combobox.setFixedSize(90, 28)
         self.zoom_combobox.setStyleSheet("""
             color: white;
