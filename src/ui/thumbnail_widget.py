@@ -321,28 +321,35 @@ class ThumbnailWidget(QWidget):
         self.image_label.setPixmap(rounded)
 
     def set_as_missing(self):
-        pixmap = QPixmap(self.image_container_size)
-        pixmap.fill(QColor("gray"))
+        w, h = self.image_container_size.width(), self.image_container_size.height()
 
-        painter = QPainter(pixmap)
-        
-        # Draw a large question mark
+        base = QPixmap(self.image_container_size)
+        base.fill(QColor("gray"))
+
+        painter = QPainter(base)
         font = painter.font()
         font.setPointSize(60)
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(QColor(100, 100, 100))
-        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "?")
+        painter.drawText(base.rect(), Qt.AlignmentFlag.AlignCenter, "?")
 
-        # Draw "Missing" text at the bottom
         font.setPointSize(12)
         font.setBold(False)
         painter.setFont(font)
         painter.setPen(QColor(200, 200, 200))
-        text_rect = pixmap.rect().adjusted(0, 0, 0, -10) # Margin from bottom
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, "Missing")
-        
+        painter.drawText(base.rect().adjusted(0, 0, 0, -10), Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, "Missing")
         painter.end()
 
-        self.image_label.setPixmap(pixmap)
+        rounded = QPixmap(self.image_container_size)
+        rounded.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(rounded)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(0, 0, w, h, 8, 8)
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, base)
+        painter.end()
+
+        self.image_label.setPixmap(rounded)
 
