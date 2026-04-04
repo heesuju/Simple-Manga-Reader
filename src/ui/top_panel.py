@@ -9,6 +9,8 @@ from src.ui.styles import FLAT_BUTTON_STYLE, PANEL_BG_STYLE
 BUTTON_SIZE = QSize(28, 28)
 ICON_SIZE = QSize(18, 18)
 
+from src.ui.components.shortcuts_dialog import ShortcutsDialog
+
 
 class TopPanel(QWidget):
     """Compact single-row panel at the top of the reader view."""
@@ -164,6 +166,10 @@ class TopPanel(QWidget):
         lang = Language(text)
         self.translate_clicked.emit(lang)
 
+    def _on_help_clicked(self):
+        dlg = ShortcutsDialog(self)
+        dlg.exec()
+
     def _on_overflow_clicked(self):
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -234,6 +240,11 @@ class TopPanel(QWidget):
             a.setChecked(self._current_sort_mode == mode)
             a.triggered.connect(lambda checked, m=mode: self._select_sort(m))
             sort_menu.addAction(a)
+
+        menu.addSeparator()
+        shortcuts_action = QAction("Keyboard Shortcuts", self)
+        shortcuts_action.triggered.connect(self._on_help_clicked)
+        menu.addAction(shortcuts_action)
 
         menu.exec(self.overflow_btn.mapToGlobal(self.overflow_btn.rect().bottomRight()))
 
