@@ -1,8 +1,13 @@
+import sys
 import json
 from pathlib import Path
 
-# Project root: src/utils/app_settings.py -> src/utils -> src -> project root
-_SETTINGS_PATH = Path(__file__).resolve().parent.parent.parent / "app_settings.json"
+# When frozen (PyInstaller), settings live next to the exe.
+# In dev, resolve from this file's location up to the project root.
+if getattr(sys, 'frozen', False):
+    _SETTINGS_PATH = Path(sys.executable).parent / "app_settings.json"
+else:
+    _SETTINGS_PATH = Path(__file__).resolve().parent.parent.parent / "app_settings.json"
 _settings: dict = {}
 _loaded = False
 
