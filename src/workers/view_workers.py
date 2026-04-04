@@ -875,3 +875,32 @@ class VideoBatchFrameExtractorWorker(QRunnable):
                 self.signals.finished.emit(self.path, results, min(self.frame_indices), max(self.frame_indices))
         except Exception as e:
             print(f"Error in batch video extraction: {e}")
+
+
+class ArchiveExtractSignals(QObject):
+    finished = pyqtSignal(str)  # save_path on success, empty string on failure
+
+
+class ArchiveExtractWorker(QRunnable):
+    def __init__(self, archive_path, save_path):
+        super().__init__()
+        self.archive_path = archive_path
+        self.save_path = save_path
+        self.signals = ArchiveExtractSignals()
+
+    def run(self):
+        try:
+            data = get_image_data_from_zip(self.archive_path)
+            if data:
+                with open(self.save_path, 'wb') as f:
+                    f.write(data)
+                self.signals.finished.emit(self.save_path)
+                return
+        except Exception:
+            pass
+        try:
+            os.remove(self.save_path)
+        except OSError:
+            pass
+        self.signals.finished.emit('')
+

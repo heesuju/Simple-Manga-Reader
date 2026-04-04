@@ -1,39 +1,11 @@
 import os
-import shutil
-from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem, QWidget, QApplication
-from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform, QCursor, QColor, QPainterPath, QDrag
-from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QPoint, QRect, QSize, QRectF, QMimeData, QUrl, QObject, QRunnable
+import tempfile
+from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem, QApplication
+from PyQt6.QtGui import QAction, QPainter, QTransform, QDrag
+from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QRectF, QMimeData, QUrl
 
 from src.ui.components.selection_overlay import AdvancedSelectionOverlay
-
-
-class _ArchiveExtractSignals(QObject):
-    finished = pyqtSignal(str)  # save_path on success, empty string on failure
-
-
-class _ArchiveExtractWorker(QRunnable):
-    def __init__(self, archive_path, save_path):
-        super().__init__()
-        self.archive_path = archive_path
-        self.save_path = save_path
-        self.signals = _ArchiveExtractSignals()
-
-    def run(self):
-        from src.utils.img_utils import get_image_data_from_zip
-        try:
-            data = get_image_data_from_zip(self.archive_path)
-            if data:
-                with open(self.save_path, 'wb') as f:
-                    f.write(data)
-                self.signals.finished.emit(self.save_path)
-                return
-        except Exception:
-            pass
-        try:
-            os.remove(self.save_path)
-        except OSError:
-            pass
-        self.signals.finished.emit('')
+from src.workers.view_workers import ArchiveExtractWorker, VideoTimestampFrameExtractorWorker
 
 
 class ImageView(QGraphicsView):
@@ -269,7 +241,9 @@ class ImageView(QGraphicsView):
                 self._start_frame_extraction_async()
             else:
                 path = self._get_current_image_path()
-                if path and '|' in path:
+                if path and '|' not in path and path.lower().endswith(('.gif', '.webp')):
+                    self._extract_gif_frame_sync()
+                elif path and '|' in path:
                     self._start_archive_extraction_async(path)
             event.accept()
             return
@@ -341,8 +315,6 @@ class ImageView(QGraphicsView):
         return isinstance(self.manga_reader.current_viewer, VideoViewer)
 
     def _start_frame_extraction_async(self):
-        import tempfile
-        from src.workers.view_workers import VideoTimestampFrameExtractorWorker
         video_viewer = self.manga_reader.video_viewer
         source_path = video_viewer.media_player.source().toLocalFile()
         if not source_path:
@@ -355,13 +327,24 @@ class ImageView(QGraphicsView):
         worker.signals.finished.connect(lambda s, img, p: self._on_drag_frame_ready(img, p))
         self.manga_reader.thread_pool.start(worker)
 
+    def _extract_gif_frame_sync(self):
+        movie = self.manga_reader.image_viewer.movie
+        if not movie:
+            return
+        frame = movie.currentImage()
+        if frame.isNull():
+            return
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        tmp.close()
+        frame.save(tmp.name)
+        self._frame_temp_path = tmp.name
+
     def _start_archive_extraction_async(self, path):
-        import tempfile
         ext = os.path.splitext(path.split('|', 1)[1])[1] or '.jpg'
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         tmp.close()
         self._frame_extraction_active = True
-        worker = _ArchiveExtractWorker(path, tmp.name)
+        worker = ArchiveExtractWorker(path, tmp.name)
         worker.signals.finished.connect(self._on_archive_ready)
         self.manga_reader.thread_pool.start(worker)
 
