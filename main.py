@@ -4,7 +4,8 @@ import json
 import os
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget
 from PyQt6.QtGui import QKeySequence, QShortcut, QIcon
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 
 from src.ui.folder_grid import FolderGrid
 from src.ui.chapter_list import ChapterListView
@@ -48,6 +49,8 @@ def register_context_menu():
 
 from src.core.library_manager import LibraryManager
 
+_SERVER_NAME = "SUzip-instance"
+
 class MainWindow(QMainWindow):
     def __init__(self, library_manager):
         super().__init__()
@@ -81,6 +84,31 @@ class MainWindow(QMainWindow):
         
         self.fullscreen_shortcut_f11 = QShortcut(QKeySequence("F11"), self)
         self.fullscreen_shortcut_f11.activated.connect(self.toggle_fullscreen)
+
+        self._local_server = QLocalServer(self)
+        QLocalServer.removeServer(_SERVER_NAME)
+        self._local_server.listen(_SERVER_NAME)
+        self._local_server.newConnection.connect(self._on_new_instance)
+
+    def _on_new_instance(self):
+        socket = self._local_server.nextPendingConnection()
+        socket.waitForReadyRead(1000)
+        data = socket.readAll().data()
+        socket.deleteLater()
+        try:
+            args = json.loads(data)
+            QTimer.singleShot(0, lambda: self._handle_args(args))
+        except Exception:
+            pass
+
+    def _handle_args(self, args):
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+        self.activateWindow()
+        self.raise_()
+        if len(args) >= 2 and args[0] == "--add-series" and os.path.isdir(args[1]):
+            self.folder_grid.add_single(args[1])
+        elif len(args) >= 1 and os.path.isdir(args[0]):
+            self.open_folder_in_reader(args[0])
 
     def _handle_escape_key(self):
         current_widget = self.stacked_widget.currentWidget()
@@ -275,6 +303,17 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("assets/icons/app.png")))
+
+    # Single-instance check — forward args to running instance and exit
+    if len(sys.argv) > 1:
+        socket = QLocalSocket()
+        socket.connectToServer(_SERVER_NAME)
+        if socket.waitForConnected(500):
+            socket.write(json.dumps(sys.argv[1:]).encode())
+            socket.waitForBytesWritten(1000)
+            socket.disconnectFromServer()
+            sys.exit(0)
+
     try:
         qdarktheme.setup_theme("dark")
     except AttributeError:
