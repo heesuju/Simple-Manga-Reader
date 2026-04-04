@@ -21,25 +21,28 @@ def register_context_menu():
     try:
         import winreg
         if getattr(sys, 'frozen', False):
-            expected_command = f'"{sys.executable}" "%1"'
+            base_cmd = f'"{sys.executable}"'
         else:
             script_path = os.path.abspath(__file__)
-            expected_command = f'"{sys.executable}" "{script_path}" "%1"'
-        command_key_path = r"Software\Classes\Directory\shell\OpenInSU.zip\command"
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, command_key_path) as key:
-                current_command, _ = winreg.QueryValueEx(key, "")
-                if current_command == expected_command:
-                    return  # Already registered correctly, nothing to do
-        except OSError:
-            pass  # Key doesn't exist yet
+            base_cmd = f'"{sys.executable}" "{script_path}"'
 
-        key_path = r"Software\Classes\Directory\shell\OpenInSU.zip"
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Open in SU.zip")
-            winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, f'"{sys.executable}"')
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, command_key_path) as key:
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, expected_command)
+        def _register_entry(key_name, label, command):
+            cmd_key_path = rf"Software\Classes\Directory\shell\{key_name}\command"
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, cmd_key_path) as key:
+                    current, _ = winreg.QueryValueEx(key, "")
+                    if current == command:
+                        return  # Already up to date
+            except OSError:
+                pass
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\Directory\shell\{key_name}") as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, label)
+                winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, f'"{sys.executable}"')
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, cmd_key_path) as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, command)
+
+        _register_entry("OpenInSUzip",        "Open in SU.zip",          f'{base_cmd} "%1"')
+        _register_entry("AddToSUzip",  "Add to SU.zip",   f'{base_cmd} --add-series "%1"')
     except Exception as e:
         print(f"Failed to register context menu: {e}")
 
@@ -289,8 +292,11 @@ if __name__ == "__main__":
     main_win = MainWindow(library_manager)
     main_win.showMaximized()
 
-    if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
-        main_win.open_folder_in_reader(sys.argv[1])
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--add-series" and len(sys.argv) > 2 and os.path.isdir(sys.argv[2]):
+            main_win.folder_grid.add_single(sys.argv[2])
+        elif os.path.isdir(sys.argv[1]):
+            main_win.open_folder_in_reader(sys.argv[1])
 
     exit_code = app.exec()
     
