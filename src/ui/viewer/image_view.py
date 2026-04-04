@@ -34,6 +34,9 @@ class ImageView(QGraphicsView):
         self._selection_overlay.ratio_changed.connect(self.ratio_changed)
 
         self._ctrl_drag_start_pos = None
+        self._frame_temp_path = None
+        self._frame_extraction_active = False
+        self._waiting_for_frame_drag = False
 
         # Smooth rendering
         hints = (
@@ -229,6 +232,11 @@ class ImageView(QGraphicsView):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             self._ctrl_drag_start_pos = event.pos()
+            self._frame_temp_path = None
+            self._frame_extraction_active = False
+            self._waiting_for_frame_drag = False
+            if self._is_video_mode():
+                self._start_frame_extraction_async()
             event.accept()
             return
         self._ctrl_drag_start_pos = None
@@ -240,13 +248,28 @@ class ImageView(QGraphicsView):
                 and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
             if (event.pos() - self._ctrl_drag_start_pos).manhattanLength() >= QApplication.startDragDistance():
                 self._ctrl_drag_start_pos = None
-                self._start_file_drag()
+                if self._is_video_mode():
+                    if self._frame_temp_path:
+                        self._execute_file_drag(self._frame_temp_path)
+                    else:
+                        self._waiting_for_frame_drag = True
+                        self.setCursor(Qt.CursorShape.WaitCursor)
+                else:
+                    self._start_file_drag()
             event.accept()
             return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         self._ctrl_drag_start_pos = None
+        self._waiting_for_frame_drag = False
+        self._frame_extraction_active = False
+        if self._frame_temp_path:
+            try:
+                os.remove(self._frame_temp_path)
+            except OSError:
+                pass
+            self._frame_temp_path = None
         super().mouseReleaseEvent(event)
 
     def _get_current_image_path(self):
@@ -261,13 +284,57 @@ class ImageView(QGraphicsView):
         path = self._get_current_image_path()
         if not path or '|' in path:
             return
+        self._execute_file_drag(path)
 
+    def _execute_file_drag(self, path):
+        is_temp = (path == self._frame_temp_path)
         mime = QMimeData()
         mime.setUrls([QUrl.fromLocalFile(path)])
-
         drag = QDrag(self)
         drag.setMimeData(mime)
         drag.exec(Qt.DropAction.CopyAction)
+        if is_temp:
+            self._frame_temp_path = None
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    def _is_video_mode(self):
+        if not self.manga_reader:
+            return False
+        from src.ui.viewer.video_viewer import VideoViewer
+        return isinstance(self.manga_reader.current_viewer, VideoViewer)
+
+    def _start_frame_extraction_async(self):
+        import tempfile
+        from src.workers.view_workers import VideoTimestampFrameExtractorWorker
+        video_viewer = self.manga_reader.video_viewer
+        source_path = video_viewer.media_player.source().toLocalFile()
+        if not source_path:
+            return
+        current_time = video_viewer.media_player.position()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        tmp.close()
+        self._frame_extraction_active = True
+        worker = VideoTimestampFrameExtractorWorker(source_path, current_time, tmp.name)
+        worker.signals.finished.connect(lambda s, img, p: self._on_drag_frame_ready(img, p))
+        self.manga_reader.thread_pool.start(worker)
+
+    def _on_drag_frame_ready(self, q_image, save_path):
+        if not self._frame_extraction_active:
+            try:
+                os.remove(save_path)
+            except OSError:
+                pass
+            return
+        self._frame_extraction_active = False
+        q_image.save(save_path)
+        self._frame_temp_path = save_path
+        if self._waiting_for_frame_drag:
+            self._waiting_for_frame_drag = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self._execute_file_drag(save_path)
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
