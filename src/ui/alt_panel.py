@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QFrame, QSizePolicy, QComboBox, QMenu
+    QScrollArea, QFrame, QSizePolicy, QComboBox, QMenu,
+    QDialog, QPlainTextEdit, QApplication
 )
 from PyQt6.QtCore import Qt, QTimer, QSize, QPoint
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
@@ -80,6 +81,34 @@ class AltThumbnail(QWidget):
             self.on_right_click(event.globalPos())
         else:
             super().contextMenuEvent(event)
+
+
+class _AltNotesDialog(QDialog):
+    def __init__(self, parent, current_note=''):
+        super().__init__(parent)
+        self.setWindowTitle("Alt Notes")
+        self.setMinimumWidth(420)
+        self.setMinimumHeight(220)
+
+        layout = QVBoxLayout(self)
+
+        self.text_edit = QPlainTextEdit(self)
+        self.text_edit.setPlainText(current_note)
+        self.text_edit.setPlaceholderText("Enter notes, prompt, model, etc...")
+        layout.addWidget(self.text_edit)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        save_btn = QPushButton("Save")
+        cancel_btn.clicked.connect(self.reject)
+        save_btn.clicked.connect(self.accept)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(save_btn)
+        layout.addLayout(btn_row)
+
+    def get_note(self):
+        return self.text_edit.toPlainText().strip()
 
 
 class AltPanel(QWidget):
@@ -544,6 +573,9 @@ class AltPanel(QWidget):
         menu = QMenu(self)
         refine_action = menu.addAction("Refine Alt")
         revert_action = menu.addAction("Revert Alt") if is_fix else None
+        menu.addSeparator()
+        notes_action = menu.addAction("Edit Notes...")
+        copy_notes_action = menu.addAction("Copy Notes")
 
         action = menu.exec(global_pos if isinstance(global_pos, QPoint) else QPoint(global_pos))
 
@@ -555,6 +587,15 @@ class AltPanel(QWidget):
         elif revert_action and action == revert_action:
             AltManager.remove_alt_fix(series_path, chapter_name, main_file, original_rel)
             self.model.refresh()
+        elif action == notes_action:
+            current = AltManager.get_alt_note(series_path, chapter_name, main_file, original_rel)
+            dlg = _AltNotesDialog(self, current_note=current)
+            if dlg.exec():
+                AltManager.save_alt_note(series_path, chapter_name, main_file, original_rel, dlg.get_note())
+        elif action == copy_notes_action:
+            note = AltManager.get_alt_note(series_path, chapter_name, main_file, original_rel)
+            if note:
+                QApplication.clipboard().setText(note)
 
     def _open_refine_dialog(self, page, page_idx, variant_path, main_file, alt_rel_path, manga_dir, series_path, chapter_name):
         from src.ui.components.refine_alt_dialog import RefineAltDialog

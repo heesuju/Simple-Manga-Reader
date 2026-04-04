@@ -614,3 +614,28 @@ class AltManager:
         entry['subtitle_delay'] = round(delay_s, 3)
         data[chapter_name][filename] = entry
         AltManager.save_alts(series_path, data)
+
+    @staticmethod
+    def get_alt_note(series_path: str, chapter_name: str, main_file: str, alt_rel: str) -> str:
+        data = AltManager.load_alts(series_path)
+        entry = data.get(chapter_name, {}).get(main_file, {})
+        if isinstance(entry, list):
+            return ''
+        return entry.get('alt_notes', {}).get(alt_rel, '')
+
+    @staticmethod
+    def save_alt_note(series_path: str, chapter_name: str, main_file: str, alt_rel: str, note: str):
+        data = AltManager.load_alts(series_path)
+        if chapter_name not in data:
+            data[chapter_name] = {}
+        if main_file not in data[chapter_name]:
+            data[chapter_name][main_file] = {}
+        entry = AltManager._ensure_entry_structure(data[chapter_name][main_file])
+        if 'alt_notes' not in entry:
+            entry['alt_notes'] = {}
+        if note:
+            entry['alt_notes'][alt_rel] = note
+        else:
+            entry['alt_notes'].pop(alt_rel, None)
+        data[chapter_name][main_file] = entry
+        AltManager.save_alts(series_path, data)
