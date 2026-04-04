@@ -1378,6 +1378,10 @@ class ReaderView(QWidget):
     def toggle_playback(self):
         if self.current_viewer == self.video_viewer:
             self.video_viewer._toggle_play_pause()
+        elif self.current_viewer == self.image_viewer:
+            movie = self.image_viewer.movie
+            if movie:
+                movie.setPaused(movie.state() == QMovie.MovieState.Running)
 
     def _on_lang_changed(self, text: str):
         if not self.model.images:
