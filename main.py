@@ -2,7 +2,7 @@ import qdarktheme
 import sys
 import json
 import os
-from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtCore import Qt
 
@@ -34,9 +34,16 @@ class MainWindow(QMainWindow):
         self.folder_grid.recent_series_selected.connect(self.show_reader_for_recent)
         self.stacked_widget.addWidget(self.folder_grid)
 
+        self._privacy_overlay = QWidget(self)
+        self._privacy_overlay.setStyleSheet("background: black;")
+        self._privacy_overlay.hide()
+        self._privacy_was_playing = False
+
         # Global Escape key shortcut
         self.escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         self.escape_shortcut.activated.connect(self._handle_escape_key)
+
+        QShortcut(QKeySequence(Qt.Key.Key_QuoteLeft), self, activated=self._toggle_privacy_overlay)
 
         # Global shortcuts for fullscreen toggle
         self.fullscreen_shortcut_alt = QShortcut(QKeySequence("Alt+Return"), self)
@@ -174,6 +181,33 @@ class MainWindow(QMainWindow):
                 self.stacked_widget.setCurrentWidget(self.chapter_list)
         else:
             self.stacked_widget.setCurrentWidget(self.folder_grid)
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        if self._privacy_overlay.isVisible():
+            self._privacy_overlay.setGeometry(self.rect())
+
+    def _toggle_privacy_overlay(self):
+        if self._privacy_overlay.isVisible():
+            self._privacy_overlay.hide()
+        else:
+            player = self._get_media_player()
+            from PyQt6.QtMultimedia import QMediaPlayer
+            self._privacy_was_playing = (
+                player is not None and
+                player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+            )
+            if self._privacy_was_playing:
+                player.pause()
+            self._privacy_overlay.setGeometry(self.rect())
+            self._privacy_overlay.show()
+            self._privacy_overlay.raise_()
+
+    def _get_media_player(self):
+        rv = getattr(self, 'reader_view', None)
+        if rv and hasattr(rv, 'video_viewer'):
+            return rv.video_viewer.media_player
+        return None
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
