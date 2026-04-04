@@ -210,7 +210,7 @@ class MainWindow(QMainWindow):
             else:
                 self.stacked_widget.setCurrentWidget(self.chapter_list)
         else:
-            self.stacked_widget.setCurrentWidget(self.folder_grid)
+            self.show_folder_grid()
 
     def open_folder_in_reader(self, folder_path):
         path = Path(folder_path)

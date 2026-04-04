@@ -1,10 +1,16 @@
 
+import sys
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+def _db_path() -> Path:
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent / "library.db"
+    return Path(__file__).resolve().parent.parent.parent / "library.db"
+
 def get_db_connection():
-    db_path = Path("library.db")
+    db_path = _db_path()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
