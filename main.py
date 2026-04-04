@@ -22,7 +22,7 @@ from src.core.library_manager import LibraryManager
 class MainWindow(QMainWindow):
     def __init__(self, library_manager):
         super().__init__()
-        self.setWindowTitle("Manga Reader")
+        self.setWindowTitle("SU.zip")
         self.library_manager = library_manager
         self.current_series_has_chapters = False
         self.reader_view = None # Initialize reader_view attribute

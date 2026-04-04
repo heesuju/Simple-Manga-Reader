@@ -20,7 +20,7 @@ def build():
     
     # Use the existing spec file to respect user customization
     args = [
-        'SimpleMangaReader.spec',
+        'SUzip.spec',
         '--noconfirm',
         '--clean'
     ]
@@ -29,7 +29,7 @@ def build():
     PyInstaller.__main__.run(args)
     
     print("\nBuild complete!")
-    print(f"Executable is located at: {os.path.abspath('dist/SimpleMangaReader.exe')}")
+    print(f"Executable is located at: {os.path.abspath('dist/SUzip.exe')}")
 
 if __name__ == "__main__":
     build()

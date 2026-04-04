@@ -4,7 +4,7 @@ import winreg
 
 python_exe = sys.executable
 script_path = os.path.abspath("main.py")  # adjust if needed
-menu_name = "View in Manga Reader"
+menu_name = "Open in SU.zip"
 
 key_path = r"Directory\shell\{}".format(menu_name)
 background_path = r"Directory\Background\shell\{}".format(menu_name)
