@@ -38,6 +38,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
+    icon='assets/icons/app.png',
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,

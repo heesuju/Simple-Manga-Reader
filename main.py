@@ -3,12 +3,13 @@ import sys
 import json
 import os
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QWidget
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtGui import QKeySequence, QShortcut, QIcon
 from PyQt6.QtCore import Qt
 
 from src.ui.folder_grid import FolderGrid
 from src.ui.chapter_list import ChapterListView
 from src.utils.img_utils import get_chapter_number
+from src.utils.resource_utils import resource_path
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -220,6 +221,7 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
 
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(resource_path("assets/icons/app.png")))
     try:
         qdarktheme.setup_theme("dark")
     except AttributeError:
