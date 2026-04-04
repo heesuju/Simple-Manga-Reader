@@ -40,8 +40,10 @@ class ChapterListLoader(QRunnable):
     def run(self):
         alt_config = AltManager.load_alts(self.series_path)
         from src.utils.img_utils import IMG_EXTS
+        from src.workers.view_workers import VIDEO_EXTS
         import zipfile
         from src.utils.archive_utils import SevenZipHandler
+        MEDIA_EXTS = IMG_EXTS + tuple(VIDEO_EXTS)
         
         for i, chapter in enumerate(self.chapters):
             if self._is_aborted:
@@ -83,14 +85,14 @@ class ChapterListLoader(QRunnable):
                                         if name_norm.startswith(internal_path + '/'):
                                             rel = name_norm[len(internal_path):].strip('/')
                                             if rel and '/' not in rel:
-                                                if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                                if name_norm.lower().endswith(MEDIA_EXTS) and 'cover' not in Path(name_norm).stem.lower():
                                                     imgs.append(f"{zip_path}|{info.filename}")
                                     else:
                                         if '/' not in name_norm:
-                                            if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                            if name_norm.lower().endswith(MEDIA_EXTS) and 'cover' not in Path(name_norm).stem.lower():
                                                 imgs.append(f"{zip_path}|{info.filename}")
                                         # Collect all-depth entries as fallback
-                                        if name_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(name_norm).stem.lower():
+                                        if name_norm.lower().endswith(MEDIA_EXTS) and 'cover' not in Path(name_norm).stem.lower():
                                             all_zip_entries.append(f"{zip_path}|{info.filename}")
                                 # If root scan found nothing, use all-depth entries
                                 if not imgs and not internal_path:
@@ -109,18 +111,18 @@ class ChapterListLoader(QRunnable):
                                 if f_norm.startswith(internal_path + '/'):
                                     rel = f_norm[len(internal_path):].strip('/')
                                     if rel and '/' not in rel:
-                                        if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
+                                        if f_norm.lower().endswith(MEDIA_EXTS) and 'cover' not in Path(f_norm).stem.lower():
                                             imgs.append(f"{zip_path}|{f}")
                             else:
                                 if '/' not in f_norm:
-                                    if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
+                                    if f_norm.lower().endswith(MEDIA_EXTS) and 'cover' not in Path(f_norm).stem.lower():
                                         imgs.append(f"{zip_path}|{f}")
                         # If root scan found nothing, collect images at any depth
                         if not imgs and not internal_path:
                             for f in all_files:
                                 if self._is_aborted: return []
                                 f_norm = f.replace('\\', '/').strip('/')
-                                if f_norm.lower().endswith(IMG_EXTS) and 'cover' not in Path(f_norm).stem.lower():
+                                if f_norm.lower().endswith(MEDIA_EXTS) and 'cover' not in Path(f_norm).stem.lower():
                                     imgs.append(f"{zip_path}|{f}")
                     return imgs
                 except Exception as e:
@@ -147,7 +149,7 @@ class ChapterListLoader(QRunnable):
                     page_count = len(grouped_pages)
                 elif full_path.is_dir():
                     try:
-                        images = [str(p) for p in full_path.iterdir() if p.is_file() and p.suffix.lower() in IMG_EXTS and p.stem.lower() != 'cover']
+                        images = [str(p) for p in full_path.iterdir() if p.is_file() and p.suffix.lower() in MEDIA_EXTS and p.stem.lower() != 'cover']
                         images = sorted(images, key=get_chapter_number)
                         chapter_name = full_path.name
                         chapter_alts = alt_config.get(chapter_name, {})
