@@ -9,38 +9,23 @@ class AltSlider(QSlider):
         self.setMouseTracking(True)
         self.hovered_index = -1
         self._dragging = False
-        
+
     def set_alt_indices(self, indices):
         self.alt_indices = set(indices)
         self.update()
 
     def get_marker_rect(self, idx, groove_rect, handle_width):
-        # Calculate position logic reused from paintEvent
-        available_width = groove_rect.width()
-        track_length = available_width - handle_width
-        
+        track_length = groove_rect.width() - handle_width
         if track_length <= 0:
             return QRect()
-            
-        min_val = self.minimum()
-        max_val = self.maximum()
-        
+
         opt = QStyleOptionSlider()
         self.initStyleOption(opt)
-        
-        pos = self.style().sliderPositionFromValue(min_val, max_val, idx, track_length, opt.upsideDown)
-        
+        pos = self.style().sliderPositionFromValue(self.minimum(), self.maximum(), idx, track_length, opt.upsideDown)
         x_pos = groove_rect.left() + pos + (handle_width / 2)
-        marker_w = 4
-        marker_h = 4
-        
-        # Original drawing position
-        y_pos = groove_rect.top() - marker_h - 2
-        
-        # Return a slightly larger rect for hit testing
-        # Center the hit rect on the drawn marker
+
         hit_size = 12
-        return QRect(int(x_pos - hit_size/2), int(y_pos - hit_size/2), hit_size, hit_size)
+        return QRect(int(x_pos - hit_size / 2), groove_rect.center().y() - hit_size // 2, hit_size, hit_size)
 
     def _value_from_pos(self, x: float) -> int:
         opt = QStyleOptionSlider()
@@ -89,12 +74,20 @@ class AltSlider(QSlider):
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
-        if self.hovered_index != -1:
-            self.setValue(self.hovered_index)
-            event.accept()
-            return
-
         if event.button() == Qt.MouseButton.LeftButton:
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+            handle_rect = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self)
+            if handle_rect.contains(event.position().toPoint()):
+                self._dragging = True
+                event.accept()
+                return
+
+            if self.hovered_index != -1:
+                self.setValue(self.hovered_index)
+                event.accept()
+                return
+
             self._dragging = True
             self.setValue(self._value_from_pos(event.position().x()))
             event.accept()
@@ -111,52 +104,43 @@ class AltSlider(QSlider):
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        
+
         if not self.alt_indices:
             return
 
         painter = QPainter(self)
         opt = QStyleOptionSlider()
         self.initStyleOption(opt)
-        
+
         groove_rect = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self)
         handle_rect = self.style().subControlRect(QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self)
-        
-        available_width = groove_rect.width()
-        handle_width = handle_rect.width()
-        track_length = available_width - handle_width
-        
+
+        track_length = groove_rect.width() - handle_rect.width()
         if track_length <= 0:
             return
 
         min_val = self.minimum()
         max_val = self.maximum()
-        
-        default_color = QColor("#03A9F4")  # Light Blue
-        hover_color = QColor("#FFEB3B") # Yellow for hover
-        
+
+        default_color = QColor("#03A9F4")
+        hover_color = QColor("#FFEB3B")
+
+        tick_w = 2
+        tick_y = groove_rect.top() - 1
+        tick_h = groove_rect.height() + 2
+
         painter.setPen(Qt.PenStyle.NoPen)
-        
+
         for idx in self.alt_indices:
             if not (min_val <= idx <= max_val):
                 continue
-                
             pos = self.style().sliderPositionFromValue(min_val, max_val, idx, track_length, opt.upsideDown)
-            x_pos = groove_rect.left() + pos + (handle_width / 2)
-            
-            is_hovered = (idx == self.hovered_index)
-            
-            # Draw highlight if hovered
-            if is_hovered:
-                marker_w = 6
-                marker_h = 6
-                painter.setBrush(QBrush(hover_color))
-            else:
-                marker_w = 4
-                marker_h = 4
-                painter.setBrush(QBrush(default_color))
+            x_pos = groove_rect.left() + pos + (handle_rect.width() / 2)
+            color = hover_color if idx == self.hovered_index else default_color
+            painter.setBrush(QBrush(color))
+            painter.drawRect(int(x_pos - tick_w / 2), tick_y, tick_w, tick_h)
 
-            y_pos = groove_rect.top() - marker_h - 2
-            
-            draw_rect = QRect(int(x_pos - marker_w/2), int(y_pos), marker_w, marker_h)
-            painter.drawRect(draw_rect)
+        # Redraw handle on top of ticks
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.drawEllipse(handle_rect)
