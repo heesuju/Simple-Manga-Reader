@@ -2,9 +2,39 @@ import os
 import shutil
 from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem, QWidget, QApplication
 from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform, QCursor, QColor, QPainterPath, QDrag
-from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QPoint, QRect, QSize, QRectF, QMimeData, QUrl
+from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QPoint, QRect, QSize, QRectF, QMimeData, QUrl, QObject, QRunnable
 
 from src.ui.components.selection_overlay import AdvancedSelectionOverlay
+
+
+class _ArchiveExtractSignals(QObject):
+    finished = pyqtSignal(str)  # save_path on success, empty string on failure
+
+
+class _ArchiveExtractWorker(QRunnable):
+    def __init__(self, archive_path, save_path):
+        super().__init__()
+        self.archive_path = archive_path
+        self.save_path = save_path
+        self.signals = _ArchiveExtractSignals()
+
+    def run(self):
+        from src.utils.img_utils import get_image_data_from_zip
+        try:
+            data = get_image_data_from_zip(self.archive_path)
+            if data:
+                with open(self.save_path, 'wb') as f:
+                    f.write(data)
+                self.signals.finished.emit(self.save_path)
+                return
+        except Exception:
+            pass
+        try:
+            os.remove(self.save_path)
+        except OSError:
+            pass
+        self.signals.finished.emit('')
+
 
 class ImageView(QGraphicsView):
     """QGraphicsView subclass that scales pixmap from original for sharp zooming."""
@@ -237,6 +267,10 @@ class ImageView(QGraphicsView):
             self._waiting_for_frame_drag = False
             if self._is_video_mode():
                 self._start_frame_extraction_async()
+            else:
+                path = self._get_current_image_path()
+                if path and '|' in path:
+                    self._start_archive_extraction_async(path)
             event.accept()
             return
         self._ctrl_drag_start_pos = None
@@ -248,7 +282,7 @@ class ImageView(QGraphicsView):
                 and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
             if (event.pos() - self._ctrl_drag_start_pos).manhattanLength() >= QApplication.startDragDistance():
                 self._ctrl_drag_start_pos = None
-                if self._is_video_mode():
+                if self._frame_extraction_active or self._frame_temp_path:
                     if self._frame_temp_path:
                         self._execute_file_drag(self._frame_temp_path)
                     else:
@@ -321,6 +355,27 @@ class ImageView(QGraphicsView):
         worker.signals.finished.connect(lambda s, img, p: self._on_drag_frame_ready(img, p))
         self.manga_reader.thread_pool.start(worker)
 
+    def _start_archive_extraction_async(self, path):
+        import tempfile
+        ext = os.path.splitext(path.split('|', 1)[1])[1] or '.jpg'
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        tmp.close()
+        self._frame_extraction_active = True
+        worker = _ArchiveExtractWorker(path, tmp.name)
+        worker.signals.finished.connect(self._on_archive_ready)
+        self.manga_reader.thread_pool.start(worker)
+
+    def _on_archive_ready(self, save_path):
+        if not self._frame_extraction_active:
+            if save_path:
+                try:
+                    os.remove(save_path)
+                except OSError:
+                    pass
+            return
+        self._frame_extraction_active = False
+        self._on_temp_file_ready(save_path)
+
     def _on_drag_frame_ready(self, q_image, save_path):
         if not self._frame_extraction_active:
             try:
@@ -330,6 +385,11 @@ class ImageView(QGraphicsView):
             return
         self._frame_extraction_active = False
         q_image.save(save_path)
+        self._on_temp_file_ready(save_path)
+
+    def _on_temp_file_ready(self, save_path):
+        if not save_path:
+            return
         self._frame_temp_path = save_path
         if self._waiting_for_frame_drag:
             self._waiting_for_frame_drag = False
