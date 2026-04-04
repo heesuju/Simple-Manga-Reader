@@ -1,8 +1,8 @@
 import os
 import shutil
-from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem, QWidget
-from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform, QCursor, QColor, QPainterPath
-from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QPoint, QRect, QSize, QRectF
+from PyQt6.QtWidgets import QGraphicsView, QFrame, QMenu, QFileDialog, QGraphicsPixmapItem, QWidget, QApplication
+from PyQt6.QtGui import QPixmap, QAction, QPainter, QTransform, QCursor, QColor, QPainterPath, QDrag
+from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, QPoint, QRect, QSize, QRectF, QMimeData, QUrl
 
 from src.ui.components.selection_overlay import AdvancedSelectionOverlay
 
@@ -32,6 +32,8 @@ class ImageView(QGraphicsView):
         self._selection_mode = False
         self._selection_overlay = AdvancedSelectionOverlay(self.viewport(), parent_view=self)
         self._selection_overlay.ratio_changed.connect(self.ratio_changed)
+
+        self._ctrl_drag_start_pos = None
 
         # Smooth rendering
         hints = (
@@ -223,6 +225,49 @@ class ImageView(QGraphicsView):
                         image_bounds = image_bounds.united(item.sceneBoundingRect())
         
         self._selection_overlay.set_image_bounds(image_bounds)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._ctrl_drag_start_pos = event.pos()
+            event.accept()
+            return
+        self._ctrl_drag_start_pos = None
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (self._ctrl_drag_start_pos is not None
+                and event.buttons() & Qt.MouseButton.LeftButton
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            if (event.pos() - self._ctrl_drag_start_pos).manhattanLength() >= QApplication.startDragDistance():
+                self._ctrl_drag_start_pos = None
+                self._start_file_drag()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._ctrl_drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def _get_current_image_path(self):
+        if not self.manga_reader or not self.manga_reader.model:
+            return None
+        model = self.manga_reader.model
+        if not model.images or model.current_index < 0 or model.current_index >= len(model.images):
+            return None
+        return model.images[model.current_index].path
+
+    def _start_file_drag(self):
+        path = self._get_current_image_path()
+        if not path or '|' in path:
+            return
+
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(path)])
+
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.exec(Qt.DropAction.CopyAction)
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
