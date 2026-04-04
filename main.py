@@ -11,9 +11,6 @@ from src.ui.chapter_list import ChapterListView
 from src.utils.img_utils import get_chapter_number
 from src.utils.resource_utils import resource_path
 from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from src.ui.reader_view import ReaderView
 

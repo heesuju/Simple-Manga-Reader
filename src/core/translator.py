@@ -3,12 +3,9 @@ import os
 import time
 import requests
 import json
-from dotenv import load_dotenv
 from src.enums import Language
 from src.core.llm_server import LLMServerManager
 
-# Load params from .env (e.g. LLAMA_API_URL)
-load_dotenv()
 
 class Translator:
     # Few-shot examples in the exact Text/Translation format the model must complete.

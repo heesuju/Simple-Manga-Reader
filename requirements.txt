@@ -2,7 +2,6 @@ pyqt6
 opencv-python
 Pillow
 requests
-python-dotenv
 qrcode
 pyqtdarktheme
 pyinstaller
