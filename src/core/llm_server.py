@@ -5,7 +5,6 @@ import signal
 import time
 import requests
 from pathlib import Path
-from huggingface_hub import hf_hub_download
 import json
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -111,6 +110,7 @@ class LLMServerManager(QObject):
                 self.emit_status()
                 
                 print(f"Downloading {self.model_name} from {self.repo_id}...")
+                from huggingface_hub import hf_hub_download
                 download_path = hf_hub_download(repo_id=self.repo_id, filename=self.model_name, local_dir=str(self.models_dir))
                 print(f"Model downloaded to {download_path}")
             except Exception as e:
