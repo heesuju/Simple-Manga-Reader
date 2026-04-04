@@ -17,6 +17,35 @@ load_dotenv()
 
 from src.ui.reader_view import ReaderView
 
+
+def register_context_menu():
+    """Register 'Open in SU.zip' right-click option for folders.
+    Only writes to the registry if the entry is missing or points to a different path."""
+    try:
+        import winreg
+        if getattr(sys, 'frozen', False):
+            expected_command = f'"{sys.executable}" "%1"'
+        else:
+            script_path = os.path.abspath(__file__)
+            expected_command = f'"{sys.executable}" "{script_path}" "%1"'
+        command_key_path = r"Software\Classes\Directory\shell\OpenInSU.zip\command"
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, command_key_path) as key:
+                current_command, _ = winreg.QueryValueEx(key, "")
+                if current_command == expected_command:
+                    return  # Already registered correctly, nothing to do
+        except OSError:
+            pass  # Key doesn't exist yet
+
+        key_path = r"Software\Classes\Directory\shell\OpenInSU.zip"
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Open in SU.zip")
+            winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, f'"{sys.executable}"')
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, command_key_path) as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, expected_command)
+    except Exception as e:
+        print(f"Failed to register context menu: {e}")
+
 from src.core.library_manager import LibraryManager
 
 class MainWindow(QMainWindow):
@@ -183,6 +212,30 @@ class MainWindow(QMainWindow):
         else:
             self.stacked_widget.setCurrentWidget(self.folder_grid)
 
+    def open_folder_in_reader(self, folder_path):
+        path = Path(folder_path)
+        if not path.is_dir():
+            return
+        chapter = str(path)
+        series = {
+            'id': None,
+            'name': path.name,
+            'path': str(path),
+            'chapters': [chapter],
+            'cover_image': None,
+            'last_read_chapter': None,
+            'last_read_page': 0,
+        }
+        self.current_series = series
+        self.current_series_has_chapters = False  # back goes to folder grid, not chapter list
+        self.reader_view = ReaderView(series, [chapter], 0)
+        self.reader_view.back_pressed.connect(self.handle_reader_back)
+        self.reader_view.request_fullscreen_toggle.connect(self.toggle_fullscreen)
+        self.reader_view.current_chapter_changed.connect(self.on_reader_chapter_changed)
+        self.reader_view.hide_chapter_requested.connect(self.on_reader_hide_chapter)
+        self.stacked_widget.addWidget(self.reader_view)
+        self.stacked_widget.setCurrentWidget(self.reader_view)
+
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         if self._privacy_overlay.isVisible():
@@ -233,10 +286,15 @@ if __name__ == "__main__":
     if llm_manager.auto_start:
         llm_manager.start()
 
+    register_context_menu()
+
     library_manager = LibraryManager()
     main_win = MainWindow(library_manager)
     main_win.showMaximized()
-    
+
+    if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
+        main_win.open_folder_in_reader(sys.argv[1])
+
     exit_code = app.exec()
     
     llm_manager.stop()
