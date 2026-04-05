@@ -277,26 +277,25 @@ class ReaderView(QWidget):
         # Nav buttons (hover-reveal overlays)
         btn_style = """
             QPushButton {
-                background-color: rgba(0, 0, 0, 120);
+                background-color: rgba(0, 0, 0, 80);
                 color: white;
                 border: none;
-                border-radius: 20px;
-                font-size: 20px;
+                border-radius: 12px;
             }
-            QPushButton:hover { background-color: rgba(0, 0, 0, 200); }
+            QPushButton:hover { background-color: rgba(0, 0, 0, 150); }
         """
         self.prev_nav_btn = QPushButton(self)
         self.prev_nav_btn.setIcon(QIcon(resource_path("assets/icons/left.svg")))
-        self.prev_nav_btn.setIconSize(QSize(20, 20))
-        self.prev_nav_btn.setFixedSize(40, 40)
+        self.prev_nav_btn.setIconSize(QSize(32, 32))
+        self.prev_nav_btn.setFixedSize(48, 80)
         self.prev_nav_btn.setStyleSheet(btn_style)
         self.prev_nav_btn.clicked.connect(self.show_prev)
         self.prev_nav_btn.hide()
 
         self.next_nav_btn = QPushButton(self)
         self.next_nav_btn.setIcon(QIcon(resource_path("assets/icons/right.svg")))
-        self.next_nav_btn.setIconSize(QSize(20, 20))
-        self.next_nav_btn.setFixedSize(40, 40)
+        self.next_nav_btn.setIconSize(QSize(32, 32))
+        self.next_nav_btn.setFixedSize(48, 80)
         self.next_nav_btn.setStyleSheet(btn_style)
         self.next_nav_btn.clicked.connect(self.show_next)
         self.next_nav_btn.hide()
@@ -1311,10 +1310,10 @@ class ReaderView(QWidget):
             self.next_nav_btn.hide()
 
     def _reposition_nav_buttons(self):
-        margin = 16
-        cy = self.height() // 2 - 20
+        margin = 110
+        cy = self.height() // 2 - 40
         self.prev_nav_btn.move(margin, cy)
-        self.next_nav_btn.move(self.width() - 40 - margin, cy)
+        self.next_nav_btn.move(self.width() - 48 - margin, cy)
 
     def _set_nav_btn_visible(self, btn, anim, visible: bool):
         if visible:
