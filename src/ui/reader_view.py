@@ -1001,6 +1001,7 @@ class ReaderView(QWidget):
         pil_image = Image.open(io.BytesIO(ba.data())).convert("RGBA")
 
         self._cancel_area_selection()
+        self._sticker_original_pil = pil_image  # kept for include/exclude painting
 
         # Show feedback while server processes
         self.loading_label.setText("Making sticker...")
@@ -1018,7 +1019,7 @@ class ReaderView(QWidget):
             return
 
         from src.ui.components.sticker_preview_dialog import StickerPreviewDialog
-        dialog = StickerPreviewDialog(pil_image,
+        dialog = StickerPreviewDialog(self._sticker_original_pil, pil_image,
                                       result_no_border_pil=pil_image, parent=self)
         if dialog.exec() != StickerPreviewDialog.DialogCode.Accepted:
             return
