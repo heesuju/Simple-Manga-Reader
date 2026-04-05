@@ -1021,22 +1021,7 @@ class ReaderView(QWidget):
         from src.ui.components.sticker_preview_dialog import StickerPreviewDialog
         dialog = StickerPreviewDialog(self._sticker_original_pil, pil_image,
                                       result_no_border_pil=pil_image, parent=self)
-        if dialog.exec() != StickerPreviewDialog.DialogCode.Accepted:
-            return
-
-        import os
-        import time
-        from PyQt6.QtWidgets import QFileDialog
-
-        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        initial_path = os.path.join(downloads_dir, f"sticker_{timestamp}.png")
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Sticker As", initial_path, "PNG Image (*.png)"
-        )
-        if file_path:
-            dialog.get_result().save(file_path, "PNG")
+        dialog.exec()
 
     def reset_zoom(self):
         self.set_zoom_mode("Fit Page")

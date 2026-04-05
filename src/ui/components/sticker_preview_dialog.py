@@ -479,7 +479,7 @@ class StickerPreviewDialog(QDialog):
             QPushButton:hover { background-color: #9147ff; }
             QPushButton:pressed { background-color: #6a1fd4; }
         """)
-        self.save_btn.clicked.connect(self.accept)
+        self.save_btn.clicked.connect(self._save)
         bottom.addWidget(self.save_btn)
 
         layout.addLayout(bottom)
@@ -513,6 +513,21 @@ class StickerPreviewDialog(QDialog):
 
     def _reset(self):
         self.canvas.reset_mask(self._rembg_result)
+
+    def _save(self):
+        import os
+        import time
+        from PyQt6.QtWidgets import QFileDialog
+
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        initial_path = os.path.join(downloads_dir, f"sticker_{timestamp}.png")
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Sticker As", initial_path, "PNG Image (*.png)"
+        )
+        if file_path:
+            self.canvas.result_pil.save(file_path, "PNG")
 
     def get_result(self) -> Image.Image:
         return self.canvas.result_pil
