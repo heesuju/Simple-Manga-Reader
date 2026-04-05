@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QFrame, QSizePolicy, QComboBox, QMenu,
-    QDialog, QPlainTextEdit, QApplication
+    QScrollArea, QFrame, QSizePolicy, QMenu,
+    QDialog, QPlainTextEdit, QApplication, QLayout
 )
-from PyQt6.QtCore import Qt, QTimer, QSize, QPoint
+from PyQt6.QtCore import Qt, QTimer, QSize, QPoint, QRect
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
@@ -16,9 +16,81 @@ from src.utils.str_utils import natural_sort_key
 from src.workers.thumbnail_worker import ThumbnailWorker
 from src.core.alt_manager import AltManager
 
-THUMB_W = 120
-THUMB_H = 160
+THUMB_W = 80
+THUMB_H = 100
 PANEL_W = THUMB_W + 40
+
+
+class FlowLayout(QLayout):
+    """Layout that arranges widgets left-to-right, wrapping to the next row."""
+    def __init__(self, parent=None, h_spacing=3, v_spacing=3):
+        super().__init__(parent)
+        self._h_spacing = h_spacing
+        self._v_spacing = v_spacing
+        self._items = []
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def clear_widgets(self):
+        while self._items:
+            item = self._items.pop()
+            if item.widget():
+                item.widget().deleteLater()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._do_layout(QRect(0, 0, width, 0), apply=False)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, apply=True)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize(0, 0)
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        return size + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _do_layout(self, rect, apply):
+        m = self.contentsMargins()
+        effective = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x = effective.x()
+        y = effective.y()
+        row_h = 0
+
+        for item in self._items:
+            w = item.sizeHint().width()
+            h = item.sizeHint().height()
+            if x + w > effective.right() + 1 and x > effective.x():
+                x = effective.x()
+                y += row_h + self._v_spacing
+                row_h = 0
+            if apply:
+                item.setGeometry(QRect(x, y, w, h))
+            row_h = max(row_h, h)
+            x += w + self._h_spacing
+
+        return y + row_h - rect.y() + m.bottom()
 
 
 class AltThumbnail(QWidget):
@@ -149,38 +221,50 @@ class AltPanel(QWidget):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(4)
 
-        # Row 1: Category dropdown (full width)
-        cat_row = QHBoxLayout()
-        cat_row.setContentsMargins(0, 0, 0, 0)
-        cat_row.setSpacing(0)
+        # Scroll area for thumbnails (top — primary content)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setLineWidth(0)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet(SCROLL_AREA_TRANSPARENT)
+        main_layout.addWidget(self.scroll_area, 1)
 
-        self.cat_combo = QComboBox()
-        self.cat_combo.setStyleSheet("""
-            QComboBox {
-                background-color: rgba(255, 255, 255, 30);
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 50);
-                border-radius: 3px;
-                padding: 3px 6px;
+        # Category chip buttons (bottom — wrapping flow)
+        self._cat_chip_style = """
+            QPushButton {
+                background-color: rgba(255, 255, 255, 20);
+                color: rgba(255, 255, 255, 160);
+                border: 1px solid rgba(255, 255, 255, 40);
+                border-radius: 8px;
+                font-size: 9px;
                 font-weight: bold;
-                font-size: 11px;
+                padding: 2px 6px;
             }
-            QComboBox:hover { background-color: rgba(255, 255, 255, 60); }
-            QComboBox::drop-down { border: none; }
-            QComboBox::down-arrow { image: none; border: none; }
-            QComboBox QAbstractItemView {
-                background-color: rgba(30, 30, 30, 240);
+            QPushButton:hover { background-color: rgba(255, 255, 255, 50); }
+        """
+        self._cat_chip_active_style = """
+            QPushButton {
+                background-color: rgba(255, 150, 50, 180);
                 color: white;
-                selection-background-color: rgba(255, 150, 50, 180);
-                border: 1px solid rgba(255, 255, 255, 50);
+                border: 1px solid rgba(255, 150, 50, 200);
+                border-radius: 8px;
+                font-size: 9px;
+                font-weight: bold;
+                padding: 2px 6px;
             }
-        """)
-        self.cat_combo.currentIndexChanged.connect(self._on_combo_changed)
-        cat_row.addWidget(self.cat_combo)
+            QPushButton:hover { background-color: rgba(255, 170, 80, 200); }
+        """
 
-        main_layout.addLayout(cat_row)
+        self._cat_chips_widget = QWidget()
+        self._cat_chips_widget.setStyleSheet("background: transparent;")
+        self._cat_chips_layout = FlowLayout(self._cat_chips_widget, h_spacing=3, v_spacing=3)
+        self._cat_chips_layout.setContentsMargins(0, 0, 0, 0)
+        self._cat_chip_buttons = []
+        main_layout.addWidget(self._cat_chips_widget)
 
-        # Row 2: Action buttons — equally spaced across full panel width
+        # Action buttons (bottom)
         _btn_style = """
             QPushButton {
                 background-color: rgba(255, 255, 255, 30);
@@ -229,16 +313,6 @@ class AltPanel(QWidget):
         btn_row.addWidget(self.batch_refine_btn, 1)
 
         main_layout.addLayout(btn_row)
-
-        # Scroll area for thumbnails
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        self.scroll_area.setLineWidth(0)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll_area.setStyleSheet(SCROLL_AREA_TRANSPARENT)
-        main_layout.addWidget(self.scroll_area, 1)
 
         self.scroll_content = QWidget()
         self.scroll_content.setStyleSheet("background: transparent; border: none;")
@@ -338,29 +412,27 @@ class AltPanel(QWidget):
 
         # Restore user's last selection for this page; default to "All"
         active_cat = self.active_categories.get(idx, "All")
+        if active_cat != "All" and active_cat not in cat_names:
+            active_cat = "All"
         self.active_categories[idx] = active_cat
 
-        # Update combo box (block signals to avoid triggering _on_combo_changed during population)
-        self.cat_combo.blockSignals(True)
-        self.cat_combo.clear()
-        self.cat_combo.addItem("ALL", "All")
-        self.cat_combo.insertSeparator(1)
-        for cat in cat_names:
-            self.cat_combo.addItem(cat.upper(), cat)
-        # Select active entry
-        if active_cat == "All":
-            self.cat_combo.setCurrentIndex(0)
-        else:
-            for i in range(self.cat_combo.count()):
-                if self.cat_combo.itemData(i) == active_cat:
-                    self.cat_combo.setCurrentIndex(i)
-                    break
-            else:
-                # Fallback if stored category no longer exists
-                self.cat_combo.setCurrentIndex(0)
-                active_cat = "All"
-                self.active_categories[idx] = "All"
-        self.cat_combo.blockSignals(False)
+        # Update category chip buttons
+        self._cat_chips_layout.clear_widgets()
+        self._cat_chip_buttons.clear()
+
+        all_cats = ["All"] + cat_names
+        for cat in all_cats:
+            label = "ALL" if cat == "All" else cat.upper()
+            chip = QPushButton(label)
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
+            is_active = (cat == active_cat)
+            chip.setStyleSheet(self._cat_chip_active_style if is_active else self._cat_chip_style)
+            chip.clicked.connect(lambda checked, c=cat: self._on_chip_clicked(c))
+            self._cat_chips_layout.addWidget(chip)
+            self._cat_chip_buttons.append((cat, chip))
+
+        # Hide chips row if only one category
+        self._cat_chips_widget.setVisible(len(cat_names) > 1)
 
         # Update play button state
         is_playing = idx in self.slideshow_states
@@ -447,13 +519,8 @@ class AltPanel(QWidget):
             p = Path(self.model.manga_dir) / p
         return str(p)
 
-    def _on_combo_changed(self, index):
-        """Handle category dropdown selection change."""
-        if index < 0:
-            return
-        category = self.cat_combo.itemData(index)
-        if not category:
-            return  # separator row
+    def _on_chip_clicked(self, category):
+        """Handle category chip button click."""
         page_index = self.model.current_index if self.model else 0
         self.active_categories[page_index] = category
         if category == "All":
