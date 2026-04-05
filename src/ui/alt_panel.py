@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QFrame, QSizePolicy, QMenu,
-    QDialog, QPlainTextEdit, QApplication, QLayout
+    QScrollArea, QFrame, QSizePolicy, QMenu, QComboBox,
+    QDialog, QPlainTextEdit, QApplication
 )
-from PyQt6.QtCore import Qt, QTimer, QSize, QPoint, QRect
+from PyQt6.QtCore import Qt, QTimer, QPoint
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
@@ -21,80 +21,8 @@ THUMB_H = 100
 PANEL_W = THUMB_W + 40
 
 
-class FlowLayout(QLayout):
-    """Layout that arranges widgets left-to-right, wrapping to the next row."""
-    def __init__(self, parent=None, h_spacing=3, v_spacing=3):
-        super().__init__(parent)
-        self._h_spacing = h_spacing
-        self._v_spacing = v_spacing
-        self._items = []
-
-    def addItem(self, item):
-        self._items.append(item)
-
-    def count(self):
-        return len(self._items)
-
-    def itemAt(self, index):
-        if 0 <= index < len(self._items):
-            return self._items[index]
-        return None
-
-    def takeAt(self, index):
-        if 0 <= index < len(self._items):
-            return self._items.pop(index)
-        return None
-
-    def clear_widgets(self):
-        while self._items:
-            item = self._items.pop()
-            if item.widget():
-                item.widget().deleteLater()
-
-    def hasHeightForWidth(self):
-        return True
-
-    def heightForWidth(self, width):
-        return self._do_layout(QRect(0, 0, width, 0), apply=False)
-
-    def setGeometry(self, rect):
-        super().setGeometry(rect)
-        self._do_layout(rect, apply=True)
-
-    def sizeHint(self):
-        return self.minimumSize()
-
-    def minimumSize(self):
-        size = QSize(0, 0)
-        for item in self._items:
-            size = size.expandedTo(item.minimumSize())
-        m = self.contentsMargins()
-        return size + QSize(m.left() + m.right(), m.top() + m.bottom())
-
-    def _do_layout(self, rect, apply):
-        m = self.contentsMargins()
-        effective = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
-        x = effective.x()
-        y = effective.y()
-        row_h = 0
-
-        for item in self._items:
-            w = item.sizeHint().width()
-            h = item.sizeHint().height()
-            if x + w > effective.right() + 1 and x > effective.x():
-                x = effective.x()
-                y += row_h + self._v_spacing
-                row_h = 0
-            if apply:
-                item.setGeometry(QRect(x, y, w, h))
-            row_h = max(row_h, h)
-            x += w + self._h_spacing
-
-        return y + row_h - rect.y() + m.bottom()
-
-
 class AltThumbnail(QWidget):
-    """Single clickable alt thumbnail row."""
+    """Single clickable alt thumbnail with index badge overlay."""
     def __init__(self, parent, variant_path, display_index, is_selected=False, on_click=None, on_right_click=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -104,27 +32,33 @@ class AltThumbnail(QWidget):
         self.is_selected = is_selected
 
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(THUMB_H + 30)
+        self.setFixedSize(THUMB_W + 4, THUMB_H + 4)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.thumb_label = QLabel()
+        self.thumb_label = QLabel(self)
         self.thumb_label.setFixedSize(THUMB_W, THUMB_H)
+        self.thumb_label.move(2, 2)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb_label.setStyleSheet("background: transparent;")
-        layout.addWidget(self.thumb_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         is_orig = str(display_index) == "ORIG"
-        self.name_label = QLabel(str(display_index))
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        if is_orig:
-            self.name_label.setStyleSheet("color: rgba(255, 180, 80, 200); font-size: 10px; font-weight: bold;")
-        else:
-            self.name_label.setStyleSheet("color: rgba(255, 255, 255, 160); font-size: 11px;")
-        layout.addWidget(self.name_label)
+        if str(display_index):
+            self.badge = QLabel(str(display_index), self)
+            self.badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            if is_orig:
+                self.badge.setStyleSheet(
+                    "background: rgba(200, 120, 30, 200); color: white;"
+                    "font-size: 8px; font-weight: bold; padding: 1px 3px;"
+                    "border-radius: 3px;"
+                )
+            else:
+                self.badge.setStyleSheet(
+                    "background: rgba(0, 0, 0, 160); color: rgba(255, 255, 255, 200);"
+                    "font-size: 9px; font-weight: bold; padding: 1px 4px;"
+                    "border-radius: 3px;"
+                )
+            self.badge.adjustSize()
+            self.badge.move(4, 4)
+            self.badge.raise_()
 
         self._update_style()
 
@@ -221,7 +155,12 @@ class AltPanel(QWidget):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(4)
 
-        # Scroll area for thumbnails (top — primary content)
+        # Pinned original thumbnail (top — always visible)
+        self._orig_widget = AltThumbnail(self._content_widget, "", "ORIG")
+        self._orig_widget.hide()
+        main_layout.addWidget(self._orig_widget)
+
+        # Scroll area for alt thumbnails
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -231,38 +170,30 @@ class AltPanel(QWidget):
         self.scroll_area.setStyleSheet(SCROLL_AREA_TRANSPARENT)
         main_layout.addWidget(self.scroll_area, 1)
 
-        # Category chip buttons (bottom — wrapping flow)
-        self._cat_chip_style = """
-            QPushButton {
-                background-color: rgba(255, 255, 255, 20);
-                color: rgba(255, 255, 255, 160);
-                border: 1px solid rgba(255, 255, 255, 40);
-                border-radius: 8px;
-                font-size: 9px;
-                font-weight: bold;
-                padding: 2px 6px;
-            }
-            QPushButton:hover { background-color: rgba(255, 255, 255, 50); }
-        """
-        self._cat_chip_active_style = """
-            QPushButton {
-                background-color: rgba(255, 150, 50, 180);
+        # Category dropdown (bottom)
+        self.cat_combo = QComboBox()
+        self.cat_combo.setStyleSheet("""
+            QComboBox {
+                background-color: rgba(255, 255, 255, 30);
                 color: white;
-                border: 1px solid rgba(255, 150, 50, 200);
-                border-radius: 8px;
-                font-size: 9px;
+                border: 1px solid rgba(255, 255, 255, 50);
+                border-radius: 3px;
+                padding: 3px 6px;
                 font-weight: bold;
-                padding: 2px 6px;
+                font-size: 11px;
             }
-            QPushButton:hover { background-color: rgba(255, 170, 80, 200); }
-        """
-
-        self._cat_chips_widget = QWidget()
-        self._cat_chips_widget.setStyleSheet("background: transparent;")
-        self._cat_chips_layout = FlowLayout(self._cat_chips_widget, h_spacing=3, v_spacing=3)
-        self._cat_chips_layout.setContentsMargins(0, 0, 0, 0)
-        self._cat_chip_buttons = []
-        main_layout.addWidget(self._cat_chips_widget)
+            QComboBox:hover { background-color: rgba(255, 255, 255, 60); }
+            QComboBox::drop-down { border: none; }
+            QComboBox::down-arrow { image: none; border: none; }
+            QComboBox QAbstractItemView {
+                background-color: rgba(30, 30, 30, 240);
+                color: white;
+                selection-background-color: rgba(255, 150, 50, 180);
+                border: 1px solid rgba(255, 255, 255, 50);
+            }
+        """)
+        self.cat_combo.currentIndexChanged.connect(self._on_combo_changed)
+        main_layout.addWidget(self.cat_combo)
 
         # Action buttons (bottom)
         _btn_style = """
@@ -293,15 +224,6 @@ class AltPanel(QWidget):
         """)
         self.play_btn.clicked.connect(self._on_play_clicked)
         btn_row.addWidget(self.play_btn, 1)
-
-        self.revert_icon = QIcon(resource_path("assets/icons/search_reset.svg"))
-        self.revert_btn = QPushButton()
-        self.revert_btn.setIcon(self.revert_icon)
-        self.revert_btn.setFixedHeight(26)
-        self.revert_btn.setToolTip("Revert to Original")
-        self.revert_btn.setStyleSheet(_btn_style)
-        self.revert_btn.clicked.connect(self._on_revert_clicked)
-        btn_row.addWidget(self.revert_btn, 1)
 
         self.batch_refine_icon = QIcon(resource_path("assets/icons/auto_fix.svg"))
         self.batch_refine_btn = QPushButton()
@@ -389,16 +311,19 @@ class AltPanel(QWidget):
         self._clear_content()
 
         if not self.model or not self.model.images:
+            self._orig_widget.hide()
             self.hide()
             return
 
         idx = primary_index
         if not (0 <= idx < len(self.model.images)):
+            self._orig_widget.hide()
             self.hide()
             return
 
         page = self.model.images[idx]
         if len(page.images) <= 1:
+            self._orig_widget.hide()
             self.hide()
             return
 
@@ -407,6 +332,7 @@ class AltPanel(QWidget):
         cat_names = sorted(list(categories.keys()), key=lambda c: (0 if c == "Main" else 1, natural_sort_key(c)))
 
         if not cat_names:
+            self._orig_widget.hide()
             self.hide()
             return
 
@@ -416,23 +342,22 @@ class AltPanel(QWidget):
             active_cat = "All"
         self.active_categories[idx] = active_cat
 
-        # Update category chip buttons
-        self._cat_chips_layout.clear_widgets()
-        self._cat_chip_buttons.clear()
-
-        all_cats = ["All"] + cat_names
-        for cat in all_cats:
-            label = "ALL" if cat == "All" else cat.upper()
-            chip = QPushButton(label)
-            chip.setCursor(Qt.CursorShape.PointingHandCursor)
-            is_active = (cat == active_cat)
-            chip.setStyleSheet(self._cat_chip_active_style if is_active else self._cat_chip_style)
-            chip.clicked.connect(lambda checked, c=cat: self._on_chip_clicked(c))
-            self._cat_chips_layout.addWidget(chip)
-            self._cat_chip_buttons.append((cat, chip))
-
-        # Hide chips row if only one category
-        self._cat_chips_widget.setVisible(len(cat_names) > 1)
+        # Update category combo box
+        self.cat_combo.blockSignals(True)
+        self.cat_combo.clear()
+        self.cat_combo.addItem("ALL", "All")
+        self.cat_combo.insertSeparator(1)
+        for cat in cat_names:
+            self.cat_combo.addItem(cat.upper(), cat)
+        if active_cat == "All":
+            self.cat_combo.setCurrentIndex(0)
+        else:
+            for i in range(self.cat_combo.count()):
+                if self.cat_combo.itemData(i) == active_cat:
+                    self.cat_combo.setCurrentIndex(i)
+                    break
+        self.cat_combo.blockSignals(False)
+        self.cat_combo.setVisible(len(cat_names) > 1)
 
         # Update play button state
         is_playing = idx in self.slideshow_states
@@ -447,6 +372,15 @@ class AltPanel(QWidget):
 
         original_image_path = page.images[0]
 
+        # Pinned original thumbnail
+        orig_selected = (not is_playing) and (page.current_variant_index == 0)
+        self._orig_widget.variant_path = original_image_path
+        self._orig_widget.on_click = lambda: self._on_variant_clicked(idx, 0)
+        self._orig_widget.is_selected = orig_selected
+        self._orig_widget._update_style()
+        self._orig_widget.show()
+        self._load_thumb_for_widget(self._orig_widget, self._resolve_path(original_image_path))
+
         # Determine which categories to render
         cats_to_render = cat_names if active_cat == "All" else ([active_cat] if active_cat in categories else cat_names)
         show_group_labels = active_cat == "All" and len(cat_names) > 1
@@ -455,14 +389,15 @@ class AltPanel(QWidget):
         for cat in cats_to_render:
             cat_paths = list(categories.get(cat, []))
 
-            if cat == "Main" and original_image_path in cat_paths:
-                other_paths = sorted(
-                    [p for p in cat_paths if p != original_image_path],
-                    key=lambda p: natural_sort_key(Path(p).name)
-                )
-                cat_paths = [original_image_path] + other_paths
+            # Remove original from category lists (it's pinned above)
+            cat_paths = [p for p in cat_paths if p != original_image_path]
+            if cat == "Main":
+                cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
             else:
                 cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
+
+            if not cat_paths:
+                continue
 
             if show_group_labels:
                 lbl = self._make_group_label(cat)
@@ -472,17 +407,12 @@ class AltPanel(QWidget):
             for variant_path in cat_paths:
                 true_v_idx = page.images.index(variant_path)
                 is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
-                is_original = (variant_path == original_image_path)
-                if is_original:
-                    display_label = "ORIG"
-                else:
-                    non_orig_count += 1
-                    display_label = non_orig_count
+                non_orig_count += 1
 
                 thumb = AltThumbnail(
                     self.scroll_content,
                     variant_path,
-                    display_index=display_label,
+                    display_index=non_orig_count,
                     is_selected=is_selected,
                     on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
                     on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
@@ -519,8 +449,13 @@ class AltPanel(QWidget):
             p = Path(self.model.manga_dir) / p
         return str(p)
 
-    def _on_chip_clicked(self, category):
-        """Handle category chip button click."""
+    def _on_combo_changed(self, index):
+        """Handle category dropdown selection change."""
+        if index < 0:
+            return
+        category = self.cat_combo.itemData(index)
+        if not category:
+            return
         page_index = self.model.current_index if self.model else 0
         self.active_categories[page_index] = category
         if category == "All":
@@ -569,13 +504,6 @@ class AltPanel(QWidget):
             state['speed_idx'] = new_speed_idx
             state['timer'].setInterval(self.speeds[new_speed_idx])
         self._update_panel(self.model.current_index)
-
-    def _on_revert_clicked(self):
-        if self.model:
-            page_index = self.model.current_index
-            if 0 <= page_index < len(self.model.images):
-                # Variant index 0 is always the original image
-                self.model.change_variant(page_index, 0)
 
     def _advance_variant(self, page_index):
         if not self.model or not (0 <= page_index < len(self.model.images)):
