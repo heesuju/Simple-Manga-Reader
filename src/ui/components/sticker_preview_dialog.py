@@ -108,6 +108,12 @@ class _StickerCanvas(QWidget):
         self._last_img_pos = None
         self._stroke_dirty = False
 
+        # Zoom & pan
+        self._zoom = 1.0
+        self._pan_offset = QPoint(0, 0)  # pixel offset from centered position
+        self._panning = False
+        self._pan_start = QPoint()
+
         self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(300, 300)
@@ -117,10 +123,13 @@ class _StickerCanvas(QWidget):
 
     def _display_rect(self) -> QRect:
         w, h = self.width(), self.height()
-        scale = min(w / self.img_w, h / self.img_h)
+        base_scale = min(w / self.img_w, h / self.img_h)
+        scale = base_scale * self._zoom
         dw = int(self.img_w * scale)
         dh = int(self.img_h * scale)
-        return QRect((w - dw) // 2, (h - dh) // 2, dw, dh)
+        cx = (w - dw) // 2 + self._pan_offset.x()
+        cy = (h - dh) // 2 + self._pan_offset.y()
+        return QRect(cx, cy, dw, dh)
 
     def _to_img_coords(self, widget_pos: QPoint):
         r = self._display_rect()
@@ -211,7 +220,32 @@ class _StickerCanvas(QWidget):
 
     # ── Mouse events ─────────────────────────────────────────────────────
 
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if delta == 0:
+            event.accept()
+            return
+
+        old_zoom = self._zoom
+        factor = 1.15 if delta > 0 else 1 / 1.15
+        self._zoom = max(0.5, min(10.0, self._zoom * factor))
+
+        # Zoom anchored to the center of the image
+        zoom_ratio = self._zoom / old_zoom
+        self._pan_offset = QPoint(
+            int(self._pan_offset.x() * zoom_ratio),
+            int(self._pan_offset.y() * zoom_ratio),
+        )
+
+        self.update()
+        event.accept()
+
     def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._panning = True
+            self._pan_start = event.pos() - self._pan_offset
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             pos = self._to_img_coords(event.pos())
             if pos:
@@ -224,6 +258,10 @@ class _StickerCanvas(QWidget):
                 self.update()
 
     def mouseMoveEvent(self, event):
+        if self._panning:
+            self._pan_offset = event.pos() - self._pan_start
+            self.update()
+            return
         if self.drawing and event.buttons() & Qt.MouseButton.LeftButton:
             pos = self._to_img_coords(event.pos())
             if pos:
@@ -234,6 +272,10 @@ class _StickerCanvas(QWidget):
             self.update()  # for brush cursor
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton and self._panning:
+            self._panning = False
+            self.setCursor(Qt.CursorShape.CrossCursor)
+            return
         if event.button() == Qt.MouseButton.LeftButton and self.drawing:
             self.drawing = False
             self._last_img_pos = None
@@ -282,10 +324,16 @@ class _StickerCanvas(QWidget):
         self._alpha = np.array(self.result_pil)[:, :, 3].copy()
         self.update()
 
+    def reset_zoom(self):
+        self._zoom = 1.0
+        self._pan_offset = QPoint(0, 0)
+        self.update()
+
     def reset_mask(self, rembg_result: Image.Image):
         self._undo_stack.clear()
         self.result_no_border_pil = rembg_result.convert("RGBA")
         self.set_result(rembg_result)
+        self.reset_zoom()
 
 
 class StickerPreviewDialog(QDialog):
@@ -437,7 +485,8 @@ class StickerPreviewDialog(QDialog):
         layout.addLayout(bottom)
 
     def keyPressEvent(self, event):
-        if event.matches(event.StandardKey.Undo):
+        from PyQt6.QtGui import QKeySequence
+        if event.matches(QKeySequence.StandardKey.Undo):
             self.canvas.undo()
             return
         super().keyPressEvent(event)
