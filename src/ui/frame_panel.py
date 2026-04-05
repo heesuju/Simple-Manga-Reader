@@ -8,13 +8,13 @@ from PyQt6.QtGui import QPixmap, QImage
 from src.workers.view_workers import VideoBatchFrameExtractorWorker
 from src.ui.components.grip_strip import GripStrip, GRIP_W
 
-THUMB_W = 120
-THUMB_H = 160
+THUMB_W = 80
+THUMB_H = 100
 PAGE_SIZE = 50
-PANEL_W = THUMB_W + 40
+PANEL_W = THUMB_W + 14
 
 class FrameThumbnail(QWidget):
-    """Single clickable video frame thumbnail."""
+    """Single clickable video frame thumbnail with index badge overlay."""
     def __init__(self, parent, frame_index, on_click=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -22,23 +22,24 @@ class FrameThumbnail(QWidget):
         self.on_click = on_click
 
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(THUMB_H + 30)
+        self.setFixedSize(THUMB_W + 4, THUMB_H + 4)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.thumb_label = QLabel()
+        self.thumb_label = QLabel(self)
         self.thumb_label.setFixedSize(THUMB_W, THUMB_H)
+        self.thumb_label.move(2, 2)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb_label.setStyleSheet("background: rgba(255, 255, 255, 10);")
-        layout.addWidget(self.thumb_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self.name_label = QLabel(f"Frame {frame_index}")
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.name_label.setStyleSheet("color: white; font-size: 11px;")
-        layout.addWidget(self.name_label)
+        self.badge = QLabel(str(frame_index), self)
+        self.badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.badge.setStyleSheet(
+            "background: rgba(0, 0, 0, 160); color: rgba(255, 255, 255, 200);"
+            "font-size: 9px; font-weight: bold; padding: 1px 4px;"
+            "border-radius: 3px;"
+        )
+        self.badge.adjustSize()
+        self.badge.move(4, 4)
+        self.badge.raise_()
 
     def set_qimage(self, qimage: QImage):
         if qimage and not qimage.isNull():

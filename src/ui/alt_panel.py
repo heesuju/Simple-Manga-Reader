@@ -18,7 +18,7 @@ from src.core.alt_manager import AltManager
 
 THUMB_W = 80
 THUMB_H = 100
-PANEL_W = THUMB_W + 40
+PANEL_W = THUMB_W + 14
 
 
 class AltThumbnail(QWidget):
