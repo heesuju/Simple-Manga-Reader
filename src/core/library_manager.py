@@ -230,10 +230,16 @@ class LibraryManager:
     def update_last_read_chapter(self, series_id, chapter_path, page_index=0, image_path=None):
         with db_cursor() as (conn, cursor):
             try:
-                cursor.execute(
-                    "UPDATE series SET last_read_chapter = ?, last_opened_date = ?, last_read_page = ?, last_read_image_path = ? WHERE id = ?",
-                    (chapter_path, datetime.now(), page_index, image_path, series_id)
-                )
+                if image_path is not None:
+                    cursor.execute(
+                        "UPDATE series SET last_read_chapter = ?, last_opened_date = ?, last_read_page = ?, last_read_image_path = ? WHERE id = ?",
+                        (chapter_path, datetime.now(), page_index, image_path, series_id)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE series SET last_read_chapter = ?, last_opened_date = ?, last_read_page = ? WHERE id = ?",
+                        (chapter_path, datetime.now(), page_index, series_id)
+                    )
                 conn.commit()
             except Exception as e:
                 print(f"Error updating last read chapter: {e}")

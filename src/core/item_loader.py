@@ -56,8 +56,11 @@ class ItemLoader(QRunnable):
             elif self.item_type == 'page':
                 item_type = 'page'
                 thumbnail_path = item.get('image_path')
-                if thumbnail_path and os.path.exists(thumbnail_path):
-                    qimg = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                if thumbnail_path:
+                    if '|' in thumbnail_path:
+                        qimg = load_thumbnail_from_virtual_path(thumbnail_path, self.thumb_width, self.thumb_height)
+                    elif os.path.exists(thumbnail_path):
+                        qimg = load_thumbnail_from_path(thumbnail_path, self.thumb_width, self.thumb_height)
 
             elif self.item_type == 'chapter':
                 item_type = 'chapter'
