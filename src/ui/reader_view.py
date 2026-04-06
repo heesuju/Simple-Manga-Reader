@@ -929,7 +929,7 @@ class ReaderView(QWidget):
             return
 
         worker = ImageInfoWorker(items)
-        worker.signals.finished.connect(self.slider_panel.set_info_text)
+        worker.signals.finished.connect(self.top_panel.set_info_text)
         self.thread_pool.start(worker)
 
     def set_zoom_mode(self, mode: str):

@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox, QMenu
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox, QMenu, QSizePolicy
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QAction
 from src.utils.resource_utils import resource_path
@@ -78,7 +78,13 @@ class TopPanel(QWidget):
 
         self.series_label = QLabel("Series Title")
         self.series_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        self.series_label.setStyleSheet("background: transparent;")
+        self.series_label.setStyleSheet("background: transparent; font-weight: bold;")
+        
+        self.info_label = QLabel("")
+        self.info_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.info_label.setStyleSheet("background: transparent; color: rgba(255, 255, 255, 150); font-size: 11px;")
+        self.info_label.hide()
 
         # Language combo
         self.lang_combo = QComboBox()
@@ -110,7 +116,8 @@ class TopPanel(QWidget):
         self.overflow_btn.setToolTip("More options")
         self.overflow_btn.clicked.connect(self._on_overflow_clicked)
 
-        self._row.addWidget(self.series_label, 1)
+        self._row.addWidget(self.series_label)
+        self._row.addWidget(self.info_label, 1)
         self._row.addWidget(self.lang_combo)
         self._row.addWidget(self.translate_btn)
         self._row.addWidget(self.zoom_combobox)
@@ -156,6 +163,13 @@ class TopPanel(QWidget):
         self.zoom_combobox.blockSignals(True)
         self.zoom_combobox.setCurrentText(text)
         self.zoom_combobox.blockSignals(False)
+
+    def set_info_text(self, text: str):
+        if text:
+            self.info_label.setText(f"  •  {text}")
+            self.info_label.show()
+        else:
+            self.info_label.hide()
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
