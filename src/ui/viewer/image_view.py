@@ -101,7 +101,7 @@ class ImageView(QGraphicsView):
             self, 
             "Select Images/Videos", 
             str(default_dir), 
-            "Media Files (*.png *.jpg *.jpeg *.jpe *.webp *.gif *.mp4 *.webm *.mkv)"
+            "Media Files (*.png *.jpg *.jpeg *.jpe *.webp *.avif *.gif *.mp4 *.webm *.mkv)"
         )
         if file_paths:
             self.manga_reader._add_alts_from_files(file_paths)

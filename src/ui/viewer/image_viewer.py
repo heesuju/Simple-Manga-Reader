@@ -549,7 +549,7 @@ class ImageViewer(BaseViewer):
         source_ext = "jpg"
         if original_path:
             ext = os.path.splitext(original_path)[1].lower().replace(".", "")
-            if ext in ["jpg", "jpeg", "jpe", "png", "webp"]:
+            if ext in ["jpg", "jpeg", "jpe", "png", "webp", "avif"]:
                 source_ext = ext
         
         if source_ext == "jpeg": source_ext = "jpg"

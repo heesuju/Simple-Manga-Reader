@@ -13,7 +13,7 @@ from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS, split_virtual_path
 from src.core.alt_manager import AltManager
 
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
-IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp'}
+IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.avif'}
 
 class ArchiveExtractionSignals(QObject):
     finished = pyqtSignal(str, bool) # archive_path, success
@@ -644,27 +644,36 @@ class AsyncLoaderWorker(QRunnable):
                         crop = "right"
 
                 is_anim = path_str.lower().endswith((".gif", ".webp"))
-                
+                is_avif = path_str.lower().endswith('.avif')
+
                 if '|' in path_str:
                     image_data = get_image_data_from_zip(path_str)
                 elif os.path.exists(path_str):
-                    if is_anim:
+                    if is_anim or is_avif:
                         with open(path_str, 'rb') as f:
                             image_data = f.read()
-                
+
                 q_image = QImage()
                 if image_data:
-                    buf = QBuffer()
-                    buf.setData(image_data if isinstance(image_data, (bytes, bytearray)) else bytes(image_data))
-                    buf.open(QIODevice.OpenModeFlag.ReadOnly)
-                    reader = QImageReader(buf)
-                    reader.setAutoTransform(True)
-                    if self.hint_width > 0 and not is_anim:
-                        orig = reader.size()
-                        if orig.isValid() and orig.width() > self.hint_width:
-                            aspect = orig.height() / orig.width()
-                            reader.setScaledSize(QSize(self.hint_width, int(self.hint_width * aspect)))
-                    q_image = reader.read()
+                    if is_avif:
+                        pil_img = Image.open(io.BytesIO(image_data)).convert('RGBA')
+                        if self.hint_width > 0 and pil_img.width > self.hint_width:
+                            aspect = pil_img.height / pil_img.width
+                            pil_img = pil_img.resize((self.hint_width, int(self.hint_width * aspect)), Image.Resampling.LANCZOS)
+                        data = pil_img.tobytes('raw', 'RGBA')
+                        q_image = QImage(data, pil_img.width, pil_img.height, pil_img.width * 4, QImage.Format.Format_RGBA8888).copy()
+                    else:
+                        buf = QBuffer()
+                        buf.setData(image_data if isinstance(image_data, (bytes, bytearray)) else bytes(image_data))
+                        buf.open(QIODevice.OpenModeFlag.ReadOnly)
+                        reader = QImageReader(buf)
+                        reader.setAutoTransform(True)
+                        if self.hint_width > 0 and not is_anim:
+                            orig = reader.size()
+                            if orig.isValid() and orig.width() > self.hint_width:
+                                aspect = orig.height() / orig.width()
+                                reader.setScaledSize(QSize(self.hint_width, int(self.hint_width * aspect)))
+                        q_image = reader.read()
                 elif os.path.exists(path_str):
                     if is_anim:
                         q_image.load(path_str)

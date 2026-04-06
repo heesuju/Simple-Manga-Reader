@@ -8,7 +8,7 @@ import zipfile
 from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS
 
 # prefer treating images and video separately for cover-selection vs listing
-IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif'}
+IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif', '.avif'}
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
 ALL_MEDIA_EXTS = IMAGE_EXTS.union(VIDEO_EXTS)
 

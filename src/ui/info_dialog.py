@@ -125,7 +125,7 @@ class InfoDialog(QDialog):
 
     def browse_for_cover(self):
         default_dir = str(self.series.get('path', ''))
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Cover Image", default_dir, "Images (*.png *.jpg *.jpeg *.jpe *.bmp *.gif)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Cover Image", default_dir, "Images (*.png *.jpg *.jpeg *.jpe *.bmp *.gif *.avif)")
         if file_path:
             self.cover_path_input.setText(file_path)
             pixmap = QPixmap(file_path)

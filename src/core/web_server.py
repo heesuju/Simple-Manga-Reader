@@ -78,7 +78,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                         try:
                             # Filter out cover images from being pages
                             for item in sorted(os.scandir(full_chapter_path), key=lambda e: get_chapter_number(e.path)):
-                                if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
+                                if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.avif', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
                                     if item.name.lower() not in ['cover.jpg', 'cover.png']:
                                         images.append(item.path)
                                         if not thumbnail:
@@ -98,7 +98,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                     series_images = []
                     try:
                         for item in sorted(os.scandir(series['path']), key=lambda e: get_chapter_number(e.path)):
-                            if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
+                            if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.avif', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
                                 series_images.append(item.path)
                     except FileNotFoundError:
                         pass
@@ -116,7 +116,7 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
             if os.path.isdir(path_param):
                 images = []
                 for item in sorted(os.scandir(path_param), key=lambda e: get_chapter_number(e.path)):
-                    if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
+                    if item.is_file() and item.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.avif', '.mp4', '.avi', '.mkv', '.webm', '.mov')):
                         images.append(item.path)
                 self.send_json(images)
             else:
@@ -169,6 +169,8 @@ class MangaHandler(http.server.SimpleHTTPRequestHandler):
                         content_type = 'image/gif'
                     elif image_path.lower().endswith('.webp'):
                         content_type = 'image/webp'
+                    elif image_path.lower().endswith('.avif'):
+                        content_type = 'image/avif'
                     elif image_path.lower().endswith('.mp4'):
                         content_type = 'video/mp4'
                     elif image_path.lower().endswith('.avi'):

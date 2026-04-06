@@ -123,7 +123,7 @@ class TranslationSlot(QFrame):
             if len(urls) == 1:
                 path = urls[0].toLocalFile()
                 if os.path.isfile(path):
-                    valid_exts = {'.jpg', '.jpeg', '.jpe', '.png', '.webp', '.bmp', '.gif'}
+                    valid_exts = {'.jpg', '.jpeg', '.jpe', '.png', '.webp', '.bmp', '.gif', '.avif'}
                     if Path(path).suffix.lower() in valid_exts:
                          self.set_image(path)
                          self.file_dropped.emit(path)
@@ -295,7 +295,7 @@ class AddTranslationDialog(QDialog):
         self.layout.addLayout(lang_layout)
         
         # 2. Instructions and Controls
-        valid_exts_msg = "Supports: .jpg, .png, .webp"
+        valid_exts_msg = "Supports: .jpg, .png, .webp, .avif"
         self.instructions = QLabel(
             "1. Check pages to translate.\n"
             "2. Click 'Translate Selected' to auto-translate with context.\n"

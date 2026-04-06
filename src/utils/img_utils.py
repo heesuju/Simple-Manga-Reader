@@ -112,6 +112,8 @@ def get_image_format_from_ext(path: str) -> str:
         return "JPEG"
     if ext == ".webp":
         return "WEBP"
+    if ext == ".avif":
+        return "AVIF"
     return "PNG"
 
 def compress_qimage_to_size(img: QImage, target_bytes: int, fmt: str) -> Optional[QByteArray]:
@@ -191,7 +193,7 @@ def get_virtual_path_cache_key(virtual_path: str, width: int, height: int, crop:
     settings = f"{width}x{height}{'_' + crop if crop else ''}"
     return hashlib.md5(f"{virtual_path}{mod_time}{settings}".encode()).hexdigest()
 
-IMG_EXTS = ('.jpg', '.jpeg', '.jpe', '.png', '.bmp', '.gif', '.webp')
+IMG_EXTS = ('.jpg', '.jpeg', '.jpe', '.png', '.bmp', '.gif', '.webp', '.avif')
 
 def is_image_folder(folder: Union[Path, str]) -> bool:
     if isinstance(folder, str):
@@ -322,11 +324,27 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None) -> QImage:
         except Exception as e:
             print(f"Error creating video thumbnail: {e}")
             q_image = None # Ensure q_image is None on error
+    elif file_ext == '.avif':
+        try:
+            pil_img = Image.open(path_str).convert('RGBA')
+            if crop and pil_img.width > pil_img.height:
+                half = pil_img.width // 2
+                if crop == 'left':
+                    pil_img = pil_img.crop((0, 0, half, pil_img.height))
+                elif crop == 'right':
+                    pil_img = pil_img.crop((half, 0, pil_img.width, pil_img.height))
+            scale = max(width / pil_img.width, height / pil_img.height)
+            new_w, new_h = int(pil_img.width * scale), int(pil_img.height * scale)
+            pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            data = pil_img.tobytes('raw', 'RGBA')
+            q_image = QImage(data, pil_img.width, pil_img.height, pil_img.width * 4, QImage.Format.Format_RGBA8888).copy()
+        except Exception as e:
+            print(f"Error loading AVIF thumbnail: {e}")
     else:
         # Existing image loading logic
         reader = QImageReader(path_str)
         original_size = reader.size()
-        
+
         effective_size = original_size
         if crop:
             if original_size.width() > original_size.height():

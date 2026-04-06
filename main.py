@@ -184,7 +184,7 @@ class MainWindow(QMainWindow):
                 images = []
             else:
                 try:
-                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
+                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.avif', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
                     images = sorted(images, key=get_chapter_number)
                 except (NotADirectoryError, FileNotFoundError, OSError):
                     images = []
@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
                 images = []
             else:
                 try:
-                    images = [str(p) for p in full_series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
+                    images = [str(p) for p in full_series_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.avif', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
                     images = sorted(images, key=get_chapter_number)
                 except (NotADirectoryError, FileNotFoundError):
                     images = []
