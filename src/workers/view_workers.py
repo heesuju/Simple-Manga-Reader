@@ -656,7 +656,13 @@ class AsyncLoaderWorker(QRunnable):
                 q_image = QImage()
                 if image_data:
                     if is_avif:
-                        pil_img = Image.open(io.BytesIO(image_data)).convert('RGBA')
+                        pil_img = Image.open(io.BytesIO(image_data))
+                        # Check if AVIF is animated
+                        if getattr(pil_img, 'is_animated', False) or getattr(pil_img, 'n_frames', 1) > 1:
+                            is_anim = True
+                            
+                        pil_img = pil_img.convert('RGBA')
+                            
                         if self.hint_width > 0 and pil_img.width > self.hint_width:
                             aspect = pil_img.height / pil_img.width
                             pil_img = pil_img.resize((self.hint_width, int(self.hint_width * aspect)), Image.Resampling.LANCZOS)

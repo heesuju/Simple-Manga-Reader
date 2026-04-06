@@ -7,12 +7,14 @@ from PIL import Image, ImageQt
 
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem
 from PyQt6.QtGui import QPixmap, QMovie, QImage, QBrush, QPainter, QColor, QFont, QPen, QTextOption
-from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice
+from PyQt6.QtCore import Qt, QTimer, QByteArray, QBuffer, QIODevice, QObject, pyqtSignal
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.img_utils import get_image_data_from_zip, empty_placeholder, get_image_format_from_ext, compress_qimage_to_size
 from src.enums import ViewMode
 from src.workers.view_workers import AsyncLoaderWorker, AsyncScaleWorker
+
+from src.ui.viewer.avif_player import AvifPlayer
 
 class ImageViewer(BaseViewer):
     def __init__(self, reader_view):
@@ -137,23 +139,38 @@ class ImageViewer(BaseViewer):
             
             if data:
                 # This is an animation loaded from background
-                self.movie = QMovie()
-                self.movie.setCacheMode(QMovie.CacheMode.CacheAll)
-                self.movie_buffer = QBuffer()
-                self.movie_buffer.setData(QByteArray(data))
-                self.movie_buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-                self.movie.setDevice(self.movie_buffer)
-                
-                if self.movie.isValid():
+                if path.lower().endswith('.avif'):
+                    self.movie = AvifPlayer(data)
                     self.movie.frameChanged.connect(self._on_movie_frame_changed)
-                    self.movie.start()
-                    pixmap = self.movie.currentPixmap()
-                    self.original_pixmap = pixmap
-                    self._set_pixmap(pixmap, path)
+                    
+                    if self.movie.isValid():
+                        self.movie.start()
+                        pixmap = self.movie.currentPixmap()
+                        self.original_pixmap = pixmap
+                        self._set_pixmap(pixmap, path)
+                    else:
+                        self.movie = None
+                        pixmap = QPixmap.fromImage(q_img)
+                        self.original_pixmap = pixmap
+                        self._set_pixmap(pixmap, path)
                 else:
-                    pixmap = QPixmap.fromImage(q_img)
-                    self.original_pixmap = pixmap
-                    self._set_pixmap(pixmap, path)
+                    self.movie = QMovie()
+                    self.movie.setCacheMode(QMovie.CacheMode.CacheAll)
+                    self.movie_buffer = QBuffer()
+                    self.movie_buffer.setData(QByteArray(data))
+                    self.movie_buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+                    self.movie.setDevice(self.movie_buffer)
+                    
+                    if self.movie.isValid():
+                        self.movie.frameChanged.connect(self._on_movie_frame_changed)
+                        self.movie.start()
+                        pixmap = self.movie.currentPixmap()
+                        self.original_pixmap = pixmap
+                        self._set_pixmap(pixmap, path)
+                    else:
+                        pixmap = QPixmap.fromImage(q_img)
+                        self.original_pixmap = pixmap
+                        self._set_pixmap(pixmap, path)
             else:
                 pixmap = QPixmap.fromImage(q_img)
                 self.original_pixmap = pixmap
