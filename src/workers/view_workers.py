@@ -813,9 +813,21 @@ class ImageInfoWorker(QRunnable):
             if img_size.isValid():
                 w, h = img_size.width(), img_size.height()
             else:
+                ext = Path(resolved).suffix.lower()
+                if ext == '.avif':
+                    try:
+                        from PIL import Image
+                        import io
+                        if image_data:
+                            pil_img = Image.open(io.BytesIO(image_data))
+                        else:
+                            pil_img = Image.open(resolved)
+                        w, h = pil_img.size
+                        pil_img.close()
+                    except Exception as e:
+                        print(f"Error getting avif info: {e}")
                 # Try cv2 for videos (only if resolved is a real path)
-                if not image_data and os.path.exists(resolved):
-                    ext = Path(resolved).suffix.lower()
+                elif not image_data and os.path.exists(resolved):
                     if ext in VIDEO_EXTS:
                         try:
                             import cv2
