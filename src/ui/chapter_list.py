@@ -526,6 +526,25 @@ class FolderListItemWidget(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.pos()):
             self.folder_selected.emit(self.folder_name)
 
+class BackgroundCoverWorkerSignals(QObject):
+    finished = pyqtSignal(object)
+
+class BackgroundCoverWorker(QRunnable):
+    def __init__(self, cover_image: str):
+        super().__init__()
+        self.cover_image = cover_image
+        self.signals = BackgroundCoverWorkerSignals()
+
+    def run(self):
+        from src.utils.img_utils import load_thumbnail_from_path, load_thumbnail_from_virtual_path
+        qimg = None
+        if '|' in self.cover_image:
+            qimg = load_thumbnail_from_virtual_path(self.cover_image, 800, 1200)
+        else:
+            qimg = load_thumbnail_from_path(self.cover_image, 800, 1200)
+        self.signals.finished.emit(qimg)
+
+
 class ChapterListView(QWidget):
     back_to_library = pyqtSignal()
     open_reader = pyqtSignal(object, object)
@@ -553,7 +572,13 @@ class ChapterListView(QWidget):
         self.display_chapters = []
 
 
-        self.background_pixmap = QPixmap(self.series['cover_image'])
+        self.background_pixmap = QPixmap()
+        cover_image = self.series.get('cover_image')
+        if cover_image:
+            # We must keep a reference to worker to prevent GC if needed, but QThreadPool manages it
+            worker = BackgroundCoverWorker(cover_image)
+            worker.signals.finished.connect(self._on_background_cover_loaded)
+            self.threadpool.start(worker)
 
         # Manual layout of layers
         self.background_label = QLabel(self)
@@ -626,14 +651,7 @@ class ChapterListView(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.background_label.setGeometry(self.rect())
-        view_size = self.size()
-        
-        if not self.background_pixmap.isNull():
-            scaled_pixmap = self.background_pixmap.scaled(view_size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            x_offset = (scaled_pixmap.width() - view_size.width()) / 2
-            y_offset = 0  # Anchor to top vertically
-            cropped_pixmap = scaled_pixmap.copy(int(x_offset), int(y_offset), view_size.width(), view_size.height())
-            self.background_label.setPixmap(cropped_pixmap)
+        self._update_background()
         
         self.gradient_overlay.setGeometry(self.rect())
         self.scroll_area.setGeometry(self.rect())
@@ -649,6 +667,20 @@ class ChapterListView(QWidget):
         self.top_spacer.setFixedHeight(self.height() // 2)
         
         self.update_top_bar(self.scroll_area.verticalScrollBar().value())
+
+    def _update_background(self):
+        view_size = self.size()
+        if not self.background_pixmap.isNull():
+            scaled_pixmap = self.background_pixmap.scaled(view_size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            x_offset = (scaled_pixmap.width() - view_size.width()) / 2
+            y_offset = 0  # Anchor to top vertically
+            cropped_pixmap = scaled_pixmap.copy(int(x_offset), int(y_offset), view_size.width(), view_size.height())
+            self.background_label.setPixmap(cropped_pixmap)
+
+    def _on_background_cover_loaded(self, qimg):
+        if qimg and not qimg.isNull():
+            self.background_pixmap = QPixmap.fromImage(qimg)
+            self._update_background()
 
     def _on_tag_clicked(self, tag_type, tag_value):
         self.tag_clicked.emit(tag_type, tag_value)
