@@ -74,22 +74,23 @@ class SliderPanel(QWidget):
         from PyQt6.QtGui import QIcon
         from PyQt6.QtCore import QSize
         from PyQt6.QtWidgets import QPushButton, QFrame
-        from src.utils.resource_utils import resource_path
         
         btn_style = """
-            QPushButton { 
-                background: transparent; 
-                border: none; 
-            } 
-            QPushButton:hover { 
-                background: rgba(255, 255, 255, 20);
-                border-radius: 4px;
+            QPushButton {
+                background: transparent;
+                color: rgba(255, 255, 255, 150);
+                border: none;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 0px 2px;
+                letter-spacing: 0.5px;
+            }
+            QPushButton:hover {
+                color: white;
             }
         """
 
-        self.chapter_btn = QPushButton()
-        self.chapter_btn.setIcon(QIcon(resource_path("assets/icons/grid.svg")))
-        self.chapter_btn.setIconSize(QSize(16, 16))
+        self.chapter_btn = QPushButton("Ch")
         self.chapter_btn.setFixedSize(QSize(22, 22))
         self.chapter_btn.setStyleSheet(btn_style)
         self.chapter_btn.clicked.connect(self.chapter_input_clicked.emit)
@@ -103,9 +104,7 @@ class SliderPanel(QWidget):
         chap_layout.addWidget(self.chapter_btn)
         chap_layout.addWidget(self.chapter_input)
 
-        self.page_btn = QPushButton()
-        self.page_btn.setIcon(QIcon(resource_path("assets/icons/grid.svg")))
-        self.page_btn.setIconSize(QSize(16, 16))
+        self.page_btn = QPushButton("Pg")
         self.page_btn.setFixedSize(QSize(22, 22))
         self.page_btn.setStyleSheet(btn_style)
         self.page_btn.clicked.connect(self.page_input_clicked.emit)
