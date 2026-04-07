@@ -66,8 +66,9 @@ class SliderPanel(QWidget):
                 border: 1px solid rgba(255, 255, 255, 60);
             }
         """)
-        self.chapter_input.setFixedWidth(200)
+        self.chapter_input.setFixedWidth(120)
         self.chapter_input.activated.connect(lambda idx: self.chapter_changed.emit(idx + 1))
+        self.chapter_input.currentTextChanged.connect(lambda t: self.chapter_input.setToolTip(t))
 
         self.page_input = InputLabel(1, 1)
 
@@ -206,6 +207,7 @@ class SliderPanel(QWidget):
             name = Path(str(chapter)).name if not isinstance(chapter, dict) else chapter.get('name', Path(chapter['path']).name)
             self.chapter_input.addItem(name)
         self.chapter_input.setCurrentIndex(current_index)
+        self.chapter_input.setToolTip(self.chapter_input.currentText())
         self.chapter_input.blockSignals(False)
 
     def set_chapter(self, current: int, total: int):
