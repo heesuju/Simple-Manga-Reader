@@ -23,7 +23,7 @@ PANEL_W = THUMB_W + 14
 
 class AltThumbnail(QWidget):
     """Single clickable alt thumbnail with index badge overlay."""
-    def __init__(self, parent, variant_path, display_index, is_selected=False, on_click=None, on_right_click=None):
+    def __init__(self, parent, variant_path, display_index, is_selected=False, has_note=False, is_fix=False, has_fix=False, on_click=None, on_right_click=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.variant_path = variant_path
@@ -47,18 +47,50 @@ class AltThumbnail(QWidget):
             if is_orig:
                 self.badge.setStyleSheet(
                     "background: rgba(200, 120, 30, 200); color: white;"
-                    "font-size: 8px; font-weight: bold; padding: 1px 3px;"
+                    "font-size: 8px; font-weight: bold; padding: 0px 4px;"
                     "border-radius: 3px;"
                 )
             else:
                 self.badge.setStyleSheet(
                     "background: rgba(0, 0, 0, 160); color: rgba(255, 255, 255, 200);"
-                    "font-size: 9px; font-weight: bold; padding: 1px 4px;"
+                    "font-size: 9px; font-weight: bold; padding: 0px 4px;"
                     "border-radius: 3px;"
                 )
+            self.badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.badge.adjustSize()
+            self.badge.setFixedHeight(16)
+            if self.badge.width() < 16:
+                self.badge.setFixedWidth(16)
             self.badge.move(4, 4)
             self.badge.raise_()
+
+        if has_note:
+            self.note_icon = QLabel(self)
+            pixmap = QIcon(resource_path("assets/icons/note.svg")).pixmap(12, 12)
+            self.note_icon.setPixmap(pixmap)
+            self.note_icon.setStyleSheet("background: rgba(0,0,0,160); border-radius: 3px;")
+            self.note_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.note_icon.setFixedSize(16, 16)
+            self.note_icon.move(THUMB_W - 16 - 2, 4)
+            self.note_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            self.note_icon.raise_()
+
+        if is_fix or has_fix:
+            self.fix_icon = QLabel(self)
+            pixmap = QIcon(resource_path("assets/icons/auto_fix.svg")).pixmap(12, 12)
+            self.fix_icon.setPixmap(pixmap)
+            if is_fix:
+                self.fix_icon.setStyleSheet("background: rgba(156, 39, 176, 180); border-radius: 3px;")
+            else:
+                self.fix_icon.setStyleSheet("background: rgba(0,0,0,160); border-radius: 3px;")
+                # Note: QLabel opacity isn't fully supported via style string without rgba, 
+                # but making icon grey directly or keeping dark background is fine. 
+                # We relied on background:rgba and opacity via image before maybe? No, let's just make the background darker.
+            self.fix_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.fix_icon.setFixedSize(16, 16)
+            self.fix_icon.move(THUMB_W - 16 - 2, THUMB_H - 16 - 2)
+            self.fix_icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            self.fix_icon.raise_()
 
         self._update_style()
 
@@ -386,6 +418,18 @@ class AltPanel(QWidget):
         show_group_labels = active_cat == "All" and len(cat_names) > 1
 
         non_orig_count = 0
+        series_path = str(self.model.series['path'])
+        chapter_name = Path(str(self.model.manga_dir)).name
+        main_file = Path(page.images[0]).name
+        manga_dir = Path(str(self.model.manga_dir))
+
+        # Pre-load metadata for the whole page once
+        data = AltManager.load_alts(series_path)
+        page_entry = data.get(chapter_name, {}).get(main_file, {})
+        if isinstance(page_entry, list):
+            page_entry = {"alts": page_entry, "translations": {}}
+        alts_fix_map = page_entry.get("alts_fix", {})
+
         for cat in cats_to_render:
             cat_paths = list(categories.get(cat, []))
 
@@ -408,12 +452,35 @@ class AltPanel(QWidget):
                 true_v_idx = page.images.index(variant_path)
                 is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
                 non_orig_count += 1
+                
+                try:
+                    rel_variant = str(Path(variant_path).relative_to(manga_dir)).replace('\\', '/')
+                except ValueError:
+                    rel_variant = None
+
+                is_fix = False
+                has_fix = False
+                if rel_variant:
+                    if rel_variant in alts_fix_map.values():
+                        is_fix = True
+                    if rel_variant in alts_fix_map.keys():
+                        has_fix = True
+
+                has_note = False
+                original_rel = self._get_original_rel_for_variant(variant_path, page)
+                if original_rel:
+                    note = AltManager.get_alt_note(series_path, chapter_name, main_file, original_rel)
+                    if note and note.strip():
+                        has_note = True
 
                 thumb = AltThumbnail(
                     self.scroll_content,
                     variant_path,
                     display_index=non_orig_count,
                     is_selected=is_selected,
+                    has_note=has_note,
+                    is_fix=is_fix,
+                    has_fix=has_fix,
                     on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
                     on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
                 )
@@ -448,6 +515,43 @@ class AltPanel(QWidget):
         if not p.is_absolute() and self.model:
             p = Path(self.model.manga_dir) / p
         return str(p)
+
+    def _get_original_rel_for_variant(self, variant_path, page):
+        manga_dir = Path(str(self.model.manga_dir))
+        main_file = Path(page.images[0]).name
+        series_path = str(self.model.series['path'])
+        chapter_name = manga_dir.name
+
+        data = AltManager.load_alts(series_path)
+        page_entry = data.get(chapter_name, {}).get(main_file, {})
+        if isinstance(page_entry, list):
+            page_entry = {"alts": page_entry, "translations": {}}
+            
+        alts_list = page_entry.get("alts", [])
+        alts_fix_map = page_entry.get("alts_fix", {})
+
+        try:
+            rel_variant = str(Path(variant_path).relative_to(manga_dir)).replace('\\', '/')
+        except ValueError:
+            rel_variant = None
+
+        original_rel = None
+        if rel_variant:
+            for orig_key, fix_val in alts_fix_map.items():
+                if fix_val == rel_variant:
+                    original_rel = orig_key
+                    break
+            if not original_rel and rel_variant in alts_list:
+                original_rel = rel_variant
+
+        if original_rel is None:
+            vname = Path(variant_path).name
+            for a in alts_list:
+                if Path(a).name == vname:
+                    original_rel = a
+                    break
+
+        return original_rel
 
     def _on_combo_changed(self, index):
         """Handle category dropdown selection change."""
