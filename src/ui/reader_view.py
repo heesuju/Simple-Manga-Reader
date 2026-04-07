@@ -1158,16 +1158,34 @@ class ReaderView(QWidget):
         self.change_page(target_page)
 
     def _show_page_panel(self):
-        if self.chapter_panel.content_area.isVisible():
-            self.chapter_panel.hide_content()
-        self.page_panel.show_content()
-        QTimer.singleShot(100, self._update_side_panels_geometry)
+        if self.page_panel.content_area.isVisible():
+            if not self.page_panel.is_expanded:
+                self.page_panel.toggle_expand()
+            else:
+                self.page_panel.toggle_expand()
+                self.page_panel.hide_content()
+        else:
+            if self.chapter_panel.content_area.isVisible():
+                self.chapter_panel.hide_content()
+            if self.page_panel.is_expanded:
+                self.page_panel.toggle_expand()
+            self.page_panel.show_content()
+            QTimer.singleShot(100, self._update_side_panels_geometry)
 
     def _show_chapter_panel(self):
-        if self.page_panel.content_area.isVisible():
-            self.page_panel.hide_content()
-        self.chapter_panel.show_content()
-        QTimer.singleShot(100, self._update_side_panels_geometry)
+        if self.chapter_panel.content_area.isVisible():
+            if not self.chapter_panel.is_expanded:
+                self.chapter_panel.toggle_expand()
+            else:
+                self.chapter_panel.toggle_expand()
+                self.chapter_panel.hide_content()
+        else:
+            if self.page_panel.content_area.isVisible():
+                self.page_panel.hide_content()
+            if self.chapter_panel.is_expanded:
+                self.chapter_panel.toggle_expand()
+            self.chapter_panel.show_content()
+            QTimer.singleShot(100, self._update_side_panels_geometry)
 
     def _on_hide_chapter_from_panel(self, index: int):
         if not self.model or index >= len(self.model.chapters):
