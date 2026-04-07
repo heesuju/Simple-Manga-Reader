@@ -20,9 +20,7 @@ class TopPanel(QWidget):
     translate_clicked = pyqtSignal(str)
     lang_changed = pyqtSignal(str)
     sort_changed = pyqtSignal(str)
-    zoom_mode_changed = pyqtSignal(str)
     bg_color_changed = pyqtSignal(str)
-    zoom_reset = pyqtSignal()
     fullscreen_requested = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -46,27 +44,7 @@ class TopPanel(QWidget):
         self._current_bg_color = 'Default (Gray)'
 
         # Zoom controls (view group — sits left of title)
-        zoom_fit_icon = QIcon(resource_path("assets/icons/reset_zoom.svg"))
         fullscreen_icon = QIcon(resource_path("assets/icons/fullscreen.svg"))
-
-        self.zoom_combobox = QComboBox()
-        self.zoom_combobox.addItems(['Fit Page', 'Fit Width', 'Fit Height', 'Stretch', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
-        self.zoom_combobox.setFixedSize(90, 28)
-        self.zoom_combobox.setStyleSheet("""
-            color: white;
-            background-color: rgba(255, 255, 255, 30);
-            border: 1px solid rgba(255, 255, 255, 50);
-            border-radius: 3px;
-        """)
-        self.zoom_combobox.currentTextChanged.connect(self.zoom_mode_changed.emit)
-
-        self.reset_zoom_button = QPushButton()
-        self.reset_zoom_button.setIcon(zoom_fit_icon)
-        self.reset_zoom_button.setIconSize(ICON_SIZE)
-        self.reset_zoom_button.setFixedSize(BUTTON_SIZE)
-        self.reset_zoom_button.setStyleSheet(FLAT_BUTTON_STYLE)
-        self.reset_zoom_button.setToolTip("Reset Zoom")
-        self.reset_zoom_button.clicked.connect(self.zoom_reset.emit)
 
         self.fullscreen_button = QPushButton()
         self.fullscreen_button.setIcon(fullscreen_icon)
@@ -109,8 +87,6 @@ class TopPanel(QWidget):
 
         self._row.addWidget(self.series_label)
         self._row.addWidget(self.info_label, 1)
-        self._row.addWidget(self.zoom_combobox)
-        self._row.addWidget(self.reset_zoom_button)
         self._row.addWidget(self.fullscreen_button)
         self._row.addWidget(self.overflow_btn)
 
@@ -147,11 +123,6 @@ class TopPanel(QWidget):
 
     def set_bg_color(self, color_name: str):
         self._current_bg_color = color_name
-
-    def set_zoom_text(self, text: str):
-        self.zoom_combobox.blockSignals(True)
-        self.zoom_combobox.setCurrentText(text)
-        self.zoom_combobox.blockSignals(False)
 
     def set_info_text(self, text: str):
         if text:

@@ -13,6 +13,8 @@ class SliderPanel(QWidget):
     chapter_changed = pyqtSignal(int)
     page_input_clicked = pyqtSignal()
     chapter_input_clicked = pyqtSignal()
+    zoom_mode_changed = pyqtSignal(str)
+    zoom_reset = pyqtSignal()
 
     def __init__(self, parent=None, model=None):
         super().__init__(parent)
@@ -130,11 +132,54 @@ class SliderPanel(QWidget):
         row.addWidget(page_group)
         row.addWidget(self.slider, 1)
 
+        divider2 = QFrame()
+        divider2.setFrameShape(QFrame.Shape.VLine)
+        divider2.setFrameShadow(QFrame.Shadow.Sunken)
+        divider2.setStyleSheet("QFrame { background-color: rgba(255, 255, 255, 40); border: none; max-height: 16px; margin: 0 4px; }")
+        row.addWidget(divider2)
+
+        self.zoom_combobox = QComboBox()
+        self.zoom_combobox.addItems(['Fit Page', 'Fit Width', 'Fit Height', 'Stretch', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
+        self.zoom_combobox.setFixedSize(90, 24)
+        self.zoom_combobox.setStyleSheet("""
+            QComboBox {
+                color: white;
+                background: transparent;
+                border: none;
+                padding: 2px 4px;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView {
+                background-color: #1e1e1e;
+                color: white;
+                selection-background-color: #3e3e3e;
+                border: 1px solid rgba(255, 255, 255, 60);
+            }
+        """)
+        self.zoom_combobox.currentTextChanged.connect(self.zoom_mode_changed.emit)
+
+        from src.utils.resource_utils import resource_path as _rp
+        self.reset_zoom_button = QPushButton()
+        self.reset_zoom_button.setIcon(QIcon(_rp("assets/icons/reset_zoom.svg")))
+        self.reset_zoom_button.setIconSize(QSize(16, 16))
+        self.reset_zoom_button.setFixedSize(QSize(22, 22))
+        self.reset_zoom_button.setStyleSheet(btn_style)
+        self.reset_zoom_button.setToolTip("Reset Zoom")
+        self.reset_zoom_button.clicked.connect(self.zoom_reset.emit)
+
+        row.addWidget(self.zoom_combobox)
+        row.addWidget(self.reset_zoom_button)
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def set_info_text(self, text: str):
         """Show file info as a tooltip on the page input."""
         self.page_input.setToolTip(text)
+
+    def set_zoom_text(self, text: str):
+        self.zoom_combobox.blockSignals(True)
+        self.zoom_combobox.setCurrentText(text)
+        self.zoom_combobox.blockSignals(False)
 
     def set_range(self, max_value):
         self.slider.blockSignals(True)
