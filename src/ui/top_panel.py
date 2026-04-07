@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox, QMenu, QSizePolicy
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox, QMenu
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QAction
 from src.utils.resource_utils import resource_path
@@ -57,12 +57,22 @@ class TopPanel(QWidget):
         self.series_label = QLabel("Series Title")
         self.series_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.series_label.setStyleSheet("background: transparent; font-weight: bold;")
-        
-        self.info_label = QLabel("")
-        self.info_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.info_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        self.info_label.setStyleSheet("background: transparent; color: rgba(255, 255, 255, 150); font-size: 11px;")
-        self.info_label.hide()
+
+        self.info_btn = QPushButton("ℹ")
+        self.info_btn.setFixedSize(QSize(26, 26))
+        self.info_btn.setStyleSheet(
+            FLAT_BUTTON_STYLE + """
+            QPushButton {
+                font-size: 13px;
+                color: rgba(255, 255, 255, 120);
+            }
+            QPushButton:hover {
+                color: white;
+            }
+            """
+        )
+        self.info_btn.setToolTip("")
+        self.info_btn.hide()  # hidden until info is available
 
         # Language combo (hidden, accessed via overflow menu)
         self.lang_combo = QComboBox(self)
@@ -85,8 +95,8 @@ class TopPanel(QWidget):
         self.overflow_btn.setToolTip("More options")
         self.overflow_btn.clicked.connect(self._on_overflow_clicked)
 
-        self._row.addWidget(self.series_label)
-        self._row.addWidget(self.info_label, 1)
+        self._row.addWidget(self.series_label, 1)
+        self._row.addWidget(self.info_btn)
         self._row.addWidget(self.fullscreen_button)
         self._row.addWidget(self.overflow_btn)
 
@@ -126,10 +136,11 @@ class TopPanel(QWidget):
 
     def set_info_text(self, text: str):
         if text:
-            self.info_label.setText(f"  •  {text}")
-            self.info_label.show()
+            self.info_btn.setToolTip(text)
+            self.info_btn.show()
         else:
-            self.info_label.hide()
+            self.info_btn.setToolTip("")
+            self.info_btn.hide()
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
