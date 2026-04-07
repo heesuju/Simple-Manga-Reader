@@ -528,6 +528,7 @@ class ReaderView(QWidget):
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
         if self.slider_panel:
+            self.slider_panel.set_chapters_list(self.model.chapters, self.model.chapter_index)
             self.slider_panel.set_chapter(self.model.chapter_index + 1, len(self.model.chapters))
         self._update_slider_state()
 

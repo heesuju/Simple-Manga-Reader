@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QComboBox
+from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal
 from src.ui.components.input_label import InputLabel
 from src.ui.components.alt_slider import AltSlider
@@ -45,15 +46,65 @@ class SliderPanel(QWidget):
         """)
         self.slider.valueChanged.connect(self.on_slider_value_changed)
 
-        self.chapter_input = InputLabel("Chapter", 1, 1)
-        self.page_input = InputLabel("Page", 1, 1)
+        self.chapter_input = QComboBox()
+        self.chapter_input.setStyleSheet("""
+            QComboBox {
+                background: transparent;
+                color: white;
+                border: none;
+                border-bottom: 1px solid rgba(255, 255, 255, 60);
+                padding: 2px 4px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #1e1e1e;
+                color: white;
+                selection-background-color: #3e3e3e;
+                border: 1px solid rgba(255, 255, 255, 60);
+            }
+        """)
+        self.chapter_input.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.chapter_input.activated.connect(lambda idx: self.chapter_changed.emit(idx + 1))
 
-        self.chapter_input.enterPressed.connect(self.chapter_changed.emit)
+        self.page_input = InputLabel(1, 1)
+
+        from PyQt6.QtGui import QIcon
+        from PyQt6.QtCore import QSize
+        from PyQt6.QtWidgets import QPushButton, QFrame
+        from src.utils.resource_utils import resource_path
+        
+        btn_style = "QPushButton { background: transparent; border: none; } QPushButton:hover { background: rgba(255, 255, 255, 30); border-radius: 4px; }"
+
+        self.chapter_btn = QPushButton()
+        self.chapter_btn.setIcon(QIcon(resource_path("assets/icons/grid.svg")))
+        self.chapter_btn.setIconSize(QSize(16, 16))
+        self.chapter_btn.setFixedSize(QSize(24, 24))
+        self.chapter_btn.setStyleSheet(btn_style)
+        self.chapter_btn.clicked.connect(self.chapter_input_clicked.emit)
+        self.chapter_btn.setToolTip("Show Chapter Grid")
+        
+        self.page_btn = QPushButton()
+        self.page_btn.setIcon(QIcon(resource_path("assets/icons/grid.svg")))
+        self.page_btn.setIconSize(QSize(16, 16))
+        self.page_btn.setFixedSize(QSize(24, 24))
+        self.page_btn.setStyleSheet(btn_style)
+        self.page_btn.clicked.connect(self.page_input_clicked.emit)
+        self.page_btn.setToolTip("Show Page Grid")
+
         self.page_input.enterPressed.connect(self._on_page_input_entered)
-        self.chapter_input.clicked.connect(self.chapter_input_clicked.emit)
-        self.page_input.clicked.connect(self.page_input_clicked.emit)
+        # We no longer rely on clicking the input text to show the page grid
 
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setFrameShadow(QFrame.Shadow.Sunken)
+        divider.setStyleSheet("QFrame { background-color: rgba(255, 255, 255, 40); border: none; max-height: 16px; margin: 0 8px; }")
+
+        row.addWidget(self.chapter_btn)
         row.addWidget(self.chapter_input)
+        row.addWidget(divider)
+        row.addWidget(self.page_btn)
         row.addWidget(self.page_input)
         row.addWidget(self.slider, 1)
 
@@ -82,9 +133,19 @@ class SliderPanel(QWidget):
         self.slider.blockSignals(False)
         self.update_page_input_value(value)
 
+    def set_chapters_list(self, chapters: list, current_index: int):
+        self.chapter_input.blockSignals(True)
+        self.chapter_input.clear()
+        for chapter in chapters:
+            name = Path(str(chapter)).name if not isinstance(chapter, dict) else chapter.get('name', Path(chapter['path']).name)
+            self.chapter_input.addItem(name)
+        self.chapter_input.setCurrentIndex(current_index)
+        self.chapter_input.blockSignals(False)
+
     def set_chapter(self, current: int, total: int):
-        self.chapter_input.set_value(current)
-        self.chapter_input.set_total(total)
+        self.chapter_input.blockSignals(True)
+        self.chapter_input.setCurrentIndex(current - 1)
+        self.chapter_input.blockSignals(False)
 
     def update_page_input_total(self, max_value):
         self.page_input.set_total(max_value + 1)
