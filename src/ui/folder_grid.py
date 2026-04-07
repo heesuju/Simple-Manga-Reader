@@ -750,6 +750,7 @@ class FolderGrid(QWidget):
             self.library_manager.remove_series(series)
             self.load_recent_items()
             self.load_items()
+            self.group_view.refresh()
 
     def rescan_series(self, series: object):
         path = series['path']
@@ -1192,6 +1193,7 @@ class FolderGrid(QWidget):
         self.toggle_selection_mode(False)
         self.load_recent_items()
         self.load_items()
+        self.group_view.refresh()
 
     def showEvent(self, event):
         super().showEvent(event)

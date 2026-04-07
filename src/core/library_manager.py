@@ -229,8 +229,13 @@ class LibraryManager:
     def remove_series(self, series_to_remove):
         with db_cursor() as (conn, cursor):
             try:
-                cursor.execute("DELETE FROM chapters WHERE series_id = ?", (series_to_remove['id'],))
-                cursor.execute("DELETE FROM series WHERE id = ?", (series_to_remove['id'],))
+                sid = series_to_remove['id']
+                cursor.execute("DELETE FROM series_authors WHERE series_id = ?", (sid,))
+                cursor.execute("DELETE FROM series_genres WHERE series_id = ?", (sid,))
+                cursor.execute("DELETE FROM series_themes WHERE series_id = ?", (sid,))
+                cursor.execute("DELETE FROM series_formats WHERE series_id = ?", (sid,))
+                cursor.execute("DELETE FROM chapters WHERE series_id = ?", (sid,))
+                cursor.execute("DELETE FROM series WHERE id = ?", (sid,))
                 conn.commit()
             except Exception as e:
                 print(f"Error removing series: {e}")
@@ -350,7 +355,9 @@ class LibraryManager:
                 SELECT t.name, COUNT(j.series_id) as count
                 FROM {field_table[field]} t
                 JOIN {junction[field]} j ON t.id = j.{id_col[field]}
+                JOIN series s ON j.series_id = s.id
                 GROUP BY t.id, t.name
+                HAVING COUNT(j.series_id) > 0
                 ORDER BY t.name
             """)
             return [{'name': row['name'], 'count': row['count']} for row in cursor.fetchall()]

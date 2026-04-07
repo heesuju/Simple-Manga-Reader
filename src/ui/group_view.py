@@ -262,6 +262,26 @@ class GroupView(QWidget):
 
             self.next_item_to_display += 1
 
+    def refresh(self):
+        """Re-query and redisplay the current view after external data changes."""
+        if not self.current_field:
+            return
+        if self.sub_stack.currentIndex() == 0:
+            self._load_group_grid()
+        else:
+            if self.current_group and '_series' not in self.current_group:
+                series_list = self.library_manager.get_series_by_field_value(
+                    self.current_field, self.current_group['name']
+                )
+            else:
+                series_list = self.library_manager.get_series_without_field(self.current_field)
+            if series_list:
+                count = len(series_list)
+                self.header_label.setText(f"{self.current_group['name']}  ({count})")
+                self._load_series(series_list)
+            else:
+                self._back_to_groups()
+
     def _back_to_groups(self):
         self.current_group = None
         self.header_widget.hide()
