@@ -22,10 +22,6 @@ class InputLabel(QWidget):
                 background: transparent;
                 color: white;
                 border: none;
-                border-bottom: 1px solid rgba(255, 255, 255, 60);
-            }
-            QLineEdit:focus {
-                border-bottom: 1px solid rgba(255, 255, 255, 160);
             }
         """)
 

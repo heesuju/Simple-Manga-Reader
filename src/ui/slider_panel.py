@@ -52,7 +52,6 @@ class SliderPanel(QWidget):
                 background: transparent;
                 color: white;
                 border: none;
-                border-bottom: 1px solid rgba(255, 255, 255, 60);
                 padding: 2px 4px;
             }
             QComboBox::drop-down {
@@ -65,7 +64,7 @@ class SliderPanel(QWidget):
                 border: 1px solid rgba(255, 255, 255, 60);
             }
         """)
-        self.chapter_input.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.chapter_input.setFixedWidth(200)
         self.chapter_input.activated.connect(lambda idx: self.chapter_changed.emit(idx + 1))
 
         self.page_input = InputLabel(1, 1)
@@ -75,37 +74,60 @@ class SliderPanel(QWidget):
         from PyQt6.QtWidgets import QPushButton, QFrame
         from src.utils.resource_utils import resource_path
         
-        btn_style = "QPushButton { background: transparent; border: none; } QPushButton:hover { background: rgba(255, 255, 255, 30); border-radius: 4px; }"
+        btn_style = """
+            QPushButton { 
+                background: transparent; 
+                border: none; 
+            } 
+            QPushButton:hover { 
+                background: rgba(255, 255, 255, 20);
+                border-radius: 4px;
+            }
+        """
 
         self.chapter_btn = QPushButton()
         self.chapter_btn.setIcon(QIcon(resource_path("assets/icons/grid.svg")))
         self.chapter_btn.setIconSize(QSize(16, 16))
-        self.chapter_btn.setFixedSize(QSize(24, 24))
+        self.chapter_btn.setFixedSize(QSize(22, 22))
         self.chapter_btn.setStyleSheet(btn_style)
         self.chapter_btn.clicked.connect(self.chapter_input_clicked.emit)
         self.chapter_btn.setToolTip("Show Chapter Grid")
         
+        chap_group = QWidget()
+        chap_group.setStyleSheet("background: transparent;")
+        chap_layout = QHBoxLayout(chap_group)
+        chap_layout.setContentsMargins(0, 0, 0, 0)
+        chap_layout.setSpacing(4)
+        chap_layout.addWidget(self.chapter_btn)
+        chap_layout.addWidget(self.chapter_input)
+
         self.page_btn = QPushButton()
         self.page_btn.setIcon(QIcon(resource_path("assets/icons/grid.svg")))
         self.page_btn.setIconSize(QSize(16, 16))
-        self.page_btn.setFixedSize(QSize(24, 24))
+        self.page_btn.setFixedSize(QSize(22, 22))
         self.page_btn.setStyleSheet(btn_style)
         self.page_btn.clicked.connect(self.page_input_clicked.emit)
         self.page_btn.setToolTip("Show Page Grid")
 
         self.page_input.enterPressed.connect(self._on_page_input_entered)
-        # We no longer rely on clicking the input text to show the page grid
 
+        page_group = QWidget()
+        page_group.setStyleSheet("background: transparent;")
+        page_layout = QHBoxLayout(page_group)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(4)
+        page_layout.addWidget(self.page_btn)
+        page_layout.addWidget(self.page_input)
+
+        row.addWidget(chap_group)
+        
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.VLine)
         divider.setFrameShadow(QFrame.Shadow.Sunken)
         divider.setStyleSheet("QFrame { background-color: rgba(255, 255, 255, 40); border: none; max-height: 16px; margin: 0 8px; }")
-
-        row.addWidget(self.chapter_btn)
-        row.addWidget(self.chapter_input)
         row.addWidget(divider)
-        row.addWidget(self.page_btn)
-        row.addWidget(self.page_input)
+        
+        row.addWidget(page_group)
         row.addWidget(self.slider, 1)
 
     # ── Public API ────────────────────────────────────────────────────────────
