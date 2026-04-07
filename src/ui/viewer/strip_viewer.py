@@ -249,12 +249,15 @@ class StripViewer(BaseViewer):
                 topmost_visible_index = i
                 break
         if topmost_visible_index != -1 and self.reader_view.model.current_index != topmost_visible_index:
+            images = self.reader_view.model.images
+            if topmost_visible_index >= len(images):
+                return
             self.reader_view.model.current_index = topmost_visible_index
             self.reader_view.page_panel._update_page_selection(self.reader_view.model.current_index)
             self.reader_view.slider_panel.set_value(self.reader_view.model.current_index)
             
             # Update image info in bottom panel
-            current_page = self.reader_view.model.images[topmost_visible_index]
+            current_page = images[topmost_visible_index]
             self.reader_view._update_image_info([current_page.path])
 
         # Trigger priority update
