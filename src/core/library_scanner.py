@@ -197,13 +197,92 @@ class LibraryScanner:
 
         cover_image = self.find_cover(item, sorted_chapters)
 
-        return {
+        series_data = {
             "name": series_name,
             "path": str(item),
             "cover_image": str(cover_image) if cover_image else None,
             "chapters": sorted_chapters,
             "root_dir": str(item.parent)
         }
+        
+        series_data["formats"] = self.detect_format(series_data)
+        return series_data
+        
+    def detect_format(self, series_data: dict) -> list:
+        from src.utils.img_utils import get_image_aspect_ratio, VIDEO_EXTS
+        import statistics
+
+        chapters = series_data.get('chapters', [])
+        if not chapters:
+            return []
+
+        first_chap_path = chapters[0]['path']
+        
+        # 1. Video Check
+        video_count = 0
+        total_media = 0
+        if '|' not in first_chap_path and Path(first_chap_path).is_dir():
+            for f in Path(first_chap_path).iterdir():
+                if self.is_media_file(f):
+                    total_media += 1
+                    if any(str(f).lower().endswith(ext) for ext in VIDEO_EXTS):
+                        video_count += 1
+            if total_media > 0 and video_count / total_media >= 0.5:
+                return ["Video"]
+
+        # 2. Check Naming Patterns
+        chapter_keywords = {'ch', 'chapter', 'vol', 'volume', 'ep', 'episode'}
+        keyword_hits = 0
+        for chap in chapters:
+            name_lower = chap['name'].lower()
+            if any(re.search(rf'\b{kw}\b', name_lower) or re.search(rf'{kw}\.', name_lower) or re.search(rf'{kw}\s*\d', name_lower) for kw in chapter_keywords):
+                keyword_hits += 1
+
+        is_likely_serialized = False
+        if len(chapters) > 1 and (keyword_hits / len(chapters)) > 0.3:
+             is_likely_serialized = True
+
+        # 3. Aspect Ratio Check
+        ratios = []
+        images_to_sample = []
+        if series_data.get('cover_image'):
+            images_to_sample.append(series_data['cover_image'])
+            
+        if '|' not in first_chap_path and Path(first_chap_path).is_dir():
+             try:
+                 images_to_sample.extend([str(f) for f in Path(first_chap_path).iterdir() if self.is_image_file(f)][:5])
+             except OSError:
+                 pass
+
+        for path in images_to_sample[:5]: # Max 5 samples
+            ratio = get_image_aspect_ratio(path)
+            if ratio is not None and ratio > 0:
+                 ratios.append(ratio)
+        
+        if ratios:
+            avg_ratio = sum(ratios) / len(ratios)
+            stdev = statistics.stdev(ratios) if len(ratios) > 1 else 0
+
+            # Huge variance -> likely unstructured image set
+            if stdev > 0.6 and not is_likely_serialized:
+                return ["Image Set"]
+            
+            # Extremely tall ratio -> Web Comic
+            if avg_ratio >= 2.0:
+                return ["Web Comic"]
+            
+            # Typical page ratios -> Manga
+            if 0.5 <= avg_ratio <= 1.8:
+                return ["Manga"]
+
+        # Fallbacks
+        if is_likely_serialized:
+             return ["Manga"]
+
+        if len(chapters) == 1 and keyword_hits == 0:
+             return ["Image Set"]
+
+        return ["Manga"] # General Default
     
     def scan_archive(self, archive_path: Path) -> list:
         """

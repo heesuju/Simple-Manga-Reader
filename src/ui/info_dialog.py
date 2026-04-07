@@ -164,9 +164,12 @@ class InfoDialog(QDialog):
         self.themes_input.setCurrentText(", ".join(themes))
         self.fetched_info['themes'] = themes
 
-        formats = [tag["attributes"]["name"]["en"] for tag in attributes.get("tags", []) if tag["attributes"]["group"] == "format"]
-        self.formats_input.setCurrentText(", ".join(formats))
-        self.fetched_info['formats'] = formats
+        new_formats = [tag["attributes"]["name"]["en"] for tag in attributes.get("tags", []) if tag["attributes"]["group"] == "format"]
+        existing_formats = [f.strip() for f in self.formats_input.currentText().split(',') if f.strip()]
+        # Merge and remove duplicates while maintaining order
+        merged_formats = list(dict.fromkeys(existing_formats + new_formats))
+        self.formats_input.setCurrentText(", ".join(merged_formats))
+        self.fetched_info['formats'] = merged_formats
 
         creator_ids = set()
         for rel in info.get("relationships", []):

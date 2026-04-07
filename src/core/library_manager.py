@@ -173,16 +173,25 @@ class LibraryManager:
                                 theme_id = theme_row['id']
                             cursor.execute("INSERT INTO series_themes (series_id, theme_id) VALUES (?, ?)", (series_id, theme_id['id']))
 
-                    if 'formats' in metadata and metadata['formats']:
-                        for format_name in metadata['formats']:
-                            cursor.execute("SELECT id FROM formats WHERE name = ?", (format_name,))
-                            format_row = cursor.fetchone()
-                            if not format_row:
-                                cursor.execute("INSERT INTO formats (name) VALUES (?) ", (format_name,))
-                                format_id = cursor.lastrowid
-                            else:
-                                format_id = format_row['id']
-                            cursor.execute("INSERT INTO series_formats (series_id, format_id) VALUES (?, ?)", (series_id, format_id['id']))
+                # Formats can come from metadata OR from our auto-detector via series_data
+                formats_to_add = []
+                if metadata and 'formats' in metadata and metadata['formats']:
+                    formats_to_add = metadata['formats']
+                elif 'formats' in series_data and series_data['formats']:
+                    formats_to_add = series_data['formats']
+
+                for format_name in formats_to_add:
+                    cursor.execute("SELECT id FROM formats WHERE name = ?", (format_name,))
+                    format_row = cursor.fetchone()
+                    if not format_row:
+                        cursor.execute("INSERT INTO formats (name) VALUES (?)", (format_name,))
+                        format_id = cursor.lastrowid
+                    else:
+                        format_id = format_row['id']
+                    
+                    if isinstance(format_id, dict):
+                         format_id = format_id['id']
+                    cursor.execute("INSERT INTO series_formats (series_id, format_id) VALUES (?, ?)", (series_id, format_id))
 
                 conn.commit()
             except Exception as e:

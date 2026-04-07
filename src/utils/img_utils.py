@@ -538,6 +538,27 @@ def load_qimage_for_thumbnailing(path: str, target_width: int = 0) -> QImage | N
 
     return image
 
+def get_image_aspect_ratio(path: str) -> float | None:
+    """Gets the aspect ratio (height / width) of an image efficiently. Returns None if it fails."""
+    reader = None
+    buffer = None
+    if '|' in path:
+        image_data = get_image_data_from_zip(path)
+        if image_data:
+            from src.utils.img_utils import qimage_reader_from_bytes
+            reader, buffer = qimage_reader_from_bytes(image_data)
+    else:
+        if not os.path.isfile(path) or any(path.lower().endswith(ext) for ext in VIDEO_EXTS):
+            return None
+        reader = QImageReader(path)
+        
+    if reader and reader.canRead():
+        size = reader.size()
+        if size.isValid() and size.width() > 0:
+            return size.height() / size.width()
+            
+    return None
+
 def get_chapter_number(path):
     """Extract a representative number for sorting from a filename or path."""
     if isinstance(path, str) and '|' in path:
