@@ -86,26 +86,17 @@ class TopPanel(QWidget):
         self.info_label.setStyleSheet("background: transparent; color: rgba(255, 255, 255, 150); font-size: 11px;")
         self.info_label.hide()
 
-        # Language combo
-        self.lang_combo = QComboBox()
+        # Language combo (hidden, accessed via overflow menu)
+        self.lang_combo = QComboBox(self)
         items = ["Original"] + [lang.value for lang in Language]
         self.lang_combo.addItems(items)
-        self.lang_combo.setFixedSize(60, 28)
-        self.lang_combo.setStyleSheet("""
-            color: white;
-            background-color: rgba(255, 255, 255, 30);
-            border: 1px solid rgba(255, 255, 255, 50);
-            border-radius: 3px;
-        """)
         self.lang_combo.currentTextChanged.connect(self.lang_changed.emit)
+        self.lang_combo.hide()
 
-        # Translate button
-        self.translate_btn = QPushButton("Translate")
-        self.translate_btn.setFixedSize(72, 28)
-        self.translate_btn.setStyleSheet(
-            FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; background-color: rgba(0, 120, 215, 150); }"
-        )
+        # Translate button (hidden, accessed via overflow menu)
+        self.translate_btn = QPushButton("Translate", self)
         self.translate_btn.clicked.connect(self._on_translate_clicked)
+        self.translate_btn.hide()
 
         # Overflow (•••) button — slideshow, speed, repeat, sort
         self.overflow_btn = QPushButton("•••")
@@ -118,8 +109,6 @@ class TopPanel(QWidget):
 
         self._row.addWidget(self.series_label)
         self._row.addWidget(self.info_label, 1)
-        self._row.addWidget(self.lang_combo)
-        self._row.addWidget(self.translate_btn)
         self._row.addWidget(self.zoom_combobox)
         self._row.addWidget(self.reset_zoom_button)
         self._row.addWidget(self.fullscreen_button)
@@ -194,9 +183,32 @@ class TopPanel(QWidget):
             }
             QMenu::item { padding: 5px 20px 5px 28px; }
             QMenu::item:selected { background-color: rgba(255, 255, 255, 40); }
+            QMenu::item:disabled { color: rgba(255, 255, 255, 100); }
             QMenu::separator { background-color: rgba(255, 255, 255, 30); height: 1px; margin: 3px 8px; }
             QMenu::indicator:checked { width: 6px; height: 6px; background: white; border-radius: 3px; margin-left: 10px; }
         """)
+
+        # Translate action
+        translate_action = QAction(self.translate_btn.text(), self)
+        
+        is_original = self.lang_combo.currentText() == "Original"
+        translate_action.setEnabled(self.translate_btn.isEnabled() and not is_original)
+        
+        translate_action.triggered.connect(self.translate_btn.click)
+        menu.addAction(translate_action)
+
+        # Target language submenu
+        lang_menu = menu.addMenu(f"Language: {self.lang_combo.currentText()}")
+        lang_menu.setStyleSheet(menu.styleSheet())
+        for i in range(self.lang_combo.count()):
+            lang_text = self.lang_combo.itemText(i)
+            a = QAction(lang_text, self)
+            a.setCheckable(True)
+            a.setChecked(lang_text == self.lang_combo.currentText())
+            a.triggered.connect(lambda checked, text=lang_text: self.lang_combo.setCurrentText(text))
+            lang_menu.addAction(a)
+
+        menu.addSeparator()
 
         # Slideshow toggle
         ss_action = QAction("Slideshow", self)
