@@ -53,9 +53,9 @@ class SliderPanel(QWidget):
         self.chapter_input.clicked.connect(self.chapter_input_clicked.emit)
         self.page_input.clicked.connect(self.page_input_clicked.emit)
 
+        row.addWidget(self.chapter_input)
         row.addWidget(self.page_input)
         row.addWidget(self.slider, 1)
-        row.addWidget(self.chapter_input)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
