@@ -662,10 +662,14 @@ class ReaderView(QWidget):
             self.slider_panel.show()
             if self.alt_panel:
                 self.alt_panel._update_panel(self.model.current_index)
-            
+                if self.alt_panel.isVisible() and not self.alt_panel._collapsed:
+                    self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, False)
+
             if self.current_viewer == self.video_viewer:
                 self.frame_panel.show()
-                
+                if not self.frame_panel._collapsed:
+                    self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, False)
+
             QTimer.singleShot(100, self._update_side_panels_geometry)
         else:
             self.top_panel.hide()
@@ -703,8 +707,10 @@ class ReaderView(QWidget):
                 x = event.position().x()
                 view_width = self.width()
                 hover_zone = view_width * 0.2
-                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and self._has_prev())
-                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and self._has_next())
+                alt_visible = self.alt_panel and self.alt_panel.isVisible() and not self.alt_panel._collapsed
+                frame_visible = self.frame_panel and self.frame_panel.isVisible() and not self.frame_panel._collapsed
+                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and self._has_prev() and not alt_visible)
+                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and self._has_next() and not frame_visible)
 
                 if self.video_viewer.video_item and self.video_viewer.video_item.isVisible():
                     view_height = self.height()
@@ -1327,7 +1333,7 @@ class ReaderView(QWidget):
             self.next_nav_btn.hide()
 
     def _reposition_nav_buttons(self):
-        margin = 110
+        margin = 10
         cy = self.height() // 2 - 40
         self.prev_nav_btn.move(margin, cy)
         self.next_nav_btn.move(self.width() - 48 - margin, cy)
