@@ -378,12 +378,8 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
     
     files_to_link = []
     
-    if category:
-        main_stem = category
-        cat_dir_name = category.lower()
-    else:
-        main_stem = "main"
-        cat_dir_name = "main"
+    cat_dir_name = category.lower() if category else "main"
+    main_stem = cat_dir_name  # always lowercase for consistent file naming
 
     # Store subfolders of original file name (original page) first, then put subfolders inside that have categories in there
     original_file_stem = Path(target_main_file).stem
@@ -394,14 +390,14 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
         except OSError as e:
             print(f"Error creating specific alts sub-directory: {e}")
             return
-    
-    # Calculate start index dynamically based strictly on files inside this specific category folder
-    existing_in_category = 0
-    if specific_alts_dir.exists():
-        for f in specific_alts_dir.iterdir():
-            if f.is_file() and f.stem.startswith(main_stem) and not f.stem.endswith('_fix'):
-                existing_in_category += 1
-                
+
+    # Count all non-fix files already in this category folder to determine the next index.
+    # The directory is specific to this page+category, so every file in it is a variant.
+    existing_in_category = sum(
+        1 for f in specific_alts_dir.iterdir()
+        if f.is_file() and not f.stem.endswith('_fix')
+    ) if specific_alts_dir.exists() else 0
+
     start_index = existing_in_category + 1
 
     for i, file_path in enumerate(file_paths):
