@@ -217,6 +217,7 @@ class EditAltsDialog(QDialog):
         self.chapter_dir = Path(model.manga_dir) if model else None
 
         self._data = {}
+        self._orig_order = {}
         self._pending_removal = set()
         self._current_cat = None
 
@@ -378,6 +379,8 @@ class EditAltsDialog(QDialog):
                             '_orig_note': note_text,
                         })
             self.cat_list.addItem(cat_name)
+
+        self._orig_order = {cat: [d['path'] for d in items] for cat, items in self._data.items()}
 
         if self.cat_list.count() > 0:
             self.cat_list.setCurrentRow(0)
@@ -712,7 +715,11 @@ class EditAltsDialog(QDialog):
             new_notes_mapping.get(d['path'], '') != d.get('_orig_note', '')
             for items in self._data.values() for d in items
         )
-        if not removals and not moves and not additions and not notes_changed:
+        order_changed = any(
+            [d['path'] for d in self._data.get(cat, [])] != self._orig_order.get(cat, [])
+            for cat in self._data
+        )
+        if not removals and not moves and not additions and not notes_changed and not order_changed:
             QMessageBox.information(self, "No Changes", "No changes to apply.")
             return
 
