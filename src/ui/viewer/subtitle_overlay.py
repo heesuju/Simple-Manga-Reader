@@ -49,14 +49,20 @@ class SubtitleOverlay:
         self._delay_s = delay_s
 
     def load(self, video_path: str):
-        """Parse the .smi file that sits next to *video_path*, if any."""
+        """Parse the .smi or .srt file that sits next to *video_path*, if any."""
         self._subtitles = []
         if '|' in video_path:
             return
-        smi_path = os.path.splitext(video_path)[0] + '.smi'
-        if not os.path.isfile(smi_path):
-            return
-        self._subtitles = self._parse_smi(smi_path)
+            
+        base_path = os.path.splitext(video_path)[0]
+        smi_path = base_path + '.smi'
+        srt_path = base_path + '.srt'
+        
+        if os.path.isfile(smi_path):
+            self._subtitles = self._parse_smi(smi_path)
+        elif os.path.isfile(srt_path):
+            self._subtitles = self._parse_srt(srt_path)
+            
         if not self._subtitles and self._label:
             self._label.hide()
 
@@ -68,11 +74,12 @@ class SubtitleOverlay:
             return
 
         effective_ms = position_ms + int(self._delay_s * 1000)
-        text = ''
+        active_texts = []
         for start, end, t in self._subtitles:
             if start <= effective_ms < end:
-                text = t
-                break
+                active_texts.append(t)
+
+        text = '\n'.join(active_texts)
 
         if text:
             self._ensure_widget()
@@ -155,4 +162,43 @@ class SubtitleOverlay:
 
             if raw:
                 entries.append((start_ms, end_ms, raw))
+        return entries
+
+    def _parse_srt(self, srt_path: str) -> list[tuple[int, int, str]]:
+        content = None
+        for enc in ('utf-8-sig', 'utf-8', 'cp949', 'euc-kr', 'latin-1'):
+            try:
+                with open(srt_path, 'r', encoding=enc) as f:
+                    content = f.read()
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+        if not content:
+            return []
+
+        entries = []
+        # SRT blocks are separated by blank lines
+        blocks = re.split(r'\n\s*\n', content.strip())
+        for block in blocks:
+            lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+            if len(lines) >= 3:
+                time_match = None
+                text_start_idx = -1
+                for i, ln in enumerate(lines):
+                    time_match = re.search(r'(\d{2,}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2,}):(\d{2}):(\d{2})[,.](\d{3})', ln)
+                    if time_match:
+                        text_start_idx = i + 1
+                        break
+                
+                if time_match and text_start_idx < len(lines):
+                    h1, m1, s1, ms1, h2, m2, s2, ms2 = time_match.groups()
+                    start_ms = (int(h1)*3600 + int(m1)*60 + int(s1))*1000 + int(ms1)
+                    end_ms = (int(h2)*3600 + int(m2)*60 + int(s2))*1000 + int(ms2)
+                    
+                    raw_text = '\n'.join(lines[text_start_idx:])
+                    # Remove HTML-like tags commonly found in SRT
+                    raw_text = re.sub(r'<[^>]+>', '', raw_text)
+                    if raw_text:
+                        entries.append((start_ms, end_ms, raw_text))
+                        
         return entries
