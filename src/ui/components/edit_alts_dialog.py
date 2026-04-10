@@ -513,10 +513,11 @@ class EditAltsDialog(QDialog):
 
         self._save_current_category_order(self._current_cat)
 
+        path_set = set(paths)
         moved_items = []
         new_current = []
         for d in self._data[self._current_cat]:
-            if d['path'] in paths:
+            if d['path'] in path_set:
                 moved_items.append(d)
             else:
                 new_current.append(d)
