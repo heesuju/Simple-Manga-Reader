@@ -501,12 +501,13 @@ class VideoMetadataSignals(QObject):
 class VideoMetadataWorker(QRunnable):
     """Reads metadata and extracts the first page of frame thumbnails in one pass.
     Avoids a second cv2.VideoCapture open in VideoBatchFrameExtractorWorker."""
-    def __init__(self, path: str, thumb_w: int = 120, thumb_h: int = 160, first_page_size: int = 50):
+    def __init__(self, path: str, thumb_w: int = 120, thumb_h: int = 160, first_page_size: int = 50, extract_frames: bool = True):
         super().__init__()
         self.path = path
         self.thumb_w = thumb_w
         self.thumb_h = thumb_h
         self.first_page_size = first_page_size
+        self.extract_frames = extract_frames
         self.cancelled = False
         self.signals = VideoMetadataSignals()
 
@@ -541,22 +542,23 @@ class VideoMetadataWorker(QRunnable):
 
             # Extract first page of thumbnails while the cap is already open
             initial_frames = {}
-            end_idx = min(self.first_page_size, frame_count)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            for idx in range(end_idx):
-                if self.cancelled:
-                    break
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                h, w = frame.shape[:2]
-                scale = min(self.thumb_w / w, self.thumb_h / h)
-                nw, nh = int(w * scale), int(h * scale)
-                resized = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
-                rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                rh, rw, _ = rgb.shape
-                q_image = QImage(rgb.data, rw, rh, rgb.strides[0], QImage.Format.Format_RGB888)
-                initial_frames[idx] = q_image.copy()
+            if self.extract_frames:
+                end_idx = min(self.first_page_size, frame_count)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                for idx in range(end_idx):
+                    if self.cancelled:
+                        break
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    h, w = frame.shape[:2]
+                    scale = min(self.thumb_w / w, self.thumb_h / h)
+                    nw, nh = int(w * scale), int(h * scale)
+                    resized = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
+                    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                    rh, rw, _ = rgb.shape
+                    q_image = QImage(rgb.data, rw, rh, rgb.strides[0], QImage.Format.Format_RGB888)
+                    initial_frames[idx] = q_image.copy()
 
             cap.release()
             if not self.cancelled:

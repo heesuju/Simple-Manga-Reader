@@ -64,6 +64,7 @@ class FramePanel(QWidget):
         self.current_page = 0
         self.thumbnails = {} # {frame_index: FrameThumbnail}
         self.active_worker = None # Track currently running batch worker
+        self._needs_load = False
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("""
@@ -135,12 +136,14 @@ class FramePanel(QWidget):
         self._collapsed = not self._collapsed
         self._content_widget.setVisible(not self._collapsed)
         self.setFixedWidth(GRIP_W if self._collapsed else PANEL_W + GRIP_W)
+        if not self._collapsed and self._needs_load:
+            self._needs_load = False
+            self._update_ui()
         if hasattr(self.parent(), '_update_side_panels_geometry'):
             QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
 
     def set_video(self, path, total_frames, initial_frames: dict = None):
         if self.video_path == path and self.total_frames == total_frames:
-            # Still apply pre-extracted frames if provided (e.g. first load)
             if initial_frames:
                 self._apply_frames(initial_frames)
             return
@@ -148,6 +151,11 @@ class FramePanel(QWidget):
         self.video_path = path
         self.total_frames = total_frames
         self.current_page = 0
+
+        if self._collapsed:
+            self._needs_load = True
+            return
+
         self._update_ui(initial_frames=initial_frames)
 
     def _update_ui(self, initial_frames: dict = None):

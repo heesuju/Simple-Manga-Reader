@@ -110,7 +110,9 @@ class VideoViewer(BaseViewer):
 
         if self.active_meta_worker:
             self.active_meta_worker.cancelled = True
-        self.active_meta_worker = VideoMetadataWorker(path)
+        frame_panel = getattr(self.reader_view, 'frame_panel', None)
+        panel_collapsed = getattr(frame_panel, '_collapsed', True)
+        self.active_meta_worker = VideoMetadataWorker(path, extract_frames=not panel_collapsed)
         self.active_meta_worker.signals.finished.connect(self._on_video_metadata)
         self.reader_view.thread_pool.start(self.active_meta_worker)
 
