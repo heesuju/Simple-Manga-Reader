@@ -947,6 +947,7 @@ class FolderGrid(QWidget):
         elif action == show_hidden_action:
             app_settings.set("show_hidden_themes", show_hidden_action.isChecked())
             self.apply_filters()
+            self.load_recent_items()
 
     def add_single_series(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Manga Series Folder")
