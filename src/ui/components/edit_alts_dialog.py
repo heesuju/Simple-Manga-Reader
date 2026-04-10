@@ -457,11 +457,12 @@ class EditAltsDialog(QDialog):
         self._update_change_indicators()
 
     def _add_variant_item(self, path, orig_cat, is_new, existing_dict=None):
-        file_name = Path(path).name
-        variant_item = QTreeWidgetItem(self.item_tree, [file_name, "", ""])
+        ext = Path(path).suffix.lstrip('.').upper() or "FILE"
+        variant_item = QTreeWidgetItem(self.item_tree, [ext, "", ""])
         variant_item.setData(0, _ROLE_PATH, path)
         variant_item.setData(0, _ROLE_ORIG_CAT, orig_cat)
         variant_item.setData(0, _ROLE_IS_NEW, is_new)
+        variant_item.setToolTip(0, Path(path).name)
         variant_item.setIcon(0, self._make_thumbnail_icon(path))
         variant_item.setSizeHint(0, QSize(THUMB_W, THUMB_H + 8))
         variant_item.setSizeHint(1, QSize(150, THUMB_H + 8))
