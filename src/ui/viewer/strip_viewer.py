@@ -3,7 +3,7 @@ from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtCore import Qt, QTimer, QEvent
 
 from src.ui.viewer.base_viewer import BaseViewer
-from src.workers.view_workers import PixmapLoader, AsyncScaleWorker
+from src.workers.view_workers import PixmapLoader, AsyncScaleWorker, VIDEO_EXTS
 
 class StripViewer(BaseViewer):
     def __init__(self, reader_view):
@@ -30,7 +30,7 @@ class StripViewer(BaseViewer):
         self.load_queue: list[int] = []  # Indices waiting to load
         self.loading_indices: set[int] = set() # Indices currently loading
         self.scaling_indices: set[int] = set() # Indices currently scaling
-        self.eager_scale_queue: list[int] = [] 
+        self.eager_scale_queue: list[int] = []
         self.eager_scale_timer = QTimer(reader_view)
         self.eager_scale_timer.timeout.connect(self._process_eager_queue)
         self.MAX_CONCURRENT_LOADS = 4
@@ -38,6 +38,10 @@ class StripViewer(BaseViewer):
         self.current_model_images = None
         self._queue_process_scheduled = False
         self.pending_anchor = None
+
+        # Mappings between label indices (strip) and model indices (skips videos)
+        self.label_to_model: list[int] = []   # label_idx -> model_idx
+        self.model_to_label: dict[int, int] = {}  # model_idx -> label_idx
 
         
     def set_active(self, active: bool):
@@ -72,28 +76,31 @@ class StripViewer(BaseViewer):
     def refresh(self, index: int = None):
         """
         Refresh image content without rebuilding layout.
-        If index is provided, only refresh that specific page's image.
+        If index is provided, only refresh that specific page's image (model index).
         """
         if index is not None:
-            if index in self.page_pixmaps:
-                del self.page_pixmaps[index]
-            if index in self.scaled_pixmaps:
-                del self.scaled_pixmaps[index]
-            
-            if index in self.loading_indices:
-                self.loading_indices.remove(index)
-            
-            if index not in self.load_queue:
-                self.load_queue.insert(0, index) # Prioritize
+            label_index = self.model_to_label.get(index)
+            if label_index is None:
+                return  # Video page — not in strip
+            if label_index in self.page_pixmaps:
+                del self.page_pixmaps[label_index]
+            if label_index in self.scaled_pixmaps:
+                del self.scaled_pixmaps[label_index]
+
+            if label_index in self.loading_indices:
+                self.loading_indices.remove(label_index)
+
+            if label_index not in self.load_queue:
+                self.load_queue.insert(0, label_index)  # Prioritize
         else:
             self.page_pixmaps.clear()
             self.scaled_pixmaps.clear()
             self.loading_indices.clear()
-            
-            if self.current_model_images:
-                 self.load_queue = list(range(len(self.current_model_images)))
+
+            if self.page_labels:
+                self.load_queue = list(range(len(self.page_labels)))
             else:
-                 self.load_queue.clear()
+                self.load_queue.clear()
 
             self.eager_scale_timer.stop()
             self.eager_scale_queue.clear()
@@ -127,10 +134,18 @@ class StripViewer(BaseViewer):
         self.scaling_indices.clear()
         self.eager_scale_queue.clear()
         self.eager_scale_timer.stop()
+        self.label_to_model.clear()
+        self.model_to_label.clear()
 
-        # Load new
+        # Load new (skip video pages)
         images = self.reader_view.model.images
-        for i in range(len(images)):
+        for model_idx in range(len(images)):
+            path = images[model_idx].path
+            if path.lower().endswith(tuple(VIDEO_EXTS)):
+                continue
+            label_idx = len(self.page_labels)
+            self.label_to_model.append(model_idx)
+            self.model_to_label[model_idx] = label_idx
             lbl = QLabel("Loading...")
             lbl.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
             lbl.setFixedHeight(300)
@@ -139,8 +154,8 @@ class StripViewer(BaseViewer):
             self.reader_view.vbox.addWidget(lbl)
             self.page_labels.append(lbl)
 
-        # Prepare load queue
-        self.load_queue = list(range(len(images)))
+        # Prepare load queue (label indices)
+        self.load_queue = list(range(len(self.page_labels)))
         self.loading_indices.clear()
         
         # Initial load trigger
@@ -187,15 +202,15 @@ class StripViewer(BaseViewer):
                 
             self.loading_indices.add(index)
             images = self.reader_view.model.images
-            
+
             # Guard against outdated queue (model changed but viewer not reloaded yet)
-            if index >= len(images) or images is not self.current_model_images:
+            if index >= len(self.page_labels) or images is not self.current_model_images:
                 if index in self.loading_indices:
                     self.loading_indices.remove(index)
                 continue
-                
-            # images[i] is a Page object
-            worker = PixmapLoader(images[index].path, index, self.reader_view.image_viewer._load_pixmap, self.layout_generation)
+
+            model_idx = self.label_to_model[index]
+            worker = PixmapLoader(images[model_idx].path, index, self.reader_view.image_viewer._load_pixmap, self.layout_generation)
             worker.signals.finished.connect(self._on_image_loaded)
             self.reader_view.thread_pool.start(worker)
 
@@ -248,17 +263,16 @@ class StripViewer(BaseViewer):
             if lbl.y() >= viewport_top:
                 topmost_visible_index = i
                 break
-        if topmost_visible_index != -1 and self.reader_view.model.current_index != topmost_visible_index:
-            images = self.reader_view.model.images
-            if topmost_visible_index >= len(images):
-                return
-            self.reader_view.model.current_index = topmost_visible_index
-            self.reader_view.page_panel._update_page_selection(self.reader_view.model.current_index)
-            self.reader_view.slider_panel.set_value(self.reader_view.model.current_index)
-            
-            # Update image info in bottom panel
-            current_page = images[topmost_visible_index]
-            self.reader_view._update_image_info([current_page.path])
+        if topmost_visible_index != -1:
+            model_idx = self.label_to_model[topmost_visible_index]
+            if self.reader_view.model.current_index != model_idx:
+                images = self.reader_view.model.images
+                self.reader_view.model.current_index = model_idx
+                self.reader_view.page_panel._update_page_selection(model_idx)
+                self.reader_view.slider_panel.set_value(model_idx)
+
+                # Update image info in bottom panel
+                self.reader_view._update_image_info([images[model_idx].path])
 
         # Trigger priority update
         if (self.load_queue or self.loading_indices) and not self._queue_process_scheduled:
@@ -565,6 +579,11 @@ class StripViewer(BaseViewer):
         return False
 
     def _scroll_to_page(self, page_index: int):
-        if 0 <= page_index < len(self.page_labels):
-            label = self.page_labels[page_index]
+        label_index = self.model_to_label.get(page_index)
+        if label_index is None and self.label_to_model:
+            # Find nearest non-video label
+            label_index = min(range(len(self.label_to_model)),
+                              key=lambda i: abs(self.label_to_model[i] - page_index))
+        if label_index is not None and 0 <= label_index < len(self.page_labels):
+            label = self.page_labels[label_index]
             self.reader_view.scroll_area.verticalScrollBar().setValue(label.y())
