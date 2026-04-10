@@ -90,7 +90,17 @@ class ImageView(QGraphicsView):
          add_dd_action = QAction("Add Alternates (Drag & Drop)...", self)
          add_dd_action.triggered.connect(self._open_drag_drop_dialog)
          menu.addAction(add_dd_action)
-         
+
+         edit_alts_action = QAction("Edit Alts...", self)
+         edit_alts_action.triggered.connect(self._open_edit_alts_dialog)
+         model = self.manga_reader.model if self.manga_reader else None
+         if model and 0 <= model.current_index < len(model.images):
+            page_obj = model.images[model.current_index]
+            edit_alts_action.setEnabled(page_obj is not None and len(page_obj.images) > 1)
+         else:
+            edit_alts_action.setEnabled(False)
+         menu.addAction(edit_alts_action)
+
          menu.exec(global_pos)
 
     def _add_alt_from_file(self):
@@ -105,6 +115,19 @@ class ImageView(QGraphicsView):
         )
         if file_paths:
             self.manga_reader._add_alts_from_files(file_paths)
+
+    def _open_edit_alts_dialog(self):
+        if not self.manga_reader: return
+        from src.ui.components.edit_alts_dialog import EditAltsDialog
+        model = self.manga_reader.model
+        if not model: return
+        idx = model.current_index
+        if idx < 0 or idx >= len(model.images): return
+        page_obj = model.images[idx]
+        if not page_obj or len(page_obj.images) <= 1: return
+        dialog = EditAltsDialog(self, page_obj, model)
+        if dialog.exec():
+            self.manga_reader.reload_chapter()
 
     def _open_drag_drop_dialog(self):
         if not self.manga_reader: return
