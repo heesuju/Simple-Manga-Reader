@@ -17,6 +17,8 @@ class SubtitleOverlay:
         self._reader_view = reader_view
         self._label: QLabel | None = None
         self._subtitles: list[tuple[int, int, str]] = []  # (start_ms, end_ms, text)
+        self.available_tracks: dict[str, str] = {}
+        self.current_track: str | None = None
         self._font_size: int = app_settings.get("subtitle_font_size", 16)
         self._delay_s: float = 0.0
 
@@ -26,7 +28,7 @@ class SubtitleOverlay:
 
     @property
     def has_subtitles(self) -> bool:
-        return bool(self._subtitles)
+        return bool(self.available_tracks)
 
     @property
     def font_size(self) -> int:
@@ -49,19 +51,51 @@ class SubtitleOverlay:
         self._delay_s = delay_s
 
     def load(self, video_path: str):
-        """Parse the .smi or .srt file that sits next to *video_path*, if any."""
+        """Find all .smi or .srt files that sit next to *video_path* and start with its name."""
         self._subtitles = []
+        self.available_tracks = {}
+        self.current_track = None
+        if self._label:
+            self._label.hide()
+
         if '|' in video_path:
             return
             
-        base_path = os.path.splitext(video_path)[0]
-        smi_path = base_path + '.smi'
-        srt_path = base_path + '.srt'
+        base_name = os.path.basename(video_path)
+        base_no_ext = os.path.splitext(base_name)[0]
+        dir_name = os.path.dirname(video_path)
         
-        if os.path.isfile(smi_path):
-            self._subtitles = self._parse_smi(smi_path)
-        elif os.path.isfile(srt_path):
-            self._subtitles = self._parse_srt(srt_path)
+        try:
+            for f in os.listdir(dir_name):
+                if f.startswith(base_no_ext) and f.endswith(('.srt', '.smi')):
+                    name, ext = os.path.splitext(f)
+                    lang = name[len(base_no_ext):].strip('.')
+                    label = lang if lang else "Default"
+                    self.available_tracks[f"{label} {ext}"] = os.path.join(dir_name, f)
+        except Exception:
+            pass
+            
+        if self.available_tracks:
+            first_label = list(self.available_tracks.keys())[0]
+            # Prioritize a "Default" if one exists, otherwise first
+            for k in self.available_tracks.keys():
+                if "Default" in k:
+                    first_label = k
+                    break
+            self.load_track(first_label)
+
+    def load_track(self, label: str | None):
+        self._subtitles = []
+        self.current_track = label
+        if not label or label not in self.available_tracks:
+            if self._label: self._label.hide()
+            return
+            
+        path = self.available_tracks[label]
+        if path.endswith('.smi'):
+            self._subtitles = self._parse_smi(path)
+        elif path.endswith('.srt'):
+            self._subtitles = self._parse_srt(path)
             
         if not self._subtitles and self._label:
             self._label.hide()

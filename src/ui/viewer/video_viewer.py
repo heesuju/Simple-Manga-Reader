@@ -375,6 +375,23 @@ class VideoViewer(BaseViewer):
         if self.subtitles.has_subtitles:
             sub_menu = menu.addMenu("Subtitle")
 
+            lang_menu = sub_menu.addMenu("Language")
+            
+            none_action = QAction("None", self.reader_view)
+            none_action.setCheckable(True)
+            none_action.setChecked(self.subtitles.current_track is None)
+            none_action.triggered.connect(lambda: self._change_subtitle_track(None))
+            lang_menu.addAction(none_action)
+            
+            for label in self.subtitles.available_tracks.keys():
+                action = QAction(label, self.reader_view)
+                action.setCheckable(True)
+                action.setChecked(self.subtitles.current_track == label)
+                action.triggered.connect(lambda _, l=label: self._change_subtitle_track(l))
+                lang_menu.addAction(action)
+                
+            sub_menu.addSeparator()
+
             size_menu = sub_menu.addMenu("Font Size")
             for label, size in FONT_SIZES.items():
                 action = QAction(label, self.reader_view)
@@ -403,6 +420,10 @@ class VideoViewer(BaseViewer):
         global_pos = self.reader_view.view.mapToGlobal(view_pos)
         
         menu.exec(global_pos)
+
+    def _change_subtitle_track(self, label: str | None):
+        self.subtitles.load_track(label)
+        self.subtitles.update(self.media_player.position())
 
     def _subtitle_context(self, video_path: str):
         """Return (series_path, chapter_name, filename) for info.json storage."""
