@@ -3,10 +3,11 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QWidget,
     QTreeWidget, QTreeWidgetItem, QInputDialog, QMessageBox,
-    QAbstractItemView, QHeaderView, QFileDialog, QSplitter, QListWidget, QSizePolicy, QTextEdit
+    QAbstractItemView, QHeaderView, QFileDialog, QSplitter, QListWidget, QSizePolicy,
+    QStackedWidget, QTextEdit
 )
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap, QColor, QBrush
+from PyQt6.QtGui import QIcon, QPixmap, QColor, QBrush, QTextCursor
 from src.utils.img_utils import load_thumbnail_from_path
 from src.utils.str_utils import natural_sort_key
 
@@ -16,6 +17,7 @@ THUMB_H = 120
 _ROLE_PATH     = Qt.ItemDataRole.UserRole
 _ROLE_ORIG_CAT = Qt.ItemDataRole.UserRole + 1
 _ROLE_IS_NEW   = Qt.ItemDataRole.UserRole + 2
+_ROLE_NOTE     = Qt.ItemDataRole.UserRole + 3
 
 _MEDIA_FILTER = "Media Files (*.png *.jpg *.jpeg *.jpe *.webp *.avif *.gif *.mp4 *.webm *.mkv)"
 _MEDIA_EXTS   = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.avif', '.gif', '.mp4', '.webm', '.mkv'}
@@ -28,6 +30,72 @@ _STYLE_UNDO = """
     QPushButton { border: none; background: transparent; color: #888888; font-weight: bold; font-size: 16px; }
     QPushButton:hover { color: #bbbbbb; background-color: rgba(255,255,255,0.1); border-radius: 12px; }
 """
+
+
+class _NoteEditor(QTextEdit):
+    commit_requested = pyqtSignal()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.commit_requested.emit()
+        else:
+            super().keyPressEvent(event)
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.commit_requested.emit()
+
+
+class NoteWidget(QWidget):
+    def __init__(self, note_text='', parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._stack = QStackedWidget()
+        layout.addWidget(self._stack)
+
+        self.label = QLabel()
+        self.label.setWordWrap(True)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.label.setCursor(Qt.CursorShape.IBeamCursor)
+        self.label.mousePressEvent = lambda _: self._start_edit()
+        self._stack.addWidget(self.label)
+
+        self.editor = _NoteEditor()
+        self.editor.setStyleSheet("background: rgba(0,0,0,100); border: 1px solid rgba(255,255,255,40); border-radius:3px; padding: 2px; font-size: 11px;")
+        self.editor.commit_requested.connect(self._commit)
+        self._stack.addWidget(self.editor)
+
+        self._set_note(note_text)
+
+    def _set_note(self, text):
+        self.editor.setPlainText(text)
+        self._sync_label()
+
+    def _sync_label(self):
+        text = self.editor.toPlainText().strip()
+        if text:
+            self.label.setText(text)
+            self.label.setStyleSheet("font-size: 11px; color: rgba(255,255,255,180); padding: 4px;")
+        else:
+            self.label.setText("Add a note...")
+            self.label.setStyleSheet("font-size: 11px; color: rgba(255,255,255,60); font-style: italic; padding: 4px;")
+
+    def _start_edit(self):
+        self._stack.setCurrentIndex(1)
+        self.editor.setFocus()
+        cursor = self.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.editor.setTextCursor(cursor)
+
+    def _commit(self):
+        if self._stack.currentIndex() == 1:
+            self._stack.setCurrentIndex(0)
+            self._sync_label()
+
+    def get_note(self):
+        return self.editor.toPlainText().strip()
 
 
 class CategoryListWidget(QListWidget):
@@ -98,6 +166,11 @@ class AltItemsTreeWidget(QTreeWidget):
                 self.files_dropped.emit(file_paths, self.current_category)
             event.acceptProposedAction()
         else:
+            for i in range(self.topLevelItemCount()):
+                item = self.topLevelItem(i)
+                note_widget = self.itemWidget(item, 1)
+                if isinstance(note_widget, NoteWidget):
+                    item.setData(0, _ROLE_NOTE, note_widget.get_note())
             super().dropEvent(event)
             self.items_rearranged.emit()
 
@@ -304,8 +377,8 @@ class EditAltsDialog(QDialog):
                     existing = d
                     break
                     
-            note_edit = self.item_tree.itemWidget(item, 1)
-            note_text = note_edit.toPlainText().strip() if note_edit else ""
+            note_widget = self.item_tree.itemWidget(item, 1)
+            note_text = note_widget.get_note() if note_widget else ""
 
             if existing:
                 existing['note'] = note_text
@@ -344,12 +417,8 @@ class EditAltsDialog(QDialog):
         variant_item.setFlags(variant_item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
         
         note_text = existing_dict.get('note', '') if existing_dict else ''
-        note_edit = QTextEdit()
-        note_edit.setPlaceholderText("Add a note...")
-        note_edit.setPlainText(note_text)
-        note_edit.setMaximumHeight(THUMB_H + 4)
-        note_edit.setStyleSheet("background: rgba(0,0,0,100); border: 1px solid rgba(255,255,255,40); border-radius:3px; padding: 2px; font-size: 11px;")
-        self.item_tree.setItemWidget(variant_item, 1, note_edit)
+        note_widget = NoteWidget(note_text)
+        self.item_tree.setItemWidget(variant_item, 1, note_widget)
 
         del_btn = QPushButton("✕")
         del_btn.setFixedSize(24, 24)
@@ -510,7 +579,27 @@ class EditAltsDialog(QDialog):
 
     def _update_change_indicators(self):
         for i in range(self.item_tree.topLevelItemCount()):
-            self._update_item_visuals(self.item_tree.topLevelItem(i))
+            item = self.item_tree.topLevelItem(i)
+            path = item.data(0, _ROLE_PATH)
+
+            if self.item_tree.itemWidget(item, 1) is None:
+                note_text = item.data(0, _ROLE_NOTE) or ''
+                self.item_tree.setItemWidget(item, 1, NoteWidget(note_text))
+
+            if self.item_tree.itemWidget(item, 2) is None:
+                del_btn = QPushButton("✕")
+                del_btn.setFixedSize(24, 24)
+                del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                del_btn.setStyleSheet(_STYLE_REMOVE)
+                del_btn.clicked.connect(lambda _, it=item, p=path: self._toggle_removal_or_cancel(it, p))
+                btn_container = QWidget()
+                btn_layout = QHBoxLayout(btn_container)
+                btn_layout.setContentsMargins(0, 0, 0, 0)
+                btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                btn_layout.addWidget(del_btn)
+                self.item_tree.setItemWidget(item, 2, btn_container)
+
+            self._update_item_visuals(item)
 
     # --------------------------------------------------------- category actions
 
