@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QWidget,
@@ -709,34 +708,12 @@ class EditAltsDialog(QDialog):
         if confirm != QMessageBox.StandardButton.Ok:
             return
 
-        delete_from_disk = False
-        if removals:
-            delete_reply = QMessageBox.question(
-                self, "Delete from Disk",
-                "Also permanently delete the removed files from disk?\n\nThis cannot be undone.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            delete_from_disk = delete_reply == QMessageBox.StandardButton.Yes
-
         from src.ui.page_utils import apply_alt_edits, process_add_alts
-        
+
         success_edit = apply_alt_edits(self.model, self.page_obj, new_structure, new_notes=new_notes_mapping)
         if not success_edit:
             QMessageBox.critical(self, "Error", "Failed to apply changes.")
             return
-
-        if delete_from_disk:
-            for path in self._pending_removal:
-                resolved = self._resolve_path(path)
-                if '|' in resolved:
-                    QMessageBox.warning(self, "Unsupported", "Deleting files inside archives is not supported.")
-                else:
-                    try:
-                        if os.path.exists(resolved):
-                            os.remove(resolved)
-                    except Exception as e:
-                        QMessageBox.critical(self, "Error", f"Failed to delete '{Path(path).name}': {e}")
 
         if additions:
             try:
