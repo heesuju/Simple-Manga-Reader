@@ -213,7 +213,7 @@ def open_in_explorer(model: ReaderModel, index: int):
     if os.name == 'nt':
         subprocess.Popen(['explorer', '/select,', str(path)])
 
-def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
+def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict, new_notes: dict = None) -> bool:
     """
     Applies edited category groups and orders to a page's alternates.
     Renames and moves files on disk safely, then updates info.json.
@@ -274,13 +274,14 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
     # 2. Process Moves/Renames
     flat_new_paths = [main_file]
     new_alts_fix = {}
+    final_notes = {}
 
     for cat_name, file_paths in new_structure.items():
         cat_dir = alts_dir / main_stem / cat_name.lower()
         if not cat_dir.exists():
             cat_dir.mkdir(parents=True, exist_ok=True)
 
-        temp_moves = [] # List of ((orig_temp, fix_temp), (orig_old_rel, fix_old_rel))
+        temp_moves = [] # List of ((orig_temp, fix_temp), (orig_old_rel, fix_old_rel), path_str)
         for path_str in file_paths:
             if path_str == main_file: continue
             
@@ -297,10 +298,10 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
                 shutil.move(f_abs, f_temp)
             
             if o_temp or f_temp:
-                temp_moves.append(((o_temp, f_temp), (o_rel, f_rel)))
+                temp_moves.append(((o_temp, f_temp), (o_rel, f_rel), path_str))
 
         # Rename to final names
-        for i, ((o_temp, f_temp), (o_old_rel, f_old_rel)) in enumerate(temp_moves):
+        for i, ((o_temp, f_temp), (o_old_rel, f_old_rel), path_str) in enumerate(temp_moves):
             prefix = f"{cat_name.lower()}_{i + 1}"
             
             # Final original path
@@ -327,6 +328,11 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
             # Update alts_fix
             if o_final_rel and f_final_rel:
                 new_alts_fix[o_final_rel] = f_final_rel
+                
+            # Assign Note
+            final_key = o_final_rel if o_final_rel else f_final_rel
+            if final_key and new_notes and path_str in new_notes and new_notes[path_str].strip():
+                final_notes[final_key] = new_notes[path_str].strip()
 
     # Update info.json
     alts_to_link = flat_new_paths[1:] if flat_new_paths[0] == main_file else flat_new_paths
@@ -339,6 +345,13 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
             entry["alts_fix"] = new_alts_fix
         elif "alts_fix" in entry:
             del entry["alts_fix"]
+            
+        if new_notes is not None:
+            if final_notes:
+                entry["alt_notes"] = final_notes
+            elif "alt_notes" in entry:
+                del entry["alt_notes"]
+                
         data[chapter_name][main_name] = entry
         AltManager.save_alts(series_path, data)
 
@@ -355,7 +368,7 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict) -> bool:
 
     return True
 
-def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: int, on_reload: Callable[[], None], on_variants_updated: Callable[[int], None], category: str = None):
+def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: int, on_reload: Callable[[], None], on_variants_updated: Callable[[int], None], category: str = None, new_notes: dict = None):
     from src.utils.str_utils import natural_sort_key
     file_paths = sorted(file_paths, key=lambda p: natural_sort_key(Path(p).name))
     
@@ -399,6 +412,7 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
     ) if specific_alts_dir.exists() else 0
 
     start_index = existing_in_category + 1
+    finalized_new_notes = {}
 
     for i, file_path in enumerate(file_paths):
         src_path = Path(file_path)
@@ -433,12 +447,34 @@ def process_add_alts(model: ReaderModel, file_paths: List[str], target_index: in
                 files_to_link.append(str(rel_path).replace('\\', '/'))
             except ValueError:
                 files_to_link.append(str(dst_path))
+                
+            if new_notes and str(src_path.resolve()) in [str(Path(k).resolve()) for k in new_notes.keys()]:
+                for k in new_notes.keys():
+                    if str(Path(k).resolve()) == str(src_path.resolve()):
+                        matching_note = new_notes[k]
+                        if matching_note.strip():
+                            try:
+                                final_r = str(dst_path.relative_to(chapter_dir)).replace('\\', '/')
+                            except ValueError:
+                                final_r = str(dst_path).replace('\\', '/')
+                            finalized_new_notes[final_r] = matching_note.strip()
+                        break
             
         except Exception as e:
             print(f"Error processing file {src_path}: {e}")
 
     if files_to_link:
         AltManager.link_pages(series_path, chapter_name, target_main_file, files_to_link)
+        
+        if finalized_new_notes:
+            data = AltManager.load_alts(series_path)
+            target_main_name = Path(target_main_file).name
+            if chapter_name in data and target_main_name in data[chapter_name]:
+                entry = data[chapter_name][target_main_name]
+                if "alt_notes" not in entry:
+                    entry["alt_notes"] = {}
+                entry["alt_notes"].update(finalized_new_notes)
+                AltManager.save_alts(series_path, data)
         
         needs_full_reload = False
         for fp in file_paths:
