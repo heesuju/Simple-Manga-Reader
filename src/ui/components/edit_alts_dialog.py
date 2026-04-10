@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QTextEdit
 )
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap, QColor, QBrush, QTextCursor
+from PyQt6.QtGui import QIcon, QPixmap, QColor, QBrush, QTextCursor, QDrag, QPainter
 from src.utils.img_utils import load_thumbnail_from_path
 from src.utils.str_utils import natural_sort_key
 
@@ -157,6 +157,38 @@ class AltItemsTreeWidget(QTreeWidget):
             event.acceptProposedAction()
         else:
             super().dragMoveEvent(event)
+
+    def startDrag(self, supported_actions):
+        selected = self.selectedItems()
+        if not selected:
+            return
+
+        names = [Path(item.data(0, _ROLE_PATH)).name for item in selected if item.data(0, _ROLE_PATH)]
+        text = "\n".join(names[:3])
+        if len(names) > 3:
+            text += f"\n+{len(names) - 3} more"
+
+        fm = self.fontMetrics()
+        lines = text.split("\n")
+        w = max(fm.horizontalAdvance(l) for l in lines) + 20
+        h = fm.height() * len(lines) + 12
+
+        pixmap = QPixmap(w, h)
+        pixmap.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(50, 50, 50, 220))
+        painter.setPen(QColor(120, 120, 120))
+        painter.drawRoundedRect(pixmap.rect().adjusted(0, 0, -1, -1), 4, 4)
+        painter.setPen(QColor(220, 220, 220))
+        painter.drawText(pixmap.rect().adjusted(10, 6, -10, -6), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+        painter.end()
+
+        drag = QDrag(self)
+        drag.setMimeData(self.mimeData(selected))
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(pixmap.rect().center())
+        drag.exec(supported_actions, Qt.DropAction.MoveAction)
 
     def dropEvent(self, event):
         if event.mimeData().hasUrls():
