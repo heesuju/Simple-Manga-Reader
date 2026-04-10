@@ -231,19 +231,33 @@ class EditAltsDialog(QDialog):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_layout.addWidget(self.splitter, 1)
 
+        _PLUS_STYLE = "QPushButton { border: none; background: transparent; color: #aaa; font-size: 16px; padding: 0 4px; } QPushButton:hover { color: #fff; }"
+
         # Left Column - Categories
         cat_layout = QVBoxLayout()
         cat_layout.setContentsMargins(0, 0, 0, 0)
+        cat_layout.setSpacing(2)
+
+        cat_header = QHBoxLayout()
+        cat_header.setContentsMargins(0, 0, 0, 0)
+        cat_header.addWidget(QLabel("Categories"))
+        cat_header.addStretch()
+        add_cat_btn = QPushButton("+")
+        add_cat_btn.setFixedSize(24, 24)
+        add_cat_btn.setToolTip("Add Category")
+        add_cat_btn.setStyleSheet(_PLUS_STYLE)
+        add_cat_btn.clicked.connect(self._add_category)
+        cat_header.addWidget(add_cat_btn)
+        cat_layout.addLayout(cat_header)
+
         self.cat_list = CategoryListWidget()
         self.cat_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.cat_list.itemDoubleClicked.connect(self._on_cat_double_clicked)
         self.cat_list.currentItemChanged.connect(self._on_category_changed)
         self.cat_list.category_dropped_internal.connect(self._on_items_moved_to_category)
         self.cat_list.files_dropped_external.connect(self._on_files_dropped)
-        
         self.cat_list.setAcceptDrops(True)
         self.cat_list.setDragEnabled(False)
-        
         cat_layout.addWidget(self.cat_list)
 
         cat_widget = QWidget()
@@ -253,6 +267,20 @@ class EditAltsDialog(QDialog):
         # Right Column - Items
         item_layout = QVBoxLayout()
         item_layout.setContentsMargins(0, 0, 0, 0)
+        item_layout.setSpacing(2)
+
+        item_header = QHBoxLayout()
+        item_header.setContentsMargins(0, 0, 0, 0)
+        item_header.addWidget(QLabel("Alternates"))
+        item_header.addStretch()
+        add_file_btn = QPushButton("+")
+        add_file_btn.setFixedSize(24, 24)
+        add_file_btn.setToolTip("Add File")
+        add_file_btn.setStyleSheet(_PLUS_STYLE)
+        add_file_btn.clicked.connect(self._pick_files)
+        item_header.addWidget(add_file_btn)
+        item_layout.addLayout(item_header)
+
         self.item_tree = AltItemsTreeWidget()
         self.item_tree.header().hide()
         self.item_tree.setColumnCount(3)
@@ -280,23 +308,13 @@ class EditAltsDialog(QDialog):
 
         self.splitter.setSizes([200, 500])
 
-        action_layout = QHBoxLayout()
-        add_file_btn = QPushButton("+ Add File")
-        add_file_btn.clicked.connect(self._pick_files)
-        action_layout.addWidget(add_file_btn)
-        add_cat_btn = QPushButton("+ Add Category")
-        add_cat_btn.clicked.connect(self._add_category)
-        action_layout.addWidget(add_cat_btn)
-        action_layout.addStretch()
-        self.main_layout.addLayout(action_layout)
-
         btn_layout = QHBoxLayout()
-        self.apply_btn = QPushButton("Apply Changes")
-        self.apply_btn.clicked.connect(self._apply_changes)
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
-        btn_layout.addStretch()
+        self.apply_btn = QPushButton("Apply")
+        self.apply_btn.clicked.connect(self._apply_changes)
         btn_layout.addWidget(self.cancel_btn)
+        btn_layout.addStretch()
         btn_layout.addWidget(self.apply_btn)
         self.main_layout.addLayout(btn_layout)
 
