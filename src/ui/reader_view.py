@@ -248,6 +248,7 @@ class ReaderView(QWidget):
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter, thread_pool=self.thumbnail_pool)
         self.chapter_panel.hide_chapter_requested.connect(self._on_hide_chapter_from_panel)
         self.alt_panel = AltPanel(self, model=self.model, thread_pool=self.secondary_pool)
+        self.alt_panel.reload_requested.connect(self.reload_chapter)
         self.frame_panel = FramePanel(self, thread_pool=self.secondary_pool)
         self.selection_panel = SelectionPanel(self)
 

@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QMenu, QComboBox,
     QDialog, QPlainTextEdit, QApplication
 )
-from PyQt6.QtCore import Qt, QTimer, QPoint
+from PyQt6.QtCore import Qt, QTimer, QPoint, pyqtSignal
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
@@ -151,6 +151,7 @@ class _AltNotesDialog(QDialog):
 
 class AltPanel(QWidget):
     """Vertical panel showing alt thumbnails for the current page, organized by category."""
+    reload_requested = pyqtSignal()
 
     def __init__(self, parent=None, model=None, thread_pool=None):
         super().__init__(parent)
@@ -265,6 +266,13 @@ class AltPanel(QWidget):
         self.batch_refine_btn.setStyleSheet(_btn_style)
         self.batch_refine_btn.clicked.connect(self._on_batch_refine_clicked)
         btn_row.addWidget(self.batch_refine_btn, 1)
+
+        self.edit_alts_btn = QPushButton("✎")
+        self.edit_alts_btn.setFixedHeight(26)
+        self.edit_alts_btn.setToolTip("Edit Alts")
+        self.edit_alts_btn.setStyleSheet(_btn_style)
+        self.edit_alts_btn.clicked.connect(self._on_edit_alts_clicked)
+        btn_row.addWidget(self.edit_alts_btn, 1)
 
         main_layout.addLayout(btn_row)
 
@@ -824,3 +832,14 @@ class AltPanel(QWidget):
             new_page = self.model.images[page_idx]
             restore_idx = min(current_variant_idx, len(new_page.images) - 1)
             self.model.change_variant(page_idx, restore_idx)
+
+    def _on_edit_alts_clicked(self):
+        if not self.model: return
+        idx = self.model.current_index
+        if idx < 0 or idx >= len(self.model.images): return
+        page_obj = self.model.images[idx]
+        if not page_obj or len(page_obj.images) <= 1: return
+        from src.ui.components.edit_alts_dialog import EditAltsDialog
+        dialog = EditAltsDialog(self, page_obj, self.model)
+        if dialog.exec():
+            self.reload_requested.emit()
