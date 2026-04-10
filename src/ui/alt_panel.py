@@ -285,6 +285,8 @@ class AltPanel(QWidget):
         self.scroll_area.setWidget(self.scroll_content)
 
         self.alt_widgets = []
+        self._panel_page_index = -1
+        self._panel_images_signature = ()
 
         # Slideshow state
         self.slideshow_states = {}
@@ -298,10 +300,32 @@ class AltPanel(QWidget):
             self.model.double_image_loaded.connect(self._on_double_image_loaded)
 
     def _on_image_loaded(self, path):
-        self._update_panel(self.model.current_index)
+        self._dispatch_update(self.model.current_index)
 
     def _on_double_image_loaded(self, path1, path2):
-        self._update_panel(self.model.current_index)
+        self._dispatch_update(self.model.current_index)
+
+    def _dispatch_update(self, idx):
+        page = self.model.images[idx] if 0 <= idx < len(self.model.images) else None
+        if (page and
+                idx == self._panel_page_index and
+                tuple(page.images) == self._panel_images_signature):
+            self._update_selection(idx)
+        else:
+            self._update_panel(idx)
+
+    def _update_selection(self, idx):
+        page = self.model.images[idx]
+        is_playing = idx in self.slideshow_states
+        current_v = page.current_variant_index
+
+        self._orig_widget.set_selected((not is_playing) and current_v == 0)
+        for w in self.alt_widgets:
+            if isinstance(w, AltThumbnail):
+                try:
+                    w.set_selected((not is_playing) and page.images.index(w.variant_path) == current_v)
+                except ValueError:
+                    pass
 
     def _toggle_collapse(self):
         self._collapsed = not self._collapsed
@@ -507,6 +531,9 @@ class AltPanel(QWidget):
                 self.hide()
         else:
             self.show()
+
+        self._panel_page_index = primary_index
+        self._panel_images_signature = tuple(page.images)
 
     def _load_thumbnail(self, path: str):
         try:
