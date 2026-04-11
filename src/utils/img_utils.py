@@ -14,6 +14,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+CV2_LOCK = threading.Lock()
+
 def imread_unicode(path: str, flags=cv2.IMREAD_COLOR):
     """Read an image from a path that may contain non-ASCII characters on Windows."""
     try:
@@ -302,25 +304,24 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None) -> QImage:
 
     if file_ext in video_extensions:
         try:
-            cap = cv2.VideoCapture(path_str)
-            if cap.isOpened():
-                # Try to capture a frame from 2 seconds into the video
-                cap.set(cv2.CAP_PROP_POS_MSEC, 2000)
-                ret, frame = cap.read()
-                if not ret:
-                    # if that fails, try the very first frame
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            with CV2_LOCK:
+                cap = cv2.VideoCapture(path_str)
+                if cap.isOpened():
+                    # Try to capture a frame from 2 seconds into the video
+                    cap.set(cv2.CAP_PROP_POS_MSEC, 2000)
                     ret, frame = cap.read()
+                    if not ret:
+                        # if that fails, try the very first frame
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = cap.read()
 
-                if ret:
-                    # Convert BGR frame to RGB
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    h, w, ch = rgb_frame.shape
-                    bytes_per_line = ch * w
-                    q_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
-                    # Video frames are already cropped/scaled by cv2, so just return
-                    return q_image
-            cap.release()
+                    if ret:
+                        # Convert BGR frame to RGB
+                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        h, w, ch = rgb_frame.shape
+                        bytes_per_line = ch * w
+                        q_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
+                cap.release()
         except Exception as e:
             print(f"Error creating video thumbnail: {e}")
             q_image = None # Ensure q_image is None on error
