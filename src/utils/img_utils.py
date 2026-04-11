@@ -184,14 +184,20 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_cache_key(path: str, width: int, height: int, crop: str = None) -> str:
     """Generate a cache key for a file path and thumbnail settings."""
-    mod_time = os.path.getmtime(path)
+    try:
+        mod_time = os.path.getmtime(path)
+    except OSError:
+        mod_time = 0
     settings = f"{width}x{height}{'_' + crop if crop else ''}"
     return hashlib.md5(f"{path}{mod_time}{settings}".encode()).hexdigest()
 
 def get_virtual_path_cache_key(virtual_path: str, width: int, height: int, crop: str = None) -> str:
     """Generate a cache key for a virtual path and thumbnail settings."""
-    zip_path, image_name = split_virtual_path(virtual_path)
-    mod_time = os.path.getmtime(zip_path)
+    zip_path, _ = split_virtual_path(virtual_path)
+    try:
+        mod_time = os.path.getmtime(zip_path)
+    except OSError:
+        mod_time = 0
     settings = f"{width}x{height}{'_' + crop if crop else ''}"
     return hashlib.md5(f"{virtual_path}{mod_time}{settings}".encode()).hexdigest()
 
@@ -291,8 +297,8 @@ def load_thumbnail_from_path(path, width=150, height=200, crop=None) -> QImage:
             q_image = QImage()
             if q_image.load(str(cached_thumb_path)):
                 return q_image
-    except FileNotFoundError:
-        return None # Original file not found
+    except OSError:
+        return None # Original file not found or inaccessible
         
     video_extensions = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
     file_ext = Path(path_str).suffix.lower()
@@ -377,8 +383,8 @@ def load_thumbnail_from_zip(path, width=150, height=200) -> QImage:
             img = QImage()
             if img.load(str(cached_thumb_path)):
                 return img
-    except FileNotFoundError:
-        return None # Original file not found
+    except OSError:
+        return None # Original file not found or inaccessible
 
     try:
         from src.utils.archive_utils import SevenZipHandler
@@ -447,8 +453,8 @@ def load_thumbnail_from_virtual_path(virtual_path, width=150, height=200, crop=N
             img = QImage()
             if img.load(str(cached_thumb_path)):
                 return img
-    except FileNotFoundError:
-        return None # Original zip file not found
+    except OSError:
+        return None # Original zip file not found or inaccessible
 
     try:
         image_data = get_image_data_from_zip(virtual_path)

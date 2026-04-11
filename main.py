@@ -137,6 +137,11 @@ class MainWindow(QMainWindow):
         self.show_folder_grid()
 
     def show_reader_for_recent(self, series):
+        if series.get('_is_missing'):
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Series Missing", f"The series '{series['name']}' is currently missing or inaccessible.\nPath: {series['path']}")
+            return
+
         last_read_path = series.get('last_read_chapter')
         if not last_read_path:
             # If for some reason there is no last read chapter, fall back to chapter list
@@ -304,6 +309,29 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("assets/icons/app.png")))
 
+    # Global exception handler for unexpected crashes
+    def exception_hook(exctype, value, traceback):
+        print(f"FATAL ERROR: {exctype.__name__}: {value}")
+        import traceback as tb
+        err_msg = "".join(tb.format_exception(exctype, value, traceback))
+        print(err_msg)
+        
+        try:
+            from PyQt6.QtWidgets import QMessageBox
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Icon.Critical)
+            msg.setText("The application has crashed.")
+            msg.setInformativeText(str(value))
+            msg.setDetailedText(err_msg)
+            msg.setWindowTitle("Crash Report")
+            msg.exec()
+        except:
+            pass
+        sys.__excepthook__(exctype, value, traceback)
+        sys.exit(1)
+
+    sys.excepthook = exception_hook
+
     # Single-instance check — forward args to running instance and exit
     if len(sys.argv) > 1:
         socket = QLocalSocket()
@@ -332,10 +360,11 @@ if __name__ == "__main__":
     main_win.showMaximized()
 
     if len(sys.argv) > 1:
-        if sys.argv[1] == "--add-series" and len(sys.argv) > 2 and os.path.isdir(sys.argv[2]):
+        arg = sys.argv[1]
+        if arg == "--add-series" and len(sys.argv) > 2:
             main_win.folder_grid.add_single(sys.argv[2])
-        elif os.path.isdir(sys.argv[1]):
-            main_win.open_folder_in_reader(sys.argv[1])
+        else:
+            main_win.open_folder_in_reader(arg)
 
     exit_code = app.exec()
     

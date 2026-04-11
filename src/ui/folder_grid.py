@@ -577,12 +577,8 @@ class FolderGrid(QWidget):
 
         series = item.get('_series', item)
         widget = ThumbnailWidget(series, self.library_manager, height=RECENT_THUMB_H)
-
-        series_path = Path(series['path'])
-        if not series_path.exists():
-            widget.set_as_missing()
-            widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
-        elif series_path.is_file() and not series_path.suffix.lower() in {'.zip', '.cbz'}:
+        
+        if item.get('_is_missing'):
             widget.set_as_missing()
             widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
         else:
@@ -680,12 +676,8 @@ class FolderGrid(QWidget):
             if item_data is not None:
                 qimg, series, item_type = item_data
                 widget = ThumbnailWidget(series, self.library_manager)
-
-                series_path = Path(series['path'])
-                if not series_path.exists():
-                    widget.set_as_missing()
-                    widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
-                elif series_path.is_file() and not series_path.suffix.lower() in {'.zip', '.cbz', '.7z', '.rar', '.cbr', '.cb7'}:
+                
+                if series.get('_is_missing'):
                     widget.set_as_missing()
                     widget.clicked.connect(lambda s=series, w=widget: self.missing_item_selected(s, w))
                 else:

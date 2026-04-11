@@ -18,6 +18,9 @@ def find_number(text:str)->float:
 
 def get_chapter_number(path):
     """Extract the chapter number as integer or float from the folder or file name."""
+    if not path or not isinstance(path, (str, Path)):
+        return float('inf')
+        
     if isinstance(path, str) and '|' in path:
         name = Path(path.split('|')[1]).name
     else:

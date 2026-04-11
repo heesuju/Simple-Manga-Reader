@@ -411,12 +411,29 @@ class LibraryManager:
                         series_map[sid]['chapters'].append(chapter)
 
                 def make_sort_key(x):
-                    path = x['path']
-                    parent = str(Path(path.split('|')[1]).parent) if '|' in path else str(Path(path).parent)
-                    return (parent, natural_sort_key(x['name']))
+                    path = x.get('path')
+                    name = x.get('name') or ''
+                    if not isinstance(path, str) or not path:
+                        return ('.', natural_sort_key(name))
+                    try:
+                        # Defensive split for virtual paths
+                        if '|' in path:
+                            parts = path.split('|')
+                            if len(parts) > 1:
+                                parent = str(Path(parts[1]).parent)
+                            else:
+                                parent = '.'
+                        else:
+                            parent = str(Path(path).parent)
+                    except (IndexError, TypeError, OSError):
+                        parent = '.'
+                    return (parent, natural_sort_key(name))
 
                 for series in series_list:
-                    series['chapters'].sort(key=make_sort_key)
+                    try:
+                        series['chapters'].sort(key=make_sort_key)
+                    except Exception as e:
+                        print(f"Error sorting chapters for series {series.get('id')}: {e}")
 
                 def fetch_junction(table, join_table, join_id_col, target_field):
                     cursor.execute(f"""
@@ -433,4 +450,6 @@ class LibraryManager:
                     fetch_junction(table, junction, fk, tag)
 
             except Exception as e:
+                import traceback
                 print(f"Error populating metadata: {e}")
+                traceback.print_exc()
