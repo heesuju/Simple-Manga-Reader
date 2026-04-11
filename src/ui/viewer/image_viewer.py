@@ -112,7 +112,12 @@ class ImageViewer(BaseViewer):
                     return
 
         vp = self.reader_view.view.viewport()
-        hint_w = int(vp.width() * vp.devicePixelRatio() * 2) if vp else 0
+        if vp:
+            base_w = vp.width() / 2 if len(paths) == 2 else vp.width()
+            hint_w = int(base_w * vp.devicePixelRatio() * 2)
+        else:
+            hint_w = 0
+            
         worker = AsyncLoaderWorker(req_id, paths, hint_w)
         worker.signals.finished.connect(self._on_async_load_finished)
         self.reader_view.thread_pool.start(worker)
