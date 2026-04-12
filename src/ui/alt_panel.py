@@ -3,7 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QScrollArea, QFrame, QSizePolicy, QMenu, QComboBox,
-    QDialog, QPlainTextEdit, QApplication
+    QDialog, QPlainTextEdit, QApplication, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QTimer, QPoint, pyqtSignal
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
@@ -83,9 +83,6 @@ class AltThumbnail(QWidget):
                 self.fix_icon.setStyleSheet("background: rgba(156, 39, 176, 180); border-radius: 3px;")
             else:
                 self.fix_icon.setStyleSheet("background: rgba(0,0,0,160); border-radius: 3px;")
-                # Note: QLabel opacity isn't fully supported via style string without rgba, 
-                # but making icon grey directly or keeping dark background is fine. 
-                # We relied on background:rgba and opacity via image before maybe? No, let's just make the background darker.
             self.fix_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.fix_icon.setFixedSize(16, 16)
             self.fix_icon.move(THUMB_W - 16 - 2, THUMB_H - 16 - 2)
@@ -150,7 +147,7 @@ class _AltNotesDialog(QDialog):
 
 
 class AltPanel(QWidget):
-    """Vertical panel showing alt thumbnails for the current page, organized by category."""
+    """Vertical panel showing alt thumbnails for the current page, organized by category, or page info."""
     reload_requested = pyqtSignal()
 
     def __init__(self, parent=None, model=None, thread_pool=None):
@@ -175,23 +172,25 @@ class AltPanel(QWidget):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
 
-        self._content_widget = QWidget(self)
-        self._content_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._content_widget.setStyleSheet("background: transparent;")
-        self._content_widget.hide()
-        outer_layout.addWidget(self._content_widget)
+        # Content stack (Alt vs Info)
+        self.content_stack = QStackedWidget(self)
+        self.content_stack.hide()
+        outer_layout.addWidget(self.content_stack)
 
-        self._grip = GripStrip(self._toggle_collapse, self)
+        self._grip = GripStrip(self._toggle_collapse, tabs=["ALT", "INFO"], parent=self)
+        self._grip.tab_clicked.connect(self._on_tab_clicked)
         outer_layout.addWidget(self._grip)
 
-        main_layout = QVBoxLayout(self._content_widget)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(4)
+        # --- Stack 0: Alternates View ---
+        self.alt_view_widget = QWidget()
+        alt_main_layout = QVBoxLayout(self.alt_view_widget)
+        alt_main_layout.setContentsMargins(5, 5, 5, 5)
+        alt_main_layout.setSpacing(4)
 
-        # Pinned original thumbnail (top — always visible)
-        self._orig_widget = AltThumbnail(self._content_widget, "", "ORIG")
+        # Pinned original thumbnail
+        self._orig_widget = AltThumbnail(self.alt_view_widget, "", "ORIG")
         self._orig_widget.hide()
-        main_layout.addWidget(self._orig_widget)
+        alt_main_layout.addWidget(self._orig_widget)
 
         # Scroll area for alt thumbnails
         self.scroll_area = QScrollArea()
@@ -201,7 +200,7 @@ class AltPanel(QWidget):
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setStyleSheet(SCROLL_AREA_TRANSPARENT)
-        main_layout.addWidget(self.scroll_area, 1)
+        alt_main_layout.addWidget(self.scroll_area, 1)
 
         # Category dropdown (bottom)
         self.cat_combo = QComboBox()
@@ -226,7 +225,7 @@ class AltPanel(QWidget):
             }
         """)
         self.cat_combo.currentIndexChanged.connect(self._on_combo_changed)
-        main_layout.addWidget(self.cat_combo)
+        alt_main_layout.addWidget(self.cat_combo)
 
         # Action buttons (bottom)
         _btn_style = """
@@ -251,30 +250,26 @@ class AltPanel(QWidget):
         self.play_btn.setIcon(self.play_icon)
         self.play_btn.setFixedHeight(26)
         self.play_btn.setCheckable(True)
-        self.play_btn.setToolTip("Slideshow (click again to cycle speed: x1 → x2 → x4 → x8)")
         self.play_btn.setStyleSheet(_btn_style + """
             QPushButton:checked { background-color: rgba(50, 200, 255, 180); border: 1px solid rgba(50, 200, 255, 200); }
         """)
         self.play_btn.clicked.connect(self._on_play_clicked)
         btn_row.addWidget(self.play_btn, 1)
 
-        self.batch_refine_icon = QIcon(resource_path("assets/icons/auto_fix.svg"))
         self.batch_refine_btn = QPushButton()
-        self.batch_refine_btn.setIcon(self.batch_refine_icon)
+        self.batch_refine_btn.setIcon(QIcon(resource_path("assets/icons/auto_fix.svg")))
         self.batch_refine_btn.setFixedHeight(26)
-        self.batch_refine_btn.setToolTip("Batch Refine Category")
         self.batch_refine_btn.setStyleSheet(_btn_style)
         self.batch_refine_btn.clicked.connect(self._on_batch_refine_clicked)
         btn_row.addWidget(self.batch_refine_btn, 1)
 
         self.edit_alts_btn = QPushButton("✎")
         self.edit_alts_btn.setFixedHeight(26)
-        self.edit_alts_btn.setToolTip("Edit Alts")
         self.edit_alts_btn.setStyleSheet(_btn_style)
         self.edit_alts_btn.clicked.connect(self._on_edit_alts_clicked)
         btn_row.addWidget(self.edit_alts_btn, 1)
 
-        main_layout.addLayout(btn_row)
+        alt_main_layout.addLayout(btn_row)
 
         self.scroll_content = QWidget()
         self.scroll_content.setStyleSheet("background: transparent; border: none;")
@@ -283,6 +278,28 @@ class AltPanel(QWidget):
         self.scroll_layout.setSpacing(5)
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
+
+        self.content_stack.addWidget(self.alt_view_widget)
+
+        # --- Stack 1: Info View ---
+        self.info_view_widget = QWidget()
+        info_layout = QVBoxLayout(self.info_view_widget)
+        info_layout.setContentsMargins(8, 8, 8, 8)
+        
+        info_scroll = QScrollArea()
+        info_scroll.setWidgetResizable(True)
+        info_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        info_scroll.setStyleSheet(SCROLL_AREA_TRANSPARENT)
+        
+        self.info_label = QLabel("No information available.")
+        self.info_label.setWordWrap(True)
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.info_label.setStyleSheet("color: rgba(255, 255, 255, 210); font-size: 11px; line-height: 1.4;")
+        
+        info_scroll.setWidget(self.info_label)
+        info_layout.addWidget(info_scroll)
+        
+        self.content_stack.addWidget(self.info_view_widget)
 
         self.alt_widgets = []
         self._panel_page_index = -1
@@ -298,6 +315,30 @@ class AltPanel(QWidget):
         if self.model:
             self.model.image_loaded.connect(self._on_image_loaded)
             self.model.double_image_loaded.connect(self._on_double_image_loaded)
+
+    def set_info_text(self, text: str):
+        """Update the info tab with formatted text."""
+        if not text:
+            self.info_label.setText("No information available.")
+            return
+
+        # Format the " + " separated info for vertical list
+        formatted_info = ""
+        for i, part in enumerate(text.split("  +  ")):
+            sub_parts = [p.strip() for p in part.split('|')]
+            if sub_parts:
+                formatted_info += f"<b style='color: #4a86e8;'>FILE {i+1 if '  +  ' in text else ''}:</b><br/>"
+                formatted_info += f"{sub_parts[0]}<br/>"
+                if len(sub_parts) > 1:
+                    formatted_info += f"<span style='color: #aaa;'>{ ' | '.join(sub_parts[1:]) }</span><br/>"
+                formatted_info += "<br/>"
+        
+        self.info_label.setText(formatted_info)
+
+    def _on_tab_clicked(self, index):
+        self.content_stack.setCurrentIndex(index)
+        # Update visibility of content widget handled by toggle_collapse normally, 
+        # but here we ensure it's visible if we just switched tabs after a click.
 
     def _on_image_loaded(self, path):
         self._dispatch_update(self.model.current_index)
@@ -329,7 +370,7 @@ class AltPanel(QWidget):
 
     def _toggle_collapse(self):
         self._collapsed = not self._collapsed
-        self._content_widget.setVisible(not self._collapsed)
+        self.content_stack.setVisible(not self._collapsed)
         self.setFixedWidth(GRIP_W if self._collapsed else PANEL_W + GRIP_W)
         if hasattr(self.parent(), '_update_side_panels_geometry'):
             QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
@@ -386,142 +427,154 @@ class AltPanel(QWidget):
             return
 
         page = self.model.images[idx]
-        if len(page.images) <= 1:
-            self._orig_widget.hide()
-            self.hide()
-            return
-
-        # Get categories
+        
+        # Get categories and check for alternates
         categories = page.get_categorized_variants()
         cat_names = sorted(list(categories.keys()), key=lambda c: (0 if c == "Main" else 1, natural_sort_key(c)))
+        has_alts = len(page.images) > 1 and bool(cat_names)
 
-        if not cat_names:
-            self._orig_widget.hide()
-            self.hide()
-            return
+        if has_alts:
+            self.cat_combo.show()
+            self.play_btn.show()
+            self.batch_refine_btn.show()
+            self.edit_alts_btn.show()
 
-        # Restore user's last selection for this page; default to "All"
-        active_cat = self.active_categories.get(idx, "All")
-        if active_cat != "All" and active_cat not in cat_names:
-            active_cat = "All"
-        self.active_categories[idx] = active_cat
+            # Restore user's last selection for this page; default to "All"
+            active_cat = self.active_categories.get(idx, "All")
+            if active_cat != "All" and active_cat not in cat_names:
+                active_cat = "All"
+            self.active_categories[idx] = active_cat
 
-        # Update category combo box
-        self.cat_combo.blockSignals(True)
-        self.cat_combo.clear()
-        self.cat_combo.addItem("ALL", "All")
-        self.cat_combo.insertSeparator(1)
-        for cat in cat_names:
-            self.cat_combo.addItem(cat.upper(), cat)
-        if active_cat == "All":
-            self.cat_combo.setCurrentIndex(0)
-        else:
-            for i in range(self.cat_combo.count()):
-                if self.cat_combo.itemData(i) == active_cat:
-                    self.cat_combo.setCurrentIndex(i)
-                    break
-        self.cat_combo.blockSignals(False)
-        self.cat_combo.setVisible(len(cat_names) > 1)
-
-        # Update play button state
-        is_playing = idx in self.slideshow_states
-        self.play_btn.setChecked(is_playing)
-        if is_playing:
-            state = self.slideshow_states[idx]
-            self.play_btn.setIcon(self.play_icon)
-            self.play_btn.setText(self.speed_labels[state['speed_idx']])
-        else:
-            self.play_btn.setIcon(self.play_icon)
-            self.play_btn.setText("")
-
-        original_image_path = page.images[0]
-
-        # Pinned original thumbnail
-        orig_selected = (not is_playing) and (page.current_variant_index == 0)
-        self._orig_widget.variant_path = original_image_path
-        self._orig_widget.on_click = lambda: self._on_variant_clicked(idx, 0)
-        self._orig_widget.is_selected = orig_selected
-        self._orig_widget._update_style()
-        self._orig_widget.show()
-        self._load_thumb_for_widget(self._orig_widget, self._resolve_path(original_image_path))
-
-        # Determine which categories to render
-        cats_to_render = cat_names if active_cat == "All" else ([active_cat] if active_cat in categories else cat_names)
-        show_group_labels = active_cat == "All" and len(cat_names) > 1
-
-        non_orig_count = 0
-        series_path = str(self.model.series['path'])
-        chapter_name = Path(str(self.model.manga_dir)).name
-        main_file = Path(page.images[0]).name
-        manga_dir = Path(str(self.model.manga_dir))
-
-        # Pre-load metadata for the whole page once
-        data = AltManager.load_alts(series_path)
-        page_entry = data.get(chapter_name, {}).get(main_file, {})
-        if isinstance(page_entry, list):
-            page_entry = {"alts": page_entry, "translations": {}}
-        alts_fix_map = page_entry.get("alts_fix", {})
-
-        for cat in cats_to_render:
-            cat_paths = list(categories.get(cat, []))
-
-            # Remove original from category lists (it's pinned above)
-            cat_paths = [p for p in cat_paths if p != original_image_path]
-            if cat == "Main":
-                cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
+            # Update category combo box
+            self.cat_combo.blockSignals(True)
+            self.cat_combo.clear()
+            self.cat_combo.addItem("ALL", "All")
+            self.cat_combo.insertSeparator(1)
+            for cat in cat_names:
+                self.cat_combo.addItem(cat.upper(), cat)
+            if active_cat == "All":
+                self.cat_combo.setCurrentIndex(0)
             else:
-                cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
+                for i in range(self.cat_combo.count()):
+                    if self.cat_combo.itemData(i) == active_cat:
+                        self.cat_combo.setCurrentIndex(i)
+                        break
+            self.cat_combo.blockSignals(False)
+            self.cat_combo.setVisible(len(cat_names) > 1)
 
-            if not cat_paths:
-                continue
+            # Update play button state
+            is_playing = idx in self.slideshow_states
+            self.play_btn.setChecked(is_playing)
+            if is_playing:
+                state = self.slideshow_states[idx]
+                self.play_btn.setIcon(self.play_icon)
+                self.play_btn.setText(self.speed_labels[state['speed_idx']])
+            else:
+                self.play_btn.setIcon(self.play_icon)
+                self.play_btn.setText("")
 
-            if show_group_labels:
-                lbl = self._make_group_label(cat)
-                self.scroll_layout.addWidget(lbl)
-                self.alt_widgets.append(lbl)
+            original_image_path = page.images[0]
 
-            for variant_path in cat_paths:
-                true_v_idx = page.images.index(variant_path)
-                is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
-                non_orig_count += 1
-                
-                try:
-                    rel_variant = str(Path(variant_path).relative_to(manga_dir)).replace('\\', '/')
-                except ValueError:
-                    rel_variant = None
+            # Pinned original thumbnail
+            orig_selected = (not is_playing) and (page.current_variant_index == 0)
+            self._orig_widget.variant_path = original_image_path
+            self._orig_widget.on_click = lambda: self._on_variant_clicked(idx, 0)
+            self._orig_widget.is_selected = orig_selected
+            self._orig_widget._update_style()
+            self._orig_widget.show()
+            self._load_thumb_for_widget(self._orig_widget, self._resolve_path(original_image_path))
 
-                is_fix = False
-                has_fix = False
-                if rel_variant:
-                    if rel_variant in alts_fix_map.values():
-                        is_fix = True
-                    if rel_variant in alts_fix_map.keys():
-                        has_fix = True
+            # Determine which categories to render
+            cats_to_render = cat_names if active_cat == "All" else ([active_cat] if active_cat in categories else cat_names)
+            show_group_labels = active_cat == "All" and len(cat_names) > 1
 
-                has_note = False
-                original_rel = self._get_original_rel_for_variant(variant_path, page)
-                if original_rel:
-                    note = AltManager.get_alt_note(series_path, chapter_name, main_file, original_rel)
-                    if note and note.strip():
-                        has_note = True
+            non_orig_count = 0
+            series_path = str(self.model.series['path'])
+            chapter_name = Path(str(self.model.manga_dir)).name
+            main_file = Path(page.images[0]).name
+            manga_dir = Path(str(self.model.manga_dir))
 
-                thumb = AltThumbnail(
-                    self.scroll_content,
-                    variant_path,
-                    display_index=non_orig_count,
-                    is_selected=is_selected,
-                    has_note=has_note,
-                    is_fix=is_fix,
-                    has_fix=has_fix,
-                    on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
-                    on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
-                )
-                self.scroll_layout.addWidget(thumb)
-                self.alt_widgets.append(thumb)
+            # Pre-load metadata for the whole page once
+            data = AltManager.load_alts(series_path)
+            page_entry = data.get(chapter_name, {}).get(main_file, {})
+            if isinstance(page_entry, list):
+                page_entry = {"alts": page_entry, "translations": {}}
+            alts_fix_map = page_entry.get("alts_fix", {})
 
-                self._load_thumb_for_widget(thumb, self._resolve_path(variant_path))
+            for cat in cats_to_render:
+                cat_paths = list(categories.get(cat, []))
 
-        # Show panel
+                # Remove original from category lists (it's pinned above)
+                cat_paths = [p for p in cat_paths if p != original_image_path]
+                if cat == "Main":
+                    cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
+                else:
+                    cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
+
+                if not cat_paths:
+                    continue
+
+                if show_group_labels:
+                    lbl = self._make_group_label(cat)
+                    self.scroll_layout.addWidget(lbl)
+                    self.alt_widgets.append(lbl)
+
+                for variant_path in cat_paths:
+                    true_v_idx = page.images.index(variant_path)
+                    is_selected = (not is_playing) and (true_v_idx == page.current_variant_index)
+                    non_orig_count += 1
+                    
+                    try:
+                        rel_variant = str(Path(variant_path).relative_to(manga_dir)).replace('\\', '/')
+                    except ValueError:
+                        rel_variant = None
+
+                    is_fix = False
+                    has_fix = False
+                    if rel_variant:
+                        if rel_variant in alts_fix_map.values():
+                            is_fix = True
+                        if rel_variant in alts_fix_map.keys():
+                            has_fix = True
+
+                    has_note = False
+                    original_rel = self._get_original_rel_for_variant(variant_path, page)
+                    if original_rel:
+                        note = AltManager.get_alt_note(series_path, chapter_name, main_file, original_rel)
+                        if note and note.strip():
+                            has_note = True
+
+                    thumb = AltThumbnail(
+                        self.scroll_content,
+                        variant_path,
+                        display_index=non_orig_count,
+                        is_selected=is_selected,
+                        has_note=has_note,
+                        is_fix=is_fix,
+                        has_fix=has_fix,
+                        on_click=lambda v=true_v_idx: self._on_variant_clicked(idx, v),
+                        on_right_click=lambda pos, vp=variant_path: self._show_alt_context_menu(idx, vp, pos)
+                    )
+                    self.scroll_layout.addWidget(thumb)
+                    self.alt_widgets.append(thumb)
+
+                    self._load_thumb_for_widget(thumb, self._resolve_path(variant_path))
+        else:
+            # No alternates, hide the alt-specific UI
+            self._orig_widget.hide()
+            self.cat_combo.hide()
+            self.play_btn.hide()
+            self.batch_refine_btn.hide()
+            self.edit_alts_btn.hide()
+            
+            # Add a placeholder label for the ALT tab
+            no_alts_lbl = QLabel("No alternates\nfor this page.")
+            no_alts_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            no_alts_lbl.setStyleSheet("color: rgba(255, 255, 255, 80); font-size: 11px; margin-top: 50px;")
+            self.scroll_layout.addWidget(no_alts_lbl)
+            self.alt_widgets.append(no_alts_lbl)
+
+        # Show panel if parent allows
         if hasattr(self.parent(), "panels_visible"):
             if self.parent().panels_visible:
                 self.show()
