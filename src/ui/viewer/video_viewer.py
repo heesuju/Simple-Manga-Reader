@@ -541,30 +541,59 @@ class VideoViewer(BaseViewer):
         if was_playing:
             self.media_player.pause()
             
+        # Direct capture from VideoSink is most accurate for current visible frame
+        video_frame = self.media_player.videoSink().videoFrame()
+        if video_frame.isValid():
+            q_image = video_frame.toImage()
+        else:
+            # Fallback for some backends/states
+            q_image = None
+            
+        if not q_image or q_image.isNull():
+            # If sink is empty (rare), try extracting via timestamp as fallback
+            source_path = self.media_player.source().toLocalFile()
+            if source_path:
+                current_time = self.media_player.position()
+                base_name = os.path.splitext(os.path.basename(source_path))[0]
+                default_name = f"{base_name}_frame_{current_time}ms.png"
+                downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+                initial_path = os.path.join(downloads_dir, default_name)
+                
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self.reader_view,
+                    "Save Current Frame",
+                    initial_path,
+                    "Images (*.png *.jpg *.jpeg *.jpe *.webp)"
+                )
+                
+                if file_path:
+                    worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
+                    worker.signals.finished.connect(self._on_frame_saved)
+                    self.reader_view.thread_pool.start(worker)
+                elif was_playing:
+                    self.media_player.play()
+            return
+
+        # Handle direct save for the grabbed QImage
+        source_path = self.media_player.source().toLocalFile()
+        base_name = os.path.splitext(os.path.basename(source_path))[0] if source_path else "video"
         current_time = self.media_player.position()
+        default_name = f"{base_name}_frame_{current_time}ms.png"
         
-        # Determine default filename
-        if self.media_player.source().toLocalFile():
-            base_name = os.path.splitext(os.path.basename(self.media_player.source().toLocalFile()))[0]
-            default_name = f"{base_name}_frame_{current_time}ms.png"
-            
-            downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-            initial_path = os.path.join(downloads_dir, default_name)
-            
-            file_path, _ = QFileDialog.getSaveFileName(
-                self.reader_view,
-                "Save Current Frame",
-                initial_path,
-                "Images (*.png *.jpg *.jpeg *.jpe *.webp)"
-            )
-            
-            if file_path:
-                source_path = self.media_player.source().toLocalFile()
-                worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
-                worker.signals.finished.connect(self._on_frame_saved)
-                self.reader_view.thread_pool.start(worker)
-            elif was_playing:
-                # Resume if user cancelled and it was playing
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        initial_path = os.path.join(downloads_dir, default_name)
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.reader_view,
+            "Save Current Frame",
+            initial_path,
+            "Images (*.png *.jpg *.jpeg *.jpe *.webp)"
+        )
+        
+        if file_path:
+            q_image.save(file_path)
+            # Resume playback if it was playing
+            if was_playing:
                 self.media_player.play()
         elif was_playing:
             self.media_player.play()
@@ -580,12 +609,21 @@ class VideoViewer(BaseViewer):
         if not self.video_item or self.media_player.source().isEmpty():
             return
             
+        # Use VideoSink for the most accurate current frame
+        video_frame = self.media_player.videoSink().videoFrame()
+        if video_frame.isValid():
+            q_image = video_frame.toImage()
+            # Since area saving is more involved, we use a default temporary path then let the handler save
+            temp_path = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp", f"temp_frame_{int(time.time())}.png")
+            self._on_area_frame_extracted(idx=None, img=q_image, save_path=None, rect=scene_rect, limit=size_limit_mb)
+            return
+
+        # Fallback to CV2 if VideoSink failed
         current_time = self.media_player.position()
         source_path = self.media_player.source().toLocalFile()
         
         downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        # Default to jpg for better balance of size/quality from videos
         initial_path = os.path.join(downloads_dir, f"crop_frame_{timestamp}.jpg")
         
         file_path, _ = QFileDialog.getSaveFileName(
@@ -597,13 +635,27 @@ class VideoViewer(BaseViewer):
         
         if file_path:
             worker = VideoTimestampFrameExtractorWorker(source_path, current_time, file_path)
-            # Pass metadata to handler
             worker.signals.finished.connect(
                 lambda s, img, p: self._on_area_frame_extracted(idx=None, img=img, save_path=p, rect=scene_rect, limit=size_limit_mb)
             )
             self.reader_view.thread_pool.start(worker)
 
     def _on_area_frame_extracted(self, idx, img, save_path, rect, limit):
+        # If save_path is None, it means we grabbed the image directly and haven't asked for a save path yet
+        if save_path is None:
+            downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            initial_path = os.path.join(downloads_dir, f"crop_frame_{timestamp}.jpg")
+            
+            save_path, _ = QFileDialog.getSaveFileName(
+                self.reader_view,
+                "Save Cropped Frame As",
+                initial_path,
+                "JPEG Image (*.jpg *.jpeg *.jpe);;PNG Image (*.png);;WebP Image (*.webp);;All Files (*)"
+            )
+            if not save_path:
+                return
+
         # Crop
         intersected = rect.toRect().intersected(img.rect())
         if intersected.width() <= 0 or intersected.height() <= 0:
