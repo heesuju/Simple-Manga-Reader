@@ -254,14 +254,15 @@ class AltManager:
         else:
             entry = {"alts": [], "translations": {}}
 
-        # Update alts
-        existing_alts = set(entry["alts"])
-        existing_alts.update(alt_names)
-        if main_name in existing_alts:
-            existing_alts.remove(main_name)
-            
-        from src.utils.str_utils import natural_sort_key
-        entry["alts"] = sorted(list(existing_alts), key=natural_sort_key)
+        # Update alts while preserving existing order
+        alts_list = entry["alts"]
+        existing_alts_set = set(alts_list)
+        
+        for alt_rel in alt_names:
+            if alt_rel != main_name and alt_rel not in existing_alts_set:
+                alts_list.append(alt_rel)
+                existing_alts_set.add(alt_rel)
+
         data[chapter_name][main_name] = entry
 
         # Clean up: Ensure alt files are not keys themselves
@@ -286,12 +287,9 @@ class AltManager:
                 
                 for sub in sub_alts:
                     # Keep as is (already relative or name)
-                    if sub != main_name and sub not in entry["alts"]:
-                        entry["alts"].append(sub)
-                
-                # Re-sort
-                from src.utils.str_utils import natural_sort_key
-                entry["alts"].sort(key=natural_sort_key)
+                    if sub != main_name and sub not in existing_alts_set:
+                        alts_list.append(sub)
+                        existing_alts_set.add(sub)
 
         AltManager.save_alts(series_path, data)
 
