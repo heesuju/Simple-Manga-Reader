@@ -101,3 +101,30 @@ class Page:
             categories[cat].append(path)
             
         return categories
+    def get_display_order_images(self) -> List[str]:
+        """
+        Returns all variant paths in visual display order:
+        Main (Page 0) + alternates grouped by category.
+        Categories are sorted: 'Main' first, then others alphabetically.
+        Items within categories follow their original order in self.images.
+        """
+        from src.utils.str_utils import natural_sort_key
+        
+        categories = self.get_categorized_variants()
+        cat_names = sorted(
+            list(categories.keys()), 
+            key=lambda c: (0 if c == "Main" else 1, natural_sort_key(c))
+        )
+        
+        ordered_paths = []
+        original_path = self.images[0]
+        ordered_paths.append(original_path)
+        
+        for cat in cat_names:
+            cat_paths = categories[cat]
+            # Add all items from this category except the original (which is already first)
+            for p in cat_paths:
+                if p != original_path and p not in ordered_paths:
+                    ordered_paths.append(p)
+                    
+        return ordered_paths

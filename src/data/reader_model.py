@@ -423,12 +423,29 @@ class ReaderModel(QObject):
             if should_reload:
                 self.load_image()
 
-    def cycle_variant(self, page_index: int):
+    def cycle_variant(self, page_index: int, forward: bool = True):
         if 0 <= page_index < len(self.images):
             page = self.images[page_index]
             if len(page.images) > 1:
-                next_variant = (page.current_variant_index + 1) % len(page.images)
-                self.change_variant(page_index, next_variant)
+                # Use display order to determine the sequence for Tab cycling
+                ordered_paths = page.get_display_order_images()
+                current_path = page.images[page.current_variant_index]
+                
+                try:
+                    curr_idx = ordered_paths.index(current_path)
+                except ValueError:
+                    curr_idx = 0
+                
+                step = 1 if forward else -1
+                next_path = ordered_paths[(curr_idx + step) % len(ordered_paths)]
+                
+                # Convert back to raw index for the Page object
+                try:
+                    next_raw_idx = page.images.index(next_path)
+                except ValueError:
+                    next_raw_idx = 0
+                    
+                self.change_variant(page_index, next_raw_idx)
 
     def change_page(self, page:int):
         index = page - 1

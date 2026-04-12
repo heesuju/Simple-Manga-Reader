@@ -596,10 +596,6 @@ class AltPanel(QWidget):
 
                 # Remove original from category lists (it's pinned above)
                 cat_paths = [p for p in cat_paths if p != original_image_path]
-                if cat == "Main":
-                    cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
-                else:
-                    cat_paths = sorted(cat_paths, key=lambda p: natural_sort_key(Path(p).name))
 
                 if not cat_paths:
                     continue

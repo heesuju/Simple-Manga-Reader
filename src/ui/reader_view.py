@@ -208,6 +208,9 @@ class ReaderView(QWidget):
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, activated=self.show_prev)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, activated=self.show_next)
         QShortcut(QKeySequence(Qt.Key.Key_Tab), self, activated=self.cycle_current_variant)
+        # Shift+Tab is often Shift + Tab, but sometimes backtab
+        QShortcut(QKeySequence(Qt.Key.Key_Backtab), self, activated=self.cycle_current_variant_back)
+        QShortcut(QKeySequence("Shift+Tab"), self, activated=self.cycle_current_variant_back)
         QShortcut(QKeySequence(Qt.Key.Key_Space), self, activated=self.toggle_playback)
         QShortcut(QKeySequence(Qt.Key.Key_Paste), self, activated=self._paste_as_alternate_action)
         # Also handle Ctrl+V just in case QKeySequence.StandardKey.Paste is picky
@@ -1036,9 +1039,15 @@ class ReaderView(QWidget):
         self.set_zoom_mode(self.last_zoom_mode)
 
     def cycle_current_variant(self):
+        self._set_current_variant_cycle(forward=True)
+
+    def cycle_current_variant_back(self):
+        self._set_current_variant_cycle(forward=False)
+
+    def _set_current_variant_cycle(self, forward: bool):
         # Cycles the "main" page variant
         if self.model.view_mode == ViewMode.SINGLE:
-            self.model.cycle_variant(self.model.current_index)
+            self.model.cycle_variant(self.model.current_index, forward=forward)
         elif self.model.view_mode == ViewMode.DOUBLE:
              # Cycle both current and next page if valid (since double view shows 2 pages)
              # Ensure we start at the beginning of the pair (even index)
@@ -1046,12 +1055,12 @@ class ReaderView(QWidget):
              if current_idx % 2 != 0:
                  current_idx -= 1
                  
-             self.model.cycle_variant(current_idx)
+             self.model.cycle_variant(current_idx, forward=forward)
              if current_idx + 1 < len(self.model.images):
-                 self.model.cycle_variant(current_idx + 1)
+                 self.model.cycle_variant(current_idx + 1, forward=forward)
         elif self.model.view_mode == ViewMode.STRIP:
              idx = self.model.current_index
-             self.model.cycle_variant(idx)
+             self.model.cycle_variant(idx, forward=forward)
 
     def _on_view_zoom_started(self):
         if self.current_viewer == self.image_viewer:
