@@ -841,19 +841,35 @@ class ImageInfoWorker(QRunnable):
                         except Exception as e:
                             print(f"Error getting video info: {e}")
 
+            # Metadata collection
+            meta = [f"NAME:{name}", f"SIZE:{size_str}"]
+
+            # Get Format
+            fmt = reader.format().data().decode().upper() if reader.format().data() else ""
+            if not fmt and Path(resolved).suffix:
+                fmt = Path(resolved).suffix[1:].upper()
+            if fmt:
+                meta.append(f"TYPE:{fmt}")
+
+            # Get Date (Modified)
+            if not image_data and os.path.exists(resolved):
+                from datetime import datetime
+                mtime = os.path.getmtime(resolved)
+                date_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+                meta.append(f"DATE :{date_str}")
+
+            # Get Dimensions and Ratio
             if w > 0 and h > 0:
-                from fractions import Fraction
                 dim_str = f"{w}x{h}"
-                # Find a simple fraction approximation (max denominator 12)
-                frac = Fraction(w, h).limit_denominator(12)
+                meta.append(f"DIM:{dim_str}")
                 
+                from fractions import Fraction
+                frac = Fraction(w, h).limit_denominator(12)
                 if abs(float(Fraction(w, h)) / float(frac) - 1.0) < 0.02:
                     ratio_str = f"{frac.numerator}:{frac.denominator}"
-                    info_parts.append(f"{name} | {size_str} | {dim_str} | {ratio_str}")
-                else:
-                    info_parts.append(f"{name} | {size_str} | {dim_str}")
-            else:
-                info_parts.append(f"{name} | {size_str}")
+                    meta.append(f"RATIO:{ratio_str}")
+
+            info_parts.append("|".join(meta))
 
         final_info = "  +  ".join(info_parts)
         self.signals.finished.emit(final_info)

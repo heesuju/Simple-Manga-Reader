@@ -16,9 +16,9 @@ from src.utils.str_utils import natural_sort_key
 from src.workers.thumbnail_worker import ThumbnailWorker
 from src.core.alt_manager import AltManager
 
-THUMB_W = 80
-THUMB_H = 100
-PANEL_W = THUMB_W + 14
+THUMB_W = 120
+THUMB_H = 150
+PANEL_W = THUMB_W + 20
 
 
 class AltThumbnail(QWidget):
@@ -289,6 +289,7 @@ class AltPanel(QWidget):
         info_scroll = QScrollArea()
         info_scroll.setWidgetResizable(True)
         info_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        info_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         info_scroll.setStyleSheet(SCROLL_AREA_TRANSPARENT)
         
         self.info_label = QLabel("No information available.")
@@ -317,22 +318,54 @@ class AltPanel(QWidget):
             self.model.double_image_loaded.connect(self._on_double_image_loaded)
 
     def set_info_text(self, text: str):
-        """Update the info tab with formatted text."""
+        """Update the info tab with formatted metadata from the ImageInfoWorker."""
         if not text:
             self.info_label.setText("No information available.")
             return
 
-        # Format the " + " separated info for vertical list
+        # Split info blocks (e.g. for double-page mode)
+        blocks = text.split("  +  ")
         formatted_info = ""
-        for i, part in enumerate(text.split("  +  ")):
-            sub_parts = [p.strip() for p in part.split('|')]
-            if sub_parts:
-                formatted_info += f"<b style='color: #4a86e8;'>FILE {i+1 if '  +  ' in text else ''}:</b><br/>"
-                formatted_info += f"{sub_parts[0]}<br/>"
-                if len(sub_parts) > 1:
-                    formatted_info += f"<span style='color: #aaa;'>{ ' | '.join(sub_parts[1:]) }</span><br/>"
-                formatted_info += "<br/>"
         
+        for i, block in enumerate(blocks):
+            # Parse key-value pairs from the pipe-separated string
+            fields = {}
+            for field in block.split('|'):
+                if ':' in field:
+                    k, v = field.split(':', 1)
+                    fields[k] = v
+
+            if not fields:
+                continue
+                
+            # Block header if multi-file
+            if len(blocks) > 1:
+                formatted_info += f"<div style='color: #4a86e8; font-size: 11px; font-weight: bold; margin-bottom: 3px;'>FILE {i+1}</div>"
+            
+            # Filename (Primary - Always NAME)
+            filename = fields.pop("NAME", "Unknown")
+            formatted_info += f"<div style='color: #eee; font-size: 12px; font-weight: bold; margin-bottom: 6px;'>{filename}</div>"
+            
+            # Dynamically render all other metadata fields
+            # Sorted to keep a consistent order: SIZE, TYPE, DIM, RATIO, then others
+            field_order = ["SIZE", "TYPE", "DIM", "RATIO", "DATE"]
+            sorted_keys = sorted(fields.keys(), key=lambda x: field_order.index(x) if x in field_order else 99)
+            
+            for key in sorted_keys:
+                value = fields[key]
+                # Label with fixed width-like alignment using padding or just consistent spacing
+                label = f"{key:<6}".replace(" ", "&nbsp;")
+                formatted_info += (
+                    f"<div style='margin-bottom: 3px; font-family: Consolas, monospace;'>"
+                    f"<span style='color: #888; font-size: 10px;'>{label}:</span> "
+                    f"<span style='color: #ccc; font-size: 11px;'>{value}</span>"
+                    f"</div>"
+                )
+            
+            # Separator between blocks
+            if i < len(blocks) - 1:
+                formatted_info += "<div style='border-bottom: 1px solid rgba(255,255,255,15); margin: 10px 0;'></div>"
+
         self.info_label.setText(formatted_info)
 
     def _on_tab_clicked(self, index):
