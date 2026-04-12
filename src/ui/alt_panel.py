@@ -172,13 +172,57 @@ class AltPanel(QWidget):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
 
+        # Content Wrapper to hold top tabs + stacked content
+        self.content_container = QWidget()
+        self.content_container.hide()
+        content_layout = QVBoxLayout(self.content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        outer_layout.addWidget(self.content_container)
+
+        # --- Top Tab Bar ---
+        self.tabs_row = QWidget()
+        self.tabs_row.setFixedHeight(30)
+        self.tabs_row.setStyleSheet("background: rgba(255, 255, 255, 10); border-bottom: 1px solid rgba(255, 255, 255, 20);")
+        tabs_layout = QHBoxLayout(self.tabs_row)
+        tabs_layout.setContentsMargins(0, 0, 0, 0)
+        tabs_layout.setSpacing(0)
+
+        _tab_btn_style = """
+            QPushButton {
+                background: transparent;
+                color: rgba(255, 255, 255, 150);
+                border: none;
+                font-size: 10px;
+                font-weight: bold;
+                letter-spacing: 1px;
+            }
+            QPushButton:hover { color: white; background: rgba(255, 255, 255, 10); }
+            QPushButton[active="true"] { 
+                color: #4a86e8; 
+                border-bottom: 2px solid #4a86e8; 
+            }
+        """
+        
+        self.alt_tab_btn = QPushButton("ALTS")
+        self.alt_tab_btn.setProperty("active", "true")
+        self.alt_tab_btn.setStyleSheet(_tab_btn_style)
+        self.alt_tab_btn.clicked.connect(lambda: self._on_tab_clicked(0))
+        
+        self.info_tab_btn = QPushButton("INFO")
+        self.info_tab_btn.setProperty("active", "false")
+        self.info_tab_btn.setStyleSheet(_tab_btn_style)
+        self.info_tab_btn.clicked.connect(lambda: self._on_tab_clicked(1))
+
+        tabs_layout.addWidget(self.alt_tab_btn)
+        tabs_layout.addWidget(self.info_tab_btn)
+        content_layout.addWidget(self.tabs_row)
+
         # Content stack (Alt vs Info)
         self.content_stack = QStackedWidget(self)
-        self.content_stack.hide()
-        outer_layout.addWidget(self.content_stack)
+        content_layout.addWidget(self.content_stack)
 
-        self._grip = GripStrip(self._toggle_collapse, tabs=["ALT", "INFO"], parent=self)
-        self._grip.tab_clicked.connect(self._on_tab_clicked)
+        self._grip = GripStrip(self._toggle_collapse, parent=self)
         outer_layout.addWidget(self._grip)
 
         # --- Stack 0: Alternates View ---
@@ -370,8 +414,16 @@ class AltPanel(QWidget):
 
     def _on_tab_clicked(self, index):
         self.content_stack.setCurrentIndex(index)
-        # Update visibility of content widget handled by toggle_collapse normally, 
-        # but here we ensure it's visible if we just switched tabs after a click.
+        
+        # Update button visual state
+        self.alt_tab_btn.setProperty("active", "true" if index == 0 else "false")
+        self.info_tab_btn.setProperty("active", "true" if index == 1 else "false")
+        
+        # Refresh stylesheets to apply property changes
+        self.alt_tab_btn.style().unpolish(self.alt_tab_btn)
+        self.alt_tab_btn.style().polish(self.alt_tab_btn)
+        self.info_tab_btn.style().unpolish(self.info_tab_btn)
+        self.info_tab_btn.style().polish(self.info_tab_btn)
 
     def _on_image_loaded(self, path):
         self._dispatch_update(self.model.current_index)
@@ -403,7 +455,7 @@ class AltPanel(QWidget):
 
     def _toggle_collapse(self):
         self._collapsed = not self._collapsed
-        self.content_stack.setVisible(not self._collapsed)
+        self.content_container.setVisible(not self._collapsed)
         self.setFixedWidth(GRIP_W if self._collapsed else PANEL_W + GRIP_W)
         if hasattr(self.parent(), '_update_side_panels_geometry'):
             QTimer.singleShot(0, self.parent()._update_side_panels_geometry)
