@@ -349,6 +349,7 @@ class AltPanel(QWidget):
         self.alt_widgets = []
         self._panel_page_index = -1
         self._panel_images_signature = ()
+        self._panel_active_category = None
 
         # Slideshow state
         self.slideshow_states = {}
@@ -433,9 +434,12 @@ class AltPanel(QWidget):
 
     def _dispatch_update(self, idx):
         page = self.model.images[idx] if 0 <= idx < len(self.model.images) else None
+        active_cat = self.active_categories.get(idx, "All")
+        
         if (page and
                 idx == self._panel_page_index and
-                tuple(page.images) == self._panel_images_signature):
+                tuple(page.images) == self._panel_images_signature and
+                active_cat == self._panel_active_category):
             self._update_selection(idx)
         else:
             self._update_panel(idx)
@@ -517,6 +521,7 @@ class AltPanel(QWidget):
         categories = page.get_categorized_variants()
         cat_names = sorted(list(categories.keys()), key=lambda c: (0 if c == "Main" else 1, natural_sort_key(c)))
         has_alts = len(page.images) > 1 and bool(cat_names)
+        active_cat = "All"
 
         if has_alts:
             self.cat_combo.show()
@@ -672,6 +677,7 @@ class AltPanel(QWidget):
 
         self._panel_page_index = primary_index
         self._panel_images_signature = tuple(page.images)
+        self._panel_active_category = active_cat
 
     def _load_thumbnail(self, path: str):
         try:
@@ -754,7 +760,6 @@ class AltPanel(QWidget):
                 try:
                     first_idx = page.images.index(sorted_paths[0])
                     self.model.change_variant(page_index, first_idx)
-                    return
                 except (ValueError, IndexError):
                     pass
         self._update_panel(self.model.current_index)
