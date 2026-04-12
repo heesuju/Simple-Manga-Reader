@@ -216,6 +216,36 @@ class ReaderModel(QObject):
         if not self._layout_pairs: return -1
         return self._page_to_layout_index.get(self.current_index, 0)
 
+    def _snap_to_pair_lead(self):
+        """
+        After building the double layout, ensure current_index points to
+        the lead (right-preferred for RTL, left-preferred for LTR) page
+        of its pair. This guarantees that switching to double mode from
+        any page in a pair always produces the same result,
+        regardless of which was active.
+        """
+        if not self._layout_pairs or self.view_mode != ViewMode.DOUBLE:
+            return
+
+        layout_idx = self._get_current_layout_index()
+        if layout_idx < 0 or layout_idx >= len(self._layout_pairs):
+            return
+
+        left_item, right_item = self._layout_pairs[layout_idx]
+
+        candidate = None
+        if right_item and isinstance(right_item, Page):
+            candidate = right_item
+        elif left_item and isinstance(left_item, Page):
+            candidate = left_item
+
+        if candidate:
+            try:
+                idx = self.images.index(candidate)
+                self.current_index = idx
+            except ValueError:
+                pass
+
     def load_image(self):
         if not self.images:
             return
@@ -401,8 +431,10 @@ class ReaderModel(QObject):
                 self.change_variant(page_index, next_variant)
 
     def change_page(self, page:int):
-        index = page - 1            
+        index = page - 1
         self.current_index = index
+        if self.view_mode == ViewMode.DOUBLE:
+            self._snap_to_pair_lead()
         self.load_image()
 
     def set_chapter(self, chapter:int) -> bool:
@@ -443,14 +475,12 @@ class ReaderModel(QObject):
         else:
             self.view_mode = ViewMode(0)
 
-        # If switching TO Double mode, ensure snapping to the start of a pair
-        if self.view_mode == ViewMode.DOUBLE:
-             if self.current_index % 2 != 0:
-                 self.current_index -= 1
-
         self.update_layout()
 
     def update_layout(self):
+        if self.view_mode == ViewMode.DOUBLE:
+            self._build_double_layout()
+            self._snap_to_pair_lead()
         self.load_image()
         self.layout_updated.emit(self.view_mode)
 
