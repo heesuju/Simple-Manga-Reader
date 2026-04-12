@@ -82,62 +82,62 @@ class AltManager:
                             found_alts.append(path_map[alt_base])
                             processed_files.add(alt_base)
                 elif isinstance(entry, dict):
-                     # 1. Alts
-                     if "alts" in entry and isinstance(entry["alts"], list):
-                         alts_fix_map = entry.get("alts_fix", {})
-                         for alt_name in entry["alts"]:
-                             alt_base = Path(alt_name).name
+                    # 1. Alts
+                    if "alts" in entry and isinstance(entry["alts"], list):
+                        alts_fix_map = entry.get("alts_fix", {})
+                        main_dir = Path(path).parent
+                         
+                        for alt_name in entry["alts"]:
+                            alt_base = Path(alt_name).name
+                            resolved_alt = None
 
-                             # Prefer _fix version if one is registered
-                             fix_rel = alts_fix_map.get(alt_name)
-                             if fix_rel:
-                                 fix_base = Path(fix_rel).name
-                                 if fix_base in path_map:
-                                     found_alts.append(path_map[fix_base])
-                                     processed_files.add(fix_base)
-                                     continue
-                                 else:
-                                     main_dir = Path(path).parent
-                                     fix_complex = main_dir / fix_rel
-                                     if fix_complex.exists():
-                                         found_alts.append(str(fix_complex))
-                                         processed_files.add(fix_base)
-                                         continue
-                                 # Fix registered but file missing — fall through to original
+                            # Check if alt_name itself is a resolvable relative path (common in new structure)
+                            if (main_dir / alt_name).exists():
+                                resolved_alt = str(main_dir / alt_name)
+                            elif alt_base in path_map:
+                                resolved_alt = path_map[alt_base]
 
-                             if alt_base in path_map:
-                                 found_alts.append(path_map[alt_base])
-                                 processed_files.add(alt_base)
-                             else:
-                                 # Fallback: Check if file exists in alts folder relative to main file
-                                 main_dir = Path(path).parent
-                                 alt_path_check = main_dir / "alts" / alt_base
+                            if not resolved_alt:
+                                # Fallback: Check 'alts' folder
+                                alt_path_check = main_dir / "alts" / alt_base
+                                if alt_path_check.exists():
+                                    resolved_alt = str(alt_path_check)
 
-                                 # New logic: Check if alt_name itself contains directory info (e.g. 'alts/au/au_1.png')
-                                 if '/' in alt_name or '\\' in alt_name:
-                                     complex_path = main_dir / alt_name
-                                     if complex_path.exists():
-                                          found_alts.append(str(complex_path))
-                                          continue
+                            if not resolved_alt:
+                                continue
 
-                                 if alt_path_check.exists():
-                                     found_alts.append(str(alt_path_check))
+                            # Now handle Fixes for this specific resolved alt
+                            # Use the path from the config (alt_name) as the key for fixing
+                            fix_rel = alts_fix_map.get(alt_name)
+                            if fix_rel:
+                                fix_full = main_dir / fix_rel
+                                if fix_full.exists():
+                                    found_alts.append(str(fix_full))
+                                    processed_files.add(Path(fix_full).name)
+                                    processed_files.add(alt_base) # Mark original as processed too
+                                    continue
+                                
+                            found_alts.append(resolved_alt)
+                            processed_files.add(alt_base)
+                            processed_files.add(Path(resolved_alt).name)
 
-                     # 2. Translations
-                     if "translations" in entry and isinstance(entry["translations"], dict):
-                         for lang_key, trans_file in entry["translations"].items():
-                             trans_base = Path(trans_file).name
-                             if trans_base in path_map:
-                                 translations[lang_key] = path_map[trans_base]
-                                 processed_files.add(trans_base)
-                             else:
-                                 # Check 'translations/<LANG>/<filename>'
-                                 main_dir = Path(path).parent
-                                 # Try simple name in main dir (if map failed but maybe it's there?) - unlikely if path_map constructed from glob
-                                 # Try translations dir
-                                 trans_path_check = main_dir / "translations" / lang_key / trans_base
-                                 if trans_path_check.exists():
-                                     translations[lang_key] = str(trans_path_check)
+                    # 2. Translations
+                    if "translations" in entry and isinstance(entry["translations"], dict):
+                        main_dir = Path(path).parent
+                        for lang_key, trans_file in entry["translations"].items():
+                            trans_base = Path(trans_file).name
+                            
+                            # Try relative resolution first
+                            if (main_dir / trans_file).exists():
+                                translations[lang_key] = str(main_dir / trans_file)
+                                processed_files.add(trans_base)
+                            elif (main_dir / "translations" / lang_key / trans_base).exists():
+                                translations[lang_key] = str(main_dir / "translations" / lang_key / trans_base)
+                                processed_files.add(trans_base)
+                            elif trans_base in path_map:
+                                translations[lang_key] = path_map[trans_base]
+                                processed_files.add(trans_base)
+
 
 
                 # Sort alts: Image < GIF < Video, then filename

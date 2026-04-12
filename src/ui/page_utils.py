@@ -274,7 +274,17 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict, new_notes
     # 2. Process Moves/Renames
     flat_new_paths = [main_file]
     new_alts_fix = {}
+    
+    # 2a. Preserve fix for the Main file if it exists
+    try:
+        main_rel = str(Path(main_file).relative_to(chapter_dir)).replace('\\', '/')
+        if main_rel in alts_fix:
+            new_alts_fix[main_rel] = alts_fix[main_rel]
+    except ValueError:
+        pass
+
     final_notes = {}
+    processed_originals = set()
 
     for cat_name, file_paths in new_structure.items():
         cat_dir = alts_dir / main_stem / cat_name.lower()
@@ -286,6 +296,12 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict, new_notes
             if path_str == main_file: continue
             
             o_abs, f_abs, o_rel, f_rel = get_variant_pair(path_str)
+            
+            # Use original relative path as unique ID for the pair to avoid moving the same pair twice
+            pair_id = o_rel if o_rel else path_str
+            if pair_id in processed_originals:
+                continue
+            processed_originals.add(pair_id)
             
             o_temp = None
             if o_abs and os.path.exists(o_abs):
@@ -341,6 +357,7 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict, new_notes
     data = AltManager.load_alts(series_path)
     if chapter_name in data and main_name in data[chapter_name]:
         entry = AltManager._ensure_entry_structure(data[chapter_name][main_name])
+        # Update alts_fix but keep the Main file's fix if it was preserved
         if new_alts_fix:
             entry["alts_fix"] = new_alts_fix
         elif "alts_fix" in entry:
