@@ -22,6 +22,7 @@ class TopPanel(QWidget):
     sort_changed = pyqtSignal(str)
     bg_color_changed = pyqtSignal(str)
     fullscreen_requested = pyqtSignal()
+    info_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -58,20 +59,13 @@ class TopPanel(QWidget):
         self.series_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.series_label.setStyleSheet("background: transparent; font-weight: bold;")
 
-        self.info_btn = QPushButton("ℹ")
-        self.info_btn.setFixedSize(QSize(26, 26))
-        self.info_btn.setStyleSheet(
-            FLAT_BUTTON_STYLE + """
-            QPushButton {
-                font-size: 13px;
-                color: rgba(255, 255, 255, 120);
-            }
-            QPushButton:hover {
-                color: white;
-            }
-            """
-        )
+        self.info_btn = QPushButton()
+        self.info_btn.setIcon(QIcon(resource_path("assets/icons/info.svg")))
+        self.info_btn.setIconSize(ICON_SIZE)
+        self.info_btn.setFixedSize(BUTTON_SIZE)
+        self.info_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.info_btn.setToolTip("")
+        self.info_btn.clicked.connect(self.info_clicked.emit)
         self.info_btn.hide()  # hidden until info is available
 
         # Language combo (hidden, accessed via overflow menu)
@@ -86,12 +80,12 @@ class TopPanel(QWidget):
         self.translate_btn.clicked.connect(self._on_translate_clicked)
         self.translate_btn.hide()
 
-        # Overflow (•••) button — slideshow, speed, repeat, sort
-        self.overflow_btn = QPushButton("•••")
+        # Overflow (more/menu) button — slideshow, speed, repeat, sort
+        self.overflow_btn = QPushButton()
+        self.overflow_btn.setIcon(QIcon(resource_path("assets/icons/more.svg")))
+        self.overflow_btn.setIconSize(ICON_SIZE)
         self.overflow_btn.setFixedSize(BUTTON_SIZE)
-        self.overflow_btn.setStyleSheet(
-            FLAT_BUTTON_STYLE + " QPushButton { font-weight: bold; font-size: 11px; letter-spacing: 1px; }"
-        )
+        self.overflow_btn.setStyleSheet(FLAT_BUTTON_STYLE)
         self.overflow_btn.setToolTip("More options")
         self.overflow_btn.clicked.connect(self._on_overflow_clicked)
 

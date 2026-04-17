@@ -344,6 +344,7 @@ class ReaderView(QWidget):
         self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
         self.slider_panel.zoom_reset.connect(self.reset_zoom)
         self.top_panel.fullscreen_requested.connect(self.toggle_fullscreen)
+        self.top_panel.info_clicked.connect(self._show_info_tab)
 
         self.selection_panel.ratio_selected.connect(self.view.set_selection_ratio)
         self.selection_panel.apply_clicked.connect(self._apply_area_selection)
@@ -1203,6 +1204,17 @@ class ReaderView(QWidget):
                 self.chapter_panel.toggle_expand()
             self.chapter_panel.show_content()
             QTimer.singleShot(100, self._update_side_panels_geometry)
+
+    def _show_info_tab(self):
+        """Show the alt_panel expanded and switch to the INFO tab."""
+        if not self.panels_visible:
+            self._toggle_panels(visible=True)
+        if self.alt_panel._collapsed:
+            self.alt_panel._toggle_collapse()
+        if not self.alt_panel.isVisible():
+            self.alt_panel.show()
+        self.alt_panel._on_tab_clicked(1)
+        QTimer.singleShot(0, self._update_side_panels_geometry)
 
     def _on_hide_chapter_from_panel(self, index: int):
         if not self.model or index >= len(self.model.chapters):
