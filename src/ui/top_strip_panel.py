@@ -33,13 +33,20 @@ class HorizontalScrollArea(QScrollArea):
             super().wheelEvent(ev)
 
 
+_INFO_KEY   = "color:#777;font-size:9px;letter-spacing:0.5px;"
+_INFO_VAL   = "color:#ddd;font-size:11px;"
+_INFO_RATIO = "color:#bbb;font-size:10px;"
+_INFO_SEP   = "color:#444;"
+
+def _kv(key: str, val: str) -> str:
+    return f"<span style='{_INFO_KEY}'>{key}</span> <span style='{_INFO_VAL}'>{val}</span>"
+
 def format_image_info_html(text: str) -> str:
-    """Convert pipe-separated ImageInfoWorker output to a compact horizontal HTML string."""
     if not text:
-        return "<span style='color:#888;'>No information available.</span>"
+        return f"<span style='color:#666;'>No information available.</span>"
     blocks = text.split("  +  ")
     out_blocks = []
-    for i, block in enumerate(blocks):
+    for block in blocks:
         fields = {}
         for field in block.split('|'):
             if ':' in field:
@@ -47,20 +54,22 @@ def format_image_info_html(text: str) -> str:
                 fields[k] = v
         if not fields:
             continue
-        
-        # Order: SIZE, TYPE, DIM, RATIO, DATE
+
         parts = []
-        field_order = ["SIZE", "TYPE", "DIM", "RATIO", "DATE"]
-        for key in sorted(fields, key=lambda x: field_order.index(x) if x in field_order else 99):
-            parts.append(f"<span style='color:#ccc;'>{fields[key]}</span>")
-        
-        block_html = " • ".join(parts)
-        if len(blocks) > 1:
-            name = fields.get("NAME", f"File {i+1}")
-            block_html = f"<span style='color:#4a86e8;font-weight:bold;'>{name}:</span> {block_html}"
-        out_blocks.append(block_html)
-    
-    return " <span style='color:#555;'>|</span> ".join(out_blocks)
+        if "SIZE" in fields:
+            parts.append(_kv("SIZE", fields["SIZE"]))
+        if "TYPE" in fields:
+            parts.append(_kv("TYPE", fields["TYPE"]))
+        if "DIM" in fields:
+            dim = fields["DIM"]
+            ratio = f" <span style='{_INFO_RATIO}'>({fields['RATIO']})</span>" if "RATIO" in fields else ""
+            parts.append(f"<span style='{_INFO_KEY}'>DIM</span> <span style='{_INFO_VAL}'>{dim}</span>{ratio}")
+
+        sep = f"  <span style='{_INFO_SEP}'>·</span>  "
+        out_blocks.append(sep.join(parts))
+
+    block_sep = f"  <span style='color:#333;'>│</span>  "
+    return block_sep.join(out_blocks)
 
 
 class StripThumb(QLabel):
@@ -99,6 +108,7 @@ class StripThumb(QLabel):
 class TopStripPanel(QWidget):
     """Horizontal strip below the top panel: alt thumbnails (tab 0) or image info (tab 1)."""
     FIXED_HEIGHT  = 125
+    HEIGHT_INFO   = 26
     HEIGHT_THUMBS = 91
     HEIGHT_CATS   = 30
 
@@ -242,20 +252,14 @@ class TopStripPanel(QWidget):
         info_page = QWidget()
         info_page.setStyleSheet("background: transparent;")
         info_l = QVBoxLayout(info_page)
-        info_l.setContentsMargins(0, 0, 0, 0)
+        info_l.setContentsMargins(6, 0, 6, 0)
         info_l.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        info_scroll = HorizontalScrollArea()
 
         self._info_label = QLabel("No information available.")
         self._info_label.setWordWrap(False)
-        self._info_label.setFixedHeight(24)
-        self._info_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        self._info_label.setStyleSheet(
-            "color: rgba(255,255,255,210); font-size: 11px; background: transparent;"
-        )
-        info_scroll.setWidget(self._info_label)
-        info_l.addWidget(info_scroll)
+        self._info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._info_label.setStyleSheet("background: transparent;")
+        info_l.addWidget(self._info_label)
         self._stack.addWidget(info_page)
 
         root.addWidget(self._stack)
@@ -273,7 +277,9 @@ class TopStripPanel(QWidget):
 
     @property
     def strip_height(self) -> int:
-        return self.HEIGHT if self.isVisible() else 0
+        if not self.isVisible():
+            return 0
+        return self.HEIGHT_INFO if self._tab == 1 else self.HEIGHT
 
     def toggle(self, tab: int):
         if self._tab == tab:
@@ -290,7 +296,8 @@ class TopStripPanel(QWidget):
 
     def update_geometry(self, top_h: int, width: int):
         if self._tab >= 0 and self.isVisible():
-            self.setGeometry(0, top_h, width, self.HEIGHT)
+            h = self.HEIGHT_INFO if self._tab == 1 else self.HEIGHT
+            self.setGeometry(0, top_h, width, h)
             self.raise_()
         else:
             self.setGeometry(0, top_h, width, 0)
