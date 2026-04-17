@@ -24,7 +24,6 @@ from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
 from src.ui.video_control_panel import VideoControlPanel
 from src.ui.viewer.image_view import ImageView
-from src.ui.frame_panel import FramePanel
 from src.enums import Language
 from src.ui.components.selection_panel import SelectionPanel
 
@@ -111,7 +110,6 @@ class ReaderView(QWidget):
         
         # Connect signals that depend on viewers
         self.video_control_panel.mode_changed.connect(self._on_video_mode_changed)
-        self.frame_panel.seek_requested.connect(self.video_viewer._seek_to_frame)
         self.top_strip.seek_requested.connect(self.video_viewer._seek_to_frame)
         
         
@@ -251,7 +249,6 @@ class ReaderView(QWidget):
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter, thread_pool=self.thumbnail_pool)
         self.chapter_panel.hide_chapter_requested.connect(self._on_hide_chapter_from_panel)
-        self.frame_panel = FramePanel(self, thread_pool=self.secondary_pool)
         self.selection_panel = SelectionPanel(self)
 
         # Add panels to the layout
@@ -272,9 +269,6 @@ class ReaderView(QWidget):
         main_layout.addWidget(self.bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
         main_layout.addWidget(self.selection_panel, 0, 0, Qt.AlignmentFlag.AlignBottom)
         self.selection_panel.hide()
-
-        # Panels NOT added to layout manager for manual geometry control
-        self.frame_panel.setParent(self)
 
         # Nav buttons (hover-reveal overlays)
         btn_style = """
@@ -436,43 +430,20 @@ class ReaderView(QWidget):
         QTimer.singleShot(0, self.apply_last_zoom)
 
     def _update_side_panels_geometry(self):
-        if not hasattr(self, 'frame_panel'):
-            return
-
-        # Force layout update to get accurate size hints
         if self.layout():
-             self.layout().activate()
+            self.layout().activate()
         if self.bottom_container.layout():
-             self.bottom_container.layout().activate()
-        
-        total_h = self.height()
-        total_w = self.width()
-        
-        # Use sizeHint for reliability during transition
-        top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
-        if hasattr(self, 'top_strip'):
-            top_h += self.top_strip.strip_height
-        bottom_h = self.bottom_container.sizeHint().height() if self.bottom_container.isVisible() else 0
+            self.bottom_container.layout().activate()
 
-        available_h = max(100, total_h - top_h - bottom_h)
-        y_pos = top_h
-
-        # Update Frame Panel (Right)
-        if self.frame_panel.isVisible():
-            panel_w = self.frame_panel.width()
-            self.frame_panel.setGeometry(total_w - panel_w, y_pos, panel_w, available_h)
-            self.frame_panel.raise_()
-
-        # Keep UI controls on top
         self.top_panel.raise_()
         self.bottom_container.raise_()
 
     def _on_panel_expand_toggled(self, panel, expanded: bool):
         if expanded:
             if panel == self.page_panel and self.chapter_panel.content_area.isVisible():
-                 self.chapter_panel.hide_content()
+                self.chapter_panel.hide_content()
             elif panel == self.chapter_panel and self.page_panel.content_area.isVisible():
-                 self.page_panel.hide_content()
+                self.page_panel.hide_content()
             
             panel.show_content()
             self._update_expanded_panel_height(panel)
@@ -711,9 +682,8 @@ class ReaderView(QWidget):
                 x = event.position().x()
                 view_width = self.width()
                 hover_zone = view_width * 0.2
-                frame_visible = self.frame_panel and self.frame_panel.isVisible() and not self.frame_panel._collapsed
                 self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and self._has_prev())
-                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and self._has_next() and not frame_visible)
+                self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and self._has_next())
 
                 if self.video_viewer.video_item and self.video_viewer.video_item.isVisible():
                     view_height = self.height()
