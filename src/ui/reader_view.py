@@ -112,6 +112,7 @@ class ReaderView(QWidget):
         # Connect signals that depend on viewers
         self.video_control_panel.mode_changed.connect(self._on_video_mode_changed)
         self.frame_panel.seek_requested.connect(self.video_viewer._seek_to_frame)
+        self.top_strip.seek_requested.connect(self.video_viewer._seek_to_frame)
         
         
         TranslationService.instance().task_status_changed.connect(self._on_translation_status_changed_global)
@@ -345,6 +346,7 @@ class ReaderView(QWidget):
         self.top_strip.reload_requested.connect(self.reload_chapter)
         self.top_panel.alts_clicked.connect(lambda: self.top_strip.toggle(0))
         self.top_panel.info_clicked.connect(lambda: self.top_strip.toggle(1))
+        self.top_panel.frames_clicked.connect(lambda: self.top_strip.toggle(2))
         self.top_strip.has_alts_changed.connect(self.top_panel.set_has_alts)
         self.top_strip.tab_changed.connect(self.top_panel.set_strip_tab)
         self.top_strip.tab_changed.connect(lambda _: self._update_top_strip_geometry())
@@ -673,18 +675,12 @@ class ReaderView(QWidget):
                 self.top_strip.show()
                 self._update_top_strip_geometry()
 
-            if self.current_viewer == self.video_viewer:
-                self.frame_panel.show()
-                if not self.frame_panel._collapsed:
-                    self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, False)
-
             QTimer.singleShot(100, self._update_side_panels_geometry)
         else:
             self.top_panel.hide()
             self.slider_panel.hide()
             if hasattr(self, 'top_strip'):
                 self.top_strip.hide()
-            self.frame_panel.hide()
 
             if self.page_panel.content_area.isVisible():
                 self.page_panel.hide_content()
@@ -807,15 +803,14 @@ class ReaderView(QWidget):
                 self.view._update_overlay_bounds()
 
     def _update_frame_panel(self, path: str):
-        """Sync the frame panel with the current video path and visibility state."""
+        """Sync the frame strip with the current video path."""
         total_frames = getattr(self.video_control_panel, 'total_frames', 0)
         if total_frames > 0:
-            self.frame_panel.set_video(path, total_frames)
-            if self.panels_visible:
-                self.frame_panel.show()
-            else:
-                self.frame_panel.hide()
-            self._update_side_panels_geometry()
+            self.top_strip.set_video(path, total_frames)
+            self.top_panel.set_has_frames(True)
+        else:
+            self.top_strip.clear_video()
+            self.top_panel.set_has_frames(False)
 
     def _update_after_load(self, path: str):
         """Update page-panel selection, slider and top-panel after loading a page."""
@@ -878,7 +873,8 @@ class ReaderView(QWidget):
         if self.current_viewer == self.video_viewer:
             self._update_frame_panel(resolved_path)
         else:
-            self.frame_panel.hide()
+            self.top_strip.clear_video()
+            self.top_panel.set_has_frames(False)
 
         self._update_after_load(resolved_path)
 

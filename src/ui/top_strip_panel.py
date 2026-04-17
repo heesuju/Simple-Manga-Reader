@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea,
     QFrame, QStackedWidget, QPushButton, QMenu, QApplication,
 )
-from PyQt6.QtGui import QPixmap, QIcon
+from PyQt6.QtGui import QPixmap, QIcon, QImage
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
 
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
@@ -72,6 +72,48 @@ def format_image_info_html(text: str) -> str:
     return block_sep.join(out_blocks)
 
 
+FRAME_STRIP_PAGE_SIZE = 50
+
+
+class FrameThumb(QLabel):
+    """Small clickable video-frame thumbnail for the horizontal frames strip."""
+    W, H = 55, 80
+
+    def __init__(self, parent, frame_index: int, on_click=None):
+        super().__init__(parent)
+        self._on_click = on_click
+        self.frame_index = frame_index
+        self.setFixedSize(self.W + 4, self.H + 4)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("border: 1px solid rgba(255,255,255,20); background: rgba(255,255,255,10);")
+
+        self._badge = QLabel(str(frame_index), self)
+        self._badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._badge.setStyleSheet(
+            "background: rgba(0,0,0,160); color: rgba(255,255,255,200);"
+            "font-size: 8px; font-weight: bold; padding: 1px 3px;"
+            "border-radius: 2px; border: none;"
+        )
+        self._badge.adjustSize()
+        self._badge.move(3, 3)
+        self._badge.raise_()
+
+    def set_qimage(self, qimage: QImage):
+        if qimage and not qimage.isNull():
+            scaled = QPixmap.fromImage(qimage).scaled(
+                self.W, self.H,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self.setPixmap(scaled)
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.MouseButton.LeftButton and self._on_click:
+            self._on_click(self.frame_index)
+        super().mousePressEvent(ev)
+
+
 class StripThumb(QLabel):
     """Small clickable thumbnail for the horizontal alt strip."""
     W, H = 55, 75
@@ -113,8 +155,9 @@ class TopStripPanel(QWidget):
     HEIGHT_CATS   = 30
 
     has_alts_changed = pyqtSignal(bool)
-    tab_changed      = pyqtSignal(int)   # -1=hidden, 0=alts, 1=info
+    tab_changed      = pyqtSignal(int)   # -1=hidden, 0=alts, 1=info, 2=frames
     reload_requested = pyqtSignal()
+    seek_requested   = pyqtSignal(int)
 
     _BTN_STYLE = """
         QPushButton {
@@ -161,6 +204,13 @@ class TopStripPanel(QWidget):
         self._last_page_idx = -1
         self._last_num_variants = -1
         self._last_chapter = ""
+
+        self._video_path: str          = ""
+        self._total_frames: int        = 0
+        self._current_frame_page: int  = 0
+        self._frame_thumbs: Dict       = {}
+        self._active_frame_worker      = None
+        self._needs_frame_load: bool   = False
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("background-color: rgba(0,0,0,170);")
@@ -262,6 +312,55 @@ class TopStripPanel(QWidget):
         info_l.addWidget(self._info_label)
         self._stack.addWidget(info_page)
 
+        # ── Page 2: frames ───────────────────────────────────────────────────
+        frames_page = QWidget()
+        frames_page.setStyleSheet("background: transparent;")
+        frames_l = QVBoxLayout(frames_page)
+        frames_l.setContentsMargins(4, 4, 4, 4)
+        frames_l.setSpacing(4)
+
+        frames_nav = QWidget()
+        frames_nav.setStyleSheet("background: transparent;")
+        frames_nav_l = QHBoxLayout(frames_nav)
+        frames_nav_l.setContentsMargins(0, 0, 0, 0)
+        frames_nav_l.setSpacing(4)
+
+        self._frame_prev_btn = QPushButton("<")
+        self._frame_prev_btn.setFixedSize(22, 20)
+        self._frame_prev_btn.setStyleSheet(self._BTN_STYLE)
+        self._frame_prev_btn.clicked.connect(self._prev_frame_page)
+
+        self._frame_page_label = QLabel("—")
+        self._frame_page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._frame_page_label.setStyleSheet(
+            "color: rgba(255,255,255,150); font-size: 10px; background: transparent;"
+        )
+        self._frame_page_label.setFixedWidth(50)
+
+        self._frame_next_btn = QPushButton(">")
+        self._frame_next_btn.setFixedSize(22, 20)
+        self._frame_next_btn.setStyleSheet(self._BTN_STYLE)
+        self._frame_next_btn.clicked.connect(self._next_frame_page)
+
+        frames_nav_l.addStretch()
+        frames_nav_l.addWidget(self._frame_prev_btn)
+        frames_nav_l.addWidget(self._frame_page_label)
+        frames_nav_l.addWidget(self._frame_next_btn)
+        frames_nav_l.addStretch()
+        frames_l.addWidget(frames_nav)
+
+        self._frames_scroll = HorizontalScrollArea()
+        self._frames_content = QWidget()
+        self._frames_content.setStyleSheet("background: transparent;")
+        self._frames_hlayout = QHBoxLayout(self._frames_content)
+        self._frames_hlayout.setContentsMargins(0, 0, 0, 0)
+        self._frames_hlayout.setSpacing(6)
+        self._frames_hlayout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._frames_scroll.setWidget(self._frames_content)
+        frames_l.addWidget(self._frames_scroll, 1)
+
+        self._stack.addWidget(frames_page)
+
         root.addWidget(self._stack)
         self.hide()
 
@@ -290,6 +389,9 @@ class TopStripPanel(QWidget):
             self._stack.setCurrentIndex(tab)
             if tab == 0:
                 self._populate_alts()
+            elif tab == 2 and self._needs_frame_load:
+                self._needs_frame_load = False
+                self._update_frames_ui()
             self.show()
             self.raise_()
         self.tab_changed.emit(self._tab)
@@ -342,6 +444,93 @@ class TopStripPanel(QWidget):
 
     def set_info_text(self, raw_text: str):
         self._info_label.setText(format_image_info_html(raw_text))
+
+    # ── Frames ────────────────────────────────────────────────────────────────
+
+    def set_video(self, path: str, total_frames: int, initial_frames: dict = None):
+        if self._video_path == path and self._total_frames == total_frames:
+            if initial_frames:
+                self._apply_frame_images(initial_frames)
+            return
+        self._video_path = path
+        self._total_frames = total_frames
+        self._current_frame_page = 0
+        if self._tab != 2:
+            self._needs_frame_load = True
+            return
+        self._update_frames_ui(initial_frames=initial_frames)
+
+    def clear_video(self):
+        self._video_path = ""
+        self._total_frames = 0
+        self._current_frame_page = 0
+        self._needs_frame_load = False
+        self._clear_frame_thumbs()
+
+    def _update_frames_ui(self, initial_frames: dict = None):
+        self._clear_frame_thumbs()
+        if not self._video_path or self._total_frames <= 0:
+            return
+
+        total_pages = (self._total_frames + FRAME_STRIP_PAGE_SIZE - 1) // FRAME_STRIP_PAGE_SIZE
+        self._frame_page_label.setText(f"{self._current_frame_page + 1}/{total_pages}")
+        self._frame_prev_btn.setEnabled(self._current_frame_page > 0)
+        self._frame_next_btn.setEnabled(self._current_frame_page < total_pages - 1)
+
+        start = self._current_frame_page * FRAME_STRIP_PAGE_SIZE
+        end = min(start + FRAME_STRIP_PAGE_SIZE, self._total_frames)
+        indices = list(range(start, end))
+
+        for idx in indices:
+            thumb = FrameThumb(self._frames_content, idx, on_click=self.seek_requested.emit)
+            self._frames_hlayout.addWidget(thumb)
+            self._frame_thumbs[idx] = thumb
+
+        if initial_frames and self._current_frame_page == 0:
+            self._apply_frame_images(initial_frames)
+            missing = [i for i in indices if i not in initial_frames]
+            if not missing:
+                return
+
+        if self._pool:
+            if self._active_frame_worker:
+                self._active_frame_worker.cancelled = True
+            to_fetch = [i for i in indices if i not in (initial_frames or {})]
+            if to_fetch:
+                from src.workers.view_workers import VideoBatchFrameExtractorWorker
+                self._active_frame_worker = VideoBatchFrameExtractorWorker(
+                    self._video_path, to_fetch, FrameThumb.W, FrameThumb.H
+                )
+                self._active_frame_worker.signals.finished.connect(self._on_frame_batch_extracted)
+                self._pool.start(self._active_frame_worker)
+
+    def _apply_frame_images(self, frames: dict):
+        for idx, qimage in frames.items():
+            if idx in self._frame_thumbs:
+                self._frame_thumbs[idx].set_qimage(qimage)
+
+    def _on_frame_batch_extracted(self, path, results, *_):
+        if self._active_frame_worker and getattr(self._active_frame_worker, 'path', None) == path:
+            self._active_frame_worker = None
+        if path != self._video_path:
+            return
+        self._apply_frame_images(results)
+
+    def _clear_frame_thumbs(self):
+        for w in self._frame_thumbs.values():
+            w.deleteLater()
+        self._frame_thumbs.clear()
+
+    def _prev_frame_page(self):
+        if self._current_frame_page > 0:
+            self._current_frame_page -= 1
+            self._update_frames_ui()
+
+    def _next_frame_page(self):
+        total_pages = (self._total_frames + FRAME_STRIP_PAGE_SIZE - 1) // FRAME_STRIP_PAGE_SIZE
+        if self._current_frame_page < total_pages - 1:
+            self._current_frame_page += 1
+            self._update_frames_ui()
 
     # ── Alts population ───────────────────────────────────────────────────────
 

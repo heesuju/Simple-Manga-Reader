@@ -22,8 +22,9 @@ class TopPanel(QWidget):
     sort_changed = pyqtSignal(str)
     bg_color_changed = pyqtSignal(str)
     fullscreen_requested = pyqtSignal()
-    info_clicked = pyqtSignal()
-    alts_clicked = pyqtSignal()
+    info_clicked   = pyqtSignal()
+    alts_clicked   = pyqtSignal()
+    frames_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -74,6 +75,14 @@ class TopPanel(QWidget):
         self.alts_btn.clicked.connect(self.alts_clicked.emit)
         self.alts_btn.hide()
 
+        self.frames_btn = QPushButton("FRM")
+        self.frames_btn.setFixedSize(QSize(32, 26))
+        self.frames_btn.setProperty("active", "false")
+        self.frames_btn.setStyleSheet(_strip_btn_style)
+        self.frames_btn.setToolTip("Toggle Frames")
+        self.frames_btn.clicked.connect(self.frames_clicked.emit)
+        self.frames_btn.hide()
+
         self.info_btn = QPushButton()
         self.info_btn.setIcon(QIcon(resource_path("assets/icons/info.svg")))
         self.info_btn.setIconSize(ICON_SIZE)
@@ -107,6 +116,7 @@ class TopPanel(QWidget):
 
         self._row.addWidget(self.series_label, 1)
         self._row.addWidget(self.alts_btn)
+        self._row.addWidget(self.frames_btn)
         self._row.addWidget(self.info_btn)
         self._row.addWidget(self.fullscreen_button)
         self._row.addWidget(self.overflow_btn)
@@ -148,9 +158,12 @@ class TopPanel(QWidget):
     def set_has_alts(self, has_alts: bool):
         self.alts_btn.setVisible(has_alts)
 
+    def set_has_frames(self, has: bool):
+        self.frames_btn.setVisible(has)
+
     def set_strip_tab(self, tab: int):
-        """Update active state of strip toggle buttons. tab: 0=alts, 1=info, -1=none."""
-        for btn, idx in ((self.alts_btn, 0), (self.info_btn, 1)):
+        """Update active state of strip toggle buttons. tab: 0=alts, 1=info, 2=frames, -1=none."""
+        for btn, idx in ((self.alts_btn, 0), (self.info_btn, 1), (self.frames_btn, 2)):
             btn.setProperty("active", "true" if tab == idx else "false")
             btn.style().unpolish(btn)
             btn.style().polish(btn)

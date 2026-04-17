@@ -170,12 +170,8 @@ class VideoViewer(BaseViewer):
 
         if path_norm == current_norm:
             self.reader_view.video_control_panel.set_video_metadata(total_frames, fps)
-            self.reader_view.frame_panel.set_video(path, total_frames, initial_frames)
-            if self.reader_view.panels_visible:
-                self.reader_view.frame_panel.show()
-            else:
-                self.reader_view.frame_panel.hide()
-            self.reader_view._update_side_panels_geometry()
+            self.reader_view.top_strip.set_video(path, total_frames, initial_frames)
+            self.reader_view.top_panel.set_has_frames(True)
 
     def _seek_to_frame(self, frame_index):
         panel = self.reader_view.video_control_panel
