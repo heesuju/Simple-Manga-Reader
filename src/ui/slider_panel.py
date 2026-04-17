@@ -14,7 +14,6 @@ class SliderPanel(QWidget):
     page_input_clicked = pyqtSignal()
     chapter_input_clicked = pyqtSignal()
     zoom_mode_changed = pyqtSignal(str)
-    zoom_reset = pyqtSignal()
 
     def __init__(self, parent=None, model=None):
         super().__init__(parent)
@@ -139,8 +138,8 @@ class SliderPanel(QWidget):
         row.addWidget(divider2)
 
         self.zoom_combobox = QComboBox()
-        self.zoom_combobox.addItems(['Fit Page', 'Fit Width', 'Fit Height', 'Stretch', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
-        self.zoom_combobox.setFixedSize(90, 24)
+        self.zoom_combobox.addItems(['Fit', 'Width', 'Height', 'Stretch', '25%', '50%', '75%', '100%', '125%', '150%', '200%'])
+        self.zoom_combobox.setFixedSize(75, 24)
         self.zoom_combobox.setStyleSheet("""
             QComboBox {
                 color: white;
@@ -158,17 +157,7 @@ class SliderPanel(QWidget):
         """)
         self.zoom_combobox.currentTextChanged.connect(self.zoom_mode_changed.emit)
 
-        from src.utils.resource_utils import resource_path as _rp
-        self.reset_zoom_button = QPushButton()
-        self.reset_zoom_button.setIcon(QIcon(_rp("assets/icons/reset_zoom.svg")))
-        self.reset_zoom_button.setIconSize(QSize(16, 16))
-        self.reset_zoom_button.setFixedSize(QSize(22, 22))
-        self.reset_zoom_button.setStyleSheet(btn_style)
-        self.reset_zoom_button.setToolTip("Reset Zoom")
-        self.reset_zoom_button.clicked.connect(self.zoom_reset.emit)
-
         row.addWidget(self.zoom_combobox)
-        row.addWidget(self.reset_zoom_button)
 
     # ── Public API ────────────────────────────────────────────────────────────
 

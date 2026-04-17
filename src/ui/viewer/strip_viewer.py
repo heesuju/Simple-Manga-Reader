@@ -114,7 +114,7 @@ class StripViewer(BaseViewer):
         self.current_model_images = self.reader_view.model.images
 
         # Initialize zoom from ReaderView state
-        mode = getattr(self.reader_view, 'last_zoom_mode', "Fit Width")
+        mode = getattr(self.reader_view, 'last_zoom_mode', "Width")
         self.zoom(mode)
 
         # Clear existing
@@ -486,10 +486,10 @@ class StripViewer(BaseViewer):
 
     def zoom(self, mode: str):
         self.reader_view.last_zoom_mode = mode
-        if mode == "Fit Page" or mode == "Fit Width":
+        if mode == "Fit" or mode == "Width":
             self.is_fit_width = True
             self._strip_zoom_factor = 1.0
-            self.reader_view.zoom_changed.emit("Fit Width")
+            self.reader_view.zoom_changed.emit("Width")
         else:
             try:
                 self.is_fit_width = False
@@ -551,7 +551,7 @@ class StripViewer(BaseViewer):
 
         elif event.type() == QEvent.Type.MouseButtonDblClick:
             if event.button() == Qt.MouseButton.LeftButton:
-                self.reader_view.reset_zoom()
+                self.reader_view.set_zoom_mode("Fit")
                 return True
 
         elif event.type() == QEvent.Type.Wheel:

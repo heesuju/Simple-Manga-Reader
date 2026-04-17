@@ -219,7 +219,7 @@ class VideoViewer(BaseViewer):
         if not (self.video_item and self.video_item.isVisible()):
             return
 
-        if mode == "Fit Page":
+        if mode == "Fit":
             self.reader_view.view.reset_zoom_state()
             self.reader_view.view.resetTransform()
 
@@ -236,8 +236,8 @@ class VideoViewer(BaseViewer):
 
                 self.reader_view.view._zoom_factor = scale
 
-            self.reader_view.zoom_changed.emit("Fit Page")
-        elif mode == "Fit Width":
+            self.reader_view.zoom_changed.emit("Fit")
+        elif mode == "Width":
             self.reader_view.view.reset_zoom_state()
             scene_rect = self.reader_view.scene.sceneRect()
             if scene_rect.width() > 0:
@@ -245,8 +245,8 @@ class VideoViewer(BaseViewer):
                 factor = view_width / scene_rect.width()
                 self.reader_view.view._zoom_factor = factor
                 self.reader_view._update_zoom(factor, update_last_mode=False)
-                self.reader_view.zoom_changed.emit("Fit Width")
-        elif mode == "Fit Height":
+                self.reader_view.zoom_changed.emit("Width")
+        elif mode == "Height":
             self.reader_view.view.reset_zoom_state()
             scene_rect = self.reader_view.scene.sceneRect()
             if scene_rect.height() > 0:
@@ -254,7 +254,7 @@ class VideoViewer(BaseViewer):
                 factor = view_height / scene_rect.height()
                 self.reader_view.view._zoom_factor = factor
                 self.reader_view._update_zoom(factor, update_last_mode=False)
-                self.reader_view.zoom_changed.emit("Fit Height")
+                self.reader_view.zoom_changed.emit("Height")
         elif mode == "Stretch":
             self.reader_view.view.reset_zoom_state()
             self.reader_view.view.resetTransform()

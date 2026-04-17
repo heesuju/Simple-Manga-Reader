@@ -97,7 +97,7 @@ class ReaderView(QWidget):
         self.panels_visible = True
         self.mouse_press_pos = None
 
-        self.last_zoom_mode = "Fit Page"
+        self.last_zoom_mode = "Fit"
         
         self._setup_ui()
 
@@ -334,7 +334,6 @@ class ReaderView(QWidget):
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
         self.slider_panel.chapter_input_clicked.connect(self._show_chapter_panel)
         self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
-        self.slider_panel.zoom_reset.connect(self.reset_zoom)
         self.top_panel.fullscreen_requested.connect(self.toggle_fullscreen)
         self.top_strip = TopStripPanel(self, self.model, self.secondary_pool, self.resolve_path)
         self.top_strip.reload_requested.connect(self.reload_chapter)
@@ -1014,9 +1013,6 @@ class ReaderView(QWidget):
         dialog = StickerPreviewDialog(self._sticker_original_pil, pil_image,
                                       result_no_border_pil=pil_image, parent=self)
         dialog.exec()
-
-    def reset_zoom(self):
-        self.set_zoom_mode("Fit Page")
 
     def apply_last_zoom(self):
         self.set_zoom_mode(self.last_zoom_mode)

@@ -405,7 +405,7 @@ class ImageView(QGraphicsView):
     def wheelEvent(self, event):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if self.manga_reader and getattr(self.manga_reader, 'last_zoom_mode', '') == "Stretch":
-                self.manga_reader.reset_zoom()
+                self.manga_reader.set_zoom_mode("Fit")
                 return
 
             self.zoom_started.emit()
@@ -439,6 +439,6 @@ class ImageView(QGraphicsView):
 
     def mouseDoubleClickEvent(self, event):
         if self.manga_reader:
-            self.manga_reader.reset_zoom()
+            self.manga_reader.set_zoom_mode("Fit")
         event.accept()
 

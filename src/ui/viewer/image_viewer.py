@@ -385,7 +385,7 @@ class ImageViewer(BaseViewer):
         if self.scaled_pixmap_item and self.original_pixmap:
             self._restore_original_pixmap()
 
-        if mode == "Fit Page":
+        if mode == "Fit":
             self.reader_view.view.reset_zoom_state()
             self.reader_view.view.resetTransform()
             
@@ -403,10 +403,10 @@ class ImageViewer(BaseViewer):
                 # Update zoom factor to match reality so scrolling starts smoothly
                 self.reader_view.view._zoom_factor = scale
 
-            self.reader_view.zoom_changed.emit("Fit Page")
+            self.reader_view.zoom_changed.emit("Fit")
             self._trigger_hq_rescale()
 
-        elif mode == "Fit Width":
+        elif mode == "Width":
             self.reader_view.view.reset_zoom_state()
             scene_rect = self.reader_view.scene.sceneRect()
             if scene_rect.width() > 0:
@@ -414,9 +414,9 @@ class ImageViewer(BaseViewer):
                 factor = view_width / scene_rect.width()
                 self.reader_view.view._zoom_factor = factor
                 self.reader_view._update_zoom(factor, update_last_mode=False)
-                self.reader_view.zoom_changed.emit("Fit Width")
+                self.reader_view.zoom_changed.emit("Width")
                 self._trigger_hq_rescale()
-        elif mode == "Fit Height":
+        elif mode == "Height":
             self.reader_view.view.reset_zoom_state()
             scene_rect = self.reader_view.scene.sceneRect()
             if scene_rect.height() > 0:
@@ -424,7 +424,7 @@ class ImageViewer(BaseViewer):
                 factor = view_height / scene_rect.height()
                 self.reader_view.view._zoom_factor = factor
                 self.reader_view._update_zoom(factor, update_last_mode=False)
-                self.reader_view.zoom_changed.emit("Fit Height")
+                self.reader_view.zoom_changed.emit("Height")
                 self._trigger_hq_rescale()
         elif mode == "Stretch":
             self.reader_view.view.reset_zoom_state()
