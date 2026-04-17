@@ -15,10 +15,10 @@ from PyQt6.QtWidgets import QGraphicsOpacityEffect
 from src.utils.resource_utils import resource_path
 from src.utils.archive_utils import is_archive, is_zip, split_virtual_path
 from src.ui.styles import FLAT_BUTTON_STYLE
+from src.ui.top_strip_panel import TopStripPanel
 
 from src.enums import ViewMode
 from src.ui.page_panel import PagePanel
-from src.ui.alt_panel import AltPanel
 from src.ui.chapter_panel import ChapterPanel
 from src.ui.top_panel import TopPanel
 from src.ui.slider_panel import SliderPanel
@@ -250,8 +250,6 @@ class ReaderView(QWidget):
         self.slider_panel = SliderPanel(self, model=self.model)
         self.chapter_panel = ChapterPanel(self, model=self.model, on_chapter_changed=self.set_chapter, thread_pool=self.thumbnail_pool)
         self.chapter_panel.hide_chapter_requested.connect(self._on_hide_chapter_from_panel)
-        self.alt_panel = AltPanel(self, model=self.model, thread_pool=self.secondary_pool)
-        self.alt_panel.reload_requested.connect(self.reload_chapter)
         self.frame_panel = FramePanel(self, thread_pool=self.secondary_pool)
         self.selection_panel = SelectionPanel(self)
 
@@ -275,7 +273,6 @@ class ReaderView(QWidget):
         self.selection_panel.hide()
 
         # Panels NOT added to layout manager for manual geometry control
-        self.alt_panel.setParent(self)
         self.frame_panel.setParent(self)
 
         # Nav buttons (hover-reveal overlays)
@@ -344,7 +341,16 @@ class ReaderView(QWidget):
         self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
         self.slider_panel.zoom_reset.connect(self.reset_zoom)
         self.top_panel.fullscreen_requested.connect(self.toggle_fullscreen)
-        self.top_panel.info_clicked.connect(self._show_info_tab)
+        self.top_strip = TopStripPanel(self, self.model, self.secondary_pool, self.resolve_path)
+        self.top_strip.reload_requested.connect(self.reload_chapter)
+        self.top_panel.alts_clicked.connect(lambda: self.top_strip.toggle(0))
+        self.top_panel.info_clicked.connect(lambda: self.top_strip.toggle(1))
+        self.top_strip.has_alts_changed.connect(self.top_panel.set_has_alts)
+        self.top_strip.tab_changed.connect(self.top_panel.set_strip_tab)
+        self.top_strip.tab_changed.connect(lambda _: self._update_top_strip_geometry())
+        self.top_strip.tab_changed.connect(lambda _: QTimer.singleShot(0, self._update_side_panels_geometry))
+        self.model.image_loaded.connect(self.top_strip.on_image_loaded)
+        self.model.double_image_loaded.connect(lambda p1, _: self.top_strip.on_image_loaded(p1))
 
         self.selection_panel.ratio_selected.connect(self.view.set_selection_ratio)
         self.selection_panel.apply_clicked.connect(self._apply_area_selection)
@@ -412,6 +418,7 @@ class ReaderView(QWidget):
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         self._reposition_nav_buttons()
+        self._update_top_strip_geometry()
         if self.current_viewer:
             self.current_viewer.on_resize(ev)
         
@@ -427,7 +434,7 @@ class ReaderView(QWidget):
         QTimer.singleShot(0, self.apply_last_zoom)
 
     def _update_side_panels_geometry(self):
-        if not hasattr(self, 'alt_panel') or not hasattr(self, 'frame_panel'):
+        if not hasattr(self, 'frame_panel'):
             return
 
         # Force layout update to get accurate size hints
@@ -441,15 +448,12 @@ class ReaderView(QWidget):
         
         # Use sizeHint for reliability during transition
         top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
+        if hasattr(self, 'top_strip'):
+            top_h += self.top_strip.strip_height
         bottom_h = self.bottom_container.sizeHint().height() if self.bottom_container.isVisible() else 0
 
         available_h = max(100, total_h - top_h - bottom_h)
         y_pos = top_h
-
-        # Update Alt Panel (Left)
-        if self.alt_panel.isVisible():
-            self.alt_panel.setGeometry(0, y_pos, self.alt_panel.width(), available_h)
-            self.alt_panel.raise_()
 
         # Update Frame Panel (Right)
         if self.frame_panel.isVisible():
@@ -665,10 +669,9 @@ class ReaderView(QWidget):
         if self.panels_visible:
             self.top_panel.show()
             self.slider_panel.show()
-            if self.alt_panel:
-                self.alt_panel._update_panel(self.model.current_index)
-                if self.alt_panel.isVisible() and not self.alt_panel._collapsed:
-                    self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, False)
+            if hasattr(self, 'top_strip') and self.top_strip.tab >= 0:
+                self.top_strip.show()
+                self._update_top_strip_geometry()
 
             if self.current_viewer == self.video_viewer:
                 self.frame_panel.show()
@@ -679,8 +682,8 @@ class ReaderView(QWidget):
         else:
             self.top_panel.hide()
             self.slider_panel.hide()
-            if self.alt_panel:
-                self.alt_panel.hide()
+            if hasattr(self, 'top_strip'):
+                self.top_strip.hide()
             self.frame_panel.hide()
 
             if self.page_panel.content_area.isVisible():
@@ -712,9 +715,8 @@ class ReaderView(QWidget):
                 x = event.position().x()
                 view_width = self.width()
                 hover_zone = view_width * 0.2
-                alt_visible = self.alt_panel and self.alt_panel.isVisible() and not self.alt_panel._collapsed
                 frame_visible = self.frame_panel and self.frame_panel.isVisible() and not self.frame_panel._collapsed
-                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and self._has_prev() and not alt_visible)
+                self._set_nav_btn_visible(self.prev_nav_btn, self._prev_anim, x <= hover_zone and self._has_prev())
                 self._set_nav_btn_visible(self.next_nav_btn, self._next_anim, x >= view_width - hover_zone and self._has_next() and not frame_visible)
 
                 if self.video_viewer.video_item and self.video_viewer.video_item.isVisible():
@@ -942,7 +944,7 @@ class ReaderView(QWidget):
 
         worker = ImageInfoWorker(items)
         worker.signals.finished.connect(self.top_panel.set_info_text)
-        worker.signals.finished.connect(self.alt_panel.set_info_text)
+        worker.signals.finished.connect(self.top_strip.set_info_text)
         self.thread_pool.start(worker)
 
     def set_zoom_mode(self, mode: str):
@@ -1205,16 +1207,11 @@ class ReaderView(QWidget):
             self.chapter_panel.show_content()
             QTimer.singleShot(100, self._update_side_panels_geometry)
 
-    def _show_info_tab(self):
-        """Show the alt_panel expanded and switch to the INFO tab."""
-        if not self.panels_visible:
-            self._toggle_panels(visible=True)
-        if self.alt_panel._collapsed:
-            self.alt_panel._toggle_collapse()
-        if not self.alt_panel.isVisible():
-            self.alt_panel.show()
-        self.alt_panel._on_tab_clicked(1)
-        QTimer.singleShot(0, self._update_side_panels_geometry)
+    def _update_top_strip_geometry(self):
+        if not hasattr(self, 'top_strip'):
+            return
+        top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
+        self.top_strip.update_geometry(top_h, self.width())
 
     def _on_hide_chapter_from_panel(self, index: int):
         if not self.model or index >= len(self.model.chapters):

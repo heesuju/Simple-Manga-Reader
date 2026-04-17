@@ -23,6 +23,7 @@ class TopPanel(QWidget):
     bg_color_changed = pyqtSignal(str)
     fullscreen_requested = pyqtSignal()
     info_clicked = pyqtSignal()
+    alts_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,11 +60,26 @@ class TopPanel(QWidget):
         self.series_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.series_label.setStyleSheet("background: transparent; font-weight: bold;")
 
+        _strip_btn_style = FLAT_BUTTON_STYLE + """
+            QPushButton { font-size: 10px; font-weight: bold; color: rgba(255,255,255,120); }
+            QPushButton:hover { color: white; }
+            QPushButton[active="true"] { color: #4a86e8; }
+        """
+
+        self.alts_btn = QPushButton("ALT")
+        self.alts_btn.setFixedSize(QSize(32, 26))
+        self.alts_btn.setProperty("active", "false")
+        self.alts_btn.setStyleSheet(_strip_btn_style)
+        self.alts_btn.setToolTip("Toggle Alts")
+        self.alts_btn.clicked.connect(self.alts_clicked.emit)
+        self.alts_btn.hide()
+
         self.info_btn = QPushButton()
         self.info_btn.setIcon(QIcon(resource_path("assets/icons/info.svg")))
         self.info_btn.setIconSize(ICON_SIZE)
         self.info_btn.setFixedSize(BUTTON_SIZE)
-        self.info_btn.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.info_btn.setProperty("active", "false")
+        self.info_btn.setStyleSheet(_strip_btn_style)
         self.info_btn.setToolTip("")
         self.info_btn.clicked.connect(self.info_clicked.emit)
         self.info_btn.hide()  # hidden until info is available
@@ -90,6 +106,7 @@ class TopPanel(QWidget):
         self.overflow_btn.clicked.connect(self._on_overflow_clicked)
 
         self._row.addWidget(self.series_label, 1)
+        self._row.addWidget(self.alts_btn)
         self._row.addWidget(self.info_btn)
         self._row.addWidget(self.fullscreen_button)
         self._row.addWidget(self.overflow_btn)
@@ -127,6 +144,16 @@ class TopPanel(QWidget):
 
     def set_bg_color(self, color_name: str):
         self._current_bg_color = color_name
+
+    def set_has_alts(self, has_alts: bool):
+        self.alts_btn.setVisible(has_alts)
+
+    def set_strip_tab(self, tab: int):
+        """Update active state of strip toggle buttons. tab: 0=alts, 1=info, -1=none."""
+        for btn, idx in ((self.alts_btn, 0), (self.info_btn, 1)):
+            btn.setProperty("active", "true" if tab == idx else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
     def set_info_text(self, text: str):
         if text:

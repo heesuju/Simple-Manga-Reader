@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, QPoint, pyqtSignal
 from src.ui.styles import SCROLL_AREA_TRANSPARENT
+from src.ui.top_strip_panel import format_image_info_html
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from src.enums import ViewMode
 from src.ui.components.grip_strip import GripStrip, GRIP_W
@@ -363,55 +364,7 @@ class AltPanel(QWidget):
             self.model.double_image_loaded.connect(self._on_double_image_loaded)
 
     def set_info_text(self, text: str):
-        """Update the info tab with formatted metadata from the ImageInfoWorker."""
-        if not text:
-            self.info_label.setText("No information available.")
-            return
-
-        # Split info blocks (e.g. for double-page mode)
-        blocks = text.split("  +  ")
-        formatted_info = ""
-        
-        for i, block in enumerate(blocks):
-            # Parse key-value pairs from the pipe-separated string
-            fields = {}
-            for field in block.split('|'):
-                if ':' in field:
-                    k, v = field.split(':', 1)
-                    fields[k] = v
-
-            if not fields:
-                continue
-                
-            # Block header if multi-file
-            if len(blocks) > 1:
-                formatted_info += f"<div style='color: #4a86e8; font-size: 11px; font-weight: bold; margin-bottom: 3px;'>FILE {i+1}</div>"
-            
-            # Filename (Primary - Always NAME)
-            filename = fields.pop("NAME", "Unknown")
-            formatted_info += f"<div style='color: #eee; font-size: 12px; font-weight: bold; margin-bottom: 6px;'>{filename}</div>"
-            
-            # Dynamically render all other metadata fields
-            # Sorted to keep a consistent order: SIZE, TYPE, DIM, RATIO, then others
-            field_order = ["SIZE", "TYPE", "DIM", "RATIO", "DATE"]
-            sorted_keys = sorted(fields.keys(), key=lambda x: field_order.index(x) if x in field_order else 99)
-            
-            for key in sorted_keys:
-                value = fields[key]
-                # Label with fixed width-like alignment using padding or just consistent spacing
-                label = f"{key:<6}".replace(" ", "&nbsp;")
-                formatted_info += (
-                    f"<div style='margin-bottom: 3px; font-family: Consolas, monospace;'>"
-                    f"<span style='color: #888; font-size: 10px;'>{label}:</span> "
-                    f"<span style='color: #ccc; font-size: 11px;'>{value}</span>"
-                    f"</div>"
-                )
-            
-            # Separator between blocks
-            if i < len(blocks) - 1:
-                formatted_info += "<div style='border-bottom: 1px solid rgba(255,255,255,15); margin: 10px 0;'></div>"
-
-        self.info_label.setText(formatted_info)
+        self.info_label.setText(format_image_info_html(text))
 
     def _on_tab_clicked(self, index):
         self.content_stack.setCurrentIndex(index)
