@@ -343,7 +343,7 @@ class ReaderView(QWidget):
         self.top_panel.frames_clicked.connect(lambda: self.top_strip.toggle(2))
         self.top_strip.has_alts_changed.connect(self.top_panel.set_has_alts)
         self.top_strip.tab_changed.connect(self.top_panel.set_strip_tab)
-        self.top_strip.tab_changed.connect(lambda _: self._update_top_strip_geometry())
+        self.top_strip.tab_changed.connect(lambda _: self._sync_top_strip_visibility())
         self.top_strip.tab_changed.connect(lambda _: QTimer.singleShot(0, self._update_side_panels_geometry))
         self.model.image_loaded.connect(self.top_strip.on_image_loaded)
         self.model.double_image_loaded.connect(lambda p1, _: self.top_strip.on_image_loaded(p1))
@@ -362,7 +362,9 @@ class ReaderView(QWidget):
         self.page_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.page_panel, expanded))
         self.chapter_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.chapter_panel, expanded))
         
+        self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._sync_top_strip_visibility))
         self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_side_panels_geometry))
+        self.chapter_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._sync_top_strip_visibility))
         self.chapter_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_side_panels_geometry))
 
         initial_bg = app_settings.get("reader_bg_color", "Default (Gray)")
@@ -438,20 +440,34 @@ class ReaderView(QWidget):
         self.top_panel.raise_()
         self.bottom_container.raise_()
 
+    def _any_panel_expanded(self) -> bool:
+        page_exp = hasattr(self, 'page_panel') and self.page_panel.is_expanded and self.page_panel.content_area.isVisible()
+        chap_exp = hasattr(self, 'chapter_panel') and self.chapter_panel.is_expanded and self.chapter_panel.content_area.isVisible()
+        return page_exp or chap_exp
+
+    def _sync_top_strip_visibility(self):
+        if not hasattr(self, 'top_strip'):
+            return
+        if self.top_strip.tab >= 0 and self.panels_visible and not self._any_panel_expanded():
+            self.top_strip.show()
+            self._update_top_strip_geometry()
+        else:
+            self.top_strip.hide()
+
     def _on_panel_expand_toggled(self, panel, expanded: bool):
         if expanded:
             if panel == self.page_panel and self.chapter_panel.content_area.isVisible():
                 self.chapter_panel.hide_content()
             elif panel == self.chapter_panel and self.page_panel.content_area.isVisible():
                 self.page_panel.hide_content()
-            
             panel.show_content()
             self._update_expanded_panel_height(panel)
         else:
             panel.setMinimumHeight(0)
             panel.setMaximumHeight(16777215)
             panel.updateGeometry()
-        
+
+        self._sync_top_strip_visibility()
         QTimer.singleShot(100, self._update_side_panels_geometry)
 
     def _on_video_mode_changed(self, mode: str):
@@ -642,9 +658,7 @@ class ReaderView(QWidget):
         if self.panels_visible:
             self.top_panel.show()
             self.slider_panel.show()
-            if hasattr(self, 'top_strip') and self.top_strip.tab >= 0:
-                self.top_strip.show()
-                self._update_top_strip_geometry()
+            self._sync_top_strip_visibility()
 
             QTimer.singleShot(100, self._update_side_panels_geometry)
         else:
