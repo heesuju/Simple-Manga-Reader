@@ -262,8 +262,7 @@ class ReaderView(QWidget):
         bottom_layout.setSpacing(0)
         self.bottom_container.setLayout(bottom_layout)
 
-        bottom_layout.addWidget(self.page_panel)        
-        bottom_layout.addWidget(self.chapter_panel)
+        bottom_layout.addWidget(self.page_panel)
         bottom_layout.addWidget(self.slider_panel)
                 
         main_layout.addWidget(self.bottom_container, 0, 0, Qt.AlignmentFlag.AlignBottom)
@@ -330,10 +329,10 @@ class ReaderView(QWidget):
         self.top_panel.lang_changed.connect(self._on_lang_changed)
         self.top_panel.sort_changed.connect(self._on_sort_changed)
         self.slider_panel.page_changed.connect(self.change_page_from_input)
-        self.slider_panel.chapter_changed.connect(self.set_chapter)
         self.slider_panel.page_input_clicked.connect(self._show_page_panel)
-        self.slider_panel.chapter_input_clicked.connect(self._show_chapter_panel)
         self.slider_panel.zoom_mode_changed.connect(self.set_zoom_mode)
+        self.top_panel.chapter_changed.connect(self.set_chapter)
+        self.top_panel.chapter_panel_requested.connect(self._show_chapter_panel)
         self.top_panel.fullscreen_requested.connect(self.toggle_fullscreen)
         self.top_strip = TopStripPanel(self, self.model, self.secondary_pool, self.resolve_path)
         self.top_strip.reload_requested.connect(self.reload_chapter)
@@ -343,6 +342,7 @@ class ReaderView(QWidget):
         self.top_strip.has_alts_changed.connect(self.top_panel.set_has_alts)
         self.top_strip.tab_changed.connect(self.top_panel.set_strip_tab)
         self.top_strip.tab_changed.connect(lambda _: self._sync_top_strip_visibility())
+        self.top_strip.tab_changed.connect(lambda tab: self.chapter_panel.hide_content() if tab >= 0 and self.chapter_panel.content_area.isVisible() else None)
         self.top_strip.tab_changed.connect(lambda _: QTimer.singleShot(0, self._update_side_panels_geometry))
         self.model.image_loaded.connect(self.top_strip.on_image_loaded)
         self.model.double_image_loaded.connect(lambda p1, _: self.top_strip.on_image_loaded(p1))
@@ -359,7 +359,7 @@ class ReaderView(QWidget):
         self.chapter_panel.hide_content()
 
         self.page_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.page_panel, expanded))
-        self.chapter_panel.expand_toggled.connect(lambda expanded: self._on_panel_expand_toggled(self.chapter_panel, expanded))
+        self.chapter_panel.expand_toggled.connect(lambda _: self._update_expanded_panel_height(self.chapter_panel))
         
         self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._sync_top_strip_visibility))
         self.page_panel.content_hidden.connect(lambda: QTimer.singleShot(100, self._update_side_panels_geometry))
@@ -422,7 +422,7 @@ class ReaderView(QWidget):
         # Update expanded panel height if necessary
         if self.page_panel.is_expanded:
             self._update_expanded_panel_height(self.page_panel)
-        elif self.chapter_panel.is_expanded:
+        if self.chapter_panel.content_area.isVisible():
             self._update_expanded_panel_height(self.chapter_panel)
 
         # Update alt and frame panel height to fill available vertical space
@@ -438,11 +438,13 @@ class ReaderView(QWidget):
 
         self.top_panel.raise_()
         self.bottom_container.raise_()
+        if self.chapter_panel.content_area.isVisible():
+            self.chapter_panel.raise_()
 
     def _any_panel_expanded(self) -> bool:
         page_exp = hasattr(self, 'page_panel') and self.page_panel.is_expanded and self.page_panel.content_area.isVisible()
-        chap_exp = hasattr(self, 'chapter_panel') and self.chapter_panel.is_expanded and self.chapter_panel.content_area.isVisible()
-        return page_exp or chap_exp
+        chap_vis = hasattr(self, 'chapter_panel') and self.chapter_panel.content_area.isVisible()
+        return page_exp or chap_vis
 
     def _sync_top_strip_visibility(self):
         if not hasattr(self, 'top_strip'):
@@ -455,10 +457,6 @@ class ReaderView(QWidget):
 
     def _on_panel_expand_toggled(self, panel, expanded: bool):
         if expanded:
-            if panel == self.page_panel and self.chapter_panel.content_area.isVisible():
-                self.chapter_panel.hide_content()
-            elif panel == self.chapter_panel and self.page_panel.content_area.isVisible():
-                self.page_panel.hide_content()
             panel.show_content()
             self._update_expanded_panel_height(panel)
         else:
@@ -480,11 +478,21 @@ class ReaderView(QWidget):
         total_h = self.height()
         top_h = self.top_panel.height()
         slider_h = self.slider_panel.height() if self.slider_panel.isVisible() else 0
-        
-        available_h = total_h - top_h - slider_h
-        if available_h < 100: available_h = 100
-        
-        panel.setFixedHeight(available_h)
+
+        if panel is self.chapter_panel:
+            if panel.is_expanded:
+                available_h = total_h - top_h - slider_h
+                if available_h < 100: available_h = 100
+                panel.setGeometry(0, top_h, self.width(), available_h)
+            else:
+                panel.setMaximumHeight(16777215)
+                panel.adjustSize()
+                panel.move(0, top_h)
+                panel.setFixedWidth(self.width())
+        else:
+            available_h = total_h - top_h - slider_h
+            if available_h < 100: available_h = 100
+            panel.setFixedHeight(available_h)
 
     def _on_slideshow_speed_changed(self, index: int):
         if self.model.view_mode == ViewMode.STRIP:
@@ -525,8 +533,8 @@ class ReaderView(QWidget):
         self.chapter_panel._update_chapter_selection(self.model.chapter_index)
 
         if self.slider_panel:
-            self.slider_panel.set_chapters_list(self.model.chapters, self.model.chapter_index)
-            self.slider_panel.set_chapter(self.model.chapter_index + 1, len(self.model.chapters))
+            self.top_panel.set_chapters_list(self.model.chapters, self.model.chapter_index)
+            self.top_panel.set_chapter(self.model.chapter_index + 1, len(self.model.chapters))
         self._update_slider_state()
 
         self.page_panel._update_page_selection(self.model.current_index)
@@ -1161,8 +1169,6 @@ class ReaderView(QWidget):
                 self.page_panel.toggle_expand()
                 self.page_panel.hide_content()
         else:
-            if self.chapter_panel.content_area.isVisible():
-                self.chapter_panel.hide_content()
             if self.page_panel.is_expanded:
                 self.page_panel.toggle_expand()
             self.page_panel.show_content()
@@ -1170,18 +1176,13 @@ class ReaderView(QWidget):
 
     def _show_chapter_panel(self):
         if self.chapter_panel.content_area.isVisible():
-            if not self.chapter_panel.is_expanded:
-                self.chapter_panel.toggle_expand()
-            else:
-                self.chapter_panel.toggle_expand()
-                self.chapter_panel.hide_content()
+            self.chapter_panel.hide_content()
         else:
-            if self.page_panel.content_area.isVisible():
-                self.page_panel.hide_content()
-            if self.chapter_panel.is_expanded:
-                self.chapter_panel.toggle_expand()
+            if hasattr(self, 'top_strip') and self.top_strip.tab >= 0:
+                self.top_strip.toggle(self.top_strip.tab)
             self.chapter_panel.show_content()
-            QTimer.singleShot(100, self._update_side_panels_geometry)
+            self._update_expanded_panel_height(self.chapter_panel)
+            self.chapter_panel.raise_()
 
     def _update_top_strip_geometry(self):
         if not hasattr(self, 'top_strip'):

@@ -1,4 +1,5 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QComboBox, QMenu
+from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QAction
 from src.utils.resource_utils import resource_path
@@ -25,6 +26,8 @@ class TopPanel(QWidget):
     info_clicked   = pyqtSignal()
     alts_clicked   = pyqtSignal()
     frames_clicked = pyqtSignal()
+    chapter_changed = pyqtSignal(int)
+    chapter_panel_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,6 +63,34 @@ class TopPanel(QWidget):
         self.series_label = QLabel("Series Title")
         self.series_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.series_label.setStyleSheet("background: transparent; font-weight: bold;")
+
+        self.chapter_input = QComboBox()
+        self.chapter_input.setStyleSheet("""
+            QComboBox {
+                background: transparent;
+                color: white;
+                border: none;
+                padding: 2px 4px;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView {
+                background-color: #1e1e1e;
+                color: white;
+                selection-background-color: #3e3e3e;
+                border: 1px solid rgba(255, 255, 255, 60);
+            }
+        """)
+        self.chapter_input.setFixedWidth(150)
+        self.chapter_input.activated.connect(lambda idx: self.chapter_changed.emit(idx + 1))
+        self.chapter_input.currentTextChanged.connect(lambda t: self.chapter_input.setToolTip(t))
+
+        self.chapter_panel_btn = QPushButton()
+        self.chapter_panel_btn.setIcon(QIcon(resource_path("assets/icons/expand.svg")))
+        self.chapter_panel_btn.setIconSize(QSize(14, 14))
+        self.chapter_panel_btn.setFixedSize(QSize(22, 22))
+        self.chapter_panel_btn.setStyleSheet(FLAT_BUTTON_STYLE)
+        self.chapter_panel_btn.setToolTip("Show Chapter Panel")
+        self.chapter_panel_btn.clicked.connect(self.chapter_panel_requested.emit)
 
         _strip_btn_style = FLAT_BUTTON_STYLE + """
             QPushButton { font-size: 10px; font-weight: bold; color: rgba(255,255,255,120); }
@@ -115,6 +146,8 @@ class TopPanel(QWidget):
         self.overflow_btn.clicked.connect(self._on_overflow_clicked)
 
         self._row.addWidget(self.series_label, 1)
+        self._row.addWidget(self.chapter_input)
+        self._row.addWidget(self.chapter_panel_btn)
         self._row.addWidget(self.alts_btn)
         self._row.addWidget(self.frames_btn)
         self._row.addWidget(self.info_btn)
@@ -136,6 +169,21 @@ class TopPanel(QWidget):
 
     def set_series_title(self, title: str):
         self.series_label.setText(title)
+
+    def set_chapters_list(self, chapters: list, current_index: int):
+        self.chapter_input.blockSignals(True)
+        self.chapter_input.clear()
+        for chapter in chapters:
+            name = Path(str(chapter)).name if not isinstance(chapter, dict) else chapter.get('name', Path(chapter['path']).name)
+            self.chapter_input.addItem(name)
+        self.chapter_input.setCurrentIndex(current_index)
+        self.chapter_input.setToolTip(self.chapter_input.currentText())
+        self.chapter_input.blockSignals(False)
+
+    def set_chapter(self, current: int, total: int):
+        self.chapter_input.blockSignals(True)
+        self.chapter_input.setCurrentIndex(current - 1)
+        self.chapter_input.blockSignals(False)
 
     def set_slideshow_state(self, is_playing: bool):
         self._slideshow_playing = is_playing
