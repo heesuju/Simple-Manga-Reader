@@ -48,35 +48,32 @@ class ShineLabel(QLabel):
 
         if self._shine_opacity > 0:
             painter = QPainter(self)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
-            # Use the same rounding as the image for clipping
-            path = QPainterPath()
-            path.addRoundedRect(0, 0, self.width(), self.height(), 8, 8)
-            painter.setClipPath(path)
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-            # 1. Surface Gloss (Top-down)
-            surface_gradient = QLinearGradient(0, 0, 0, self.height())
-            surface_gradient.setColorAt(0.0, QColor(255, 255, 255, int(30 * self._shine_opacity)))
-            surface_gradient.setColorAt(0.5, QColor(255, 255, 255, 0))
-            painter.fillRect(self.rect(), surface_gradient)
+                path = QPainterPath()
+                path.addRoundedRect(0, 0, self.width(), self.height(), 8, 8)
+                painter.setClipPath(path)
 
-            # 2. Corner Reflection (Top-Right)
-            reflection_gradient = QLinearGradient(self.width(), 0, 0, self.height())
-            reflection_gradient.setColorAt(0.0, QColor(255, 255, 255, int(130 * self._shine_opacity)))
-            reflection_gradient.setColorAt(0.4, QColor(255, 255, 255, int(50 * self._shine_opacity)))
-            reflection_gradient.setColorAt(0.6, QColor(255, 255, 255, 0))
-            painter.fillRect(self.rect(), reflection_gradient)
-            
-            # 3. Glass Border
-            pen_color = QColor(255, 255, 255, int(80 * self._shine_opacity))
-            painter.setPen(pen_color)
-            border_path = QPainterPath()
-            border_path.addRoundedRect(1, 1, self.width()-2, self.height()-2, 7, 7)
-            painter.setClipPath(path)
-            painter.drawPath(border_path)
+                surface_gradient = QLinearGradient(0, 0, 0, self.height())
+                surface_gradient.setColorAt(0.0, QColor(255, 255, 255, int(30 * self._shine_opacity)))
+                surface_gradient.setColorAt(0.5, QColor(255, 255, 255, 0))
+                painter.fillRect(self.rect(), surface_gradient)
 
-            painter.end()
+                reflection_gradient = QLinearGradient(self.width(), 0, 0, self.height())
+                reflection_gradient.setColorAt(0.0, QColor(255, 255, 255, int(130 * self._shine_opacity)))
+                reflection_gradient.setColorAt(0.4, QColor(255, 255, 255, int(50 * self._shine_opacity)))
+                reflection_gradient.setColorAt(0.6, QColor(255, 255, 255, 0))
+                painter.fillRect(self.rect(), reflection_gradient)
+
+                pen_color = QColor(255, 255, 255, int(80 * self._shine_opacity))
+                painter.setPen(pen_color)
+                border_path = QPainterPath()
+                border_path.addRoundedRect(1, 1, self.width()-2, self.height()-2, 7, 7)
+                painter.setClipPath(path)
+                painter.drawPath(border_path)
+            finally:
+                painter.end()
 
 
 THUMB_W = 160
