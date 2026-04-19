@@ -286,66 +286,68 @@ def apply_alt_edits(model: ReaderModel, page_obj, new_structure: dict, new_notes
     final_notes = {}
     processed_originals = set()
 
+    # Phase 1: Move ALL files across ALL categories to temp names first.
+    # This prevents a renamed file in one category from overwriting a file that
+    # hasn't yet been moved out of the same folder for a different category.
+    all_temp_moves = {}  # cat_name -> list of ((o_temp, f_temp), (o_rel, f_rel), path_str)
+
     for cat_name, file_paths in new_structure.items():
         cat_dir = alts_dir / main_stem / cat_name.lower()
         if not cat_dir.exists():
             cat_dir.mkdir(parents=True, exist_ok=True)
 
-        temp_moves = [] # List of ((orig_temp, fix_temp), (orig_old_rel, fix_old_rel), path_str)
+        temp_moves = []
         for path_str in file_paths:
             if path_str == main_file: continue
-            
+
             o_abs, f_abs, o_rel, f_rel = get_variant_pair(path_str)
-            
-            # Use original relative path as unique ID for the pair to avoid moving the same pair twice
+
             pair_id = o_rel if o_rel else path_str
             if pair_id in processed_originals:
                 continue
             processed_originals.add(pair_id)
-            
+
             o_temp = None
             if o_abs and os.path.exists(o_abs):
                 o_temp = cat_dir / f"temp_o_{uuid.uuid4().hex[:8]}{Path(o_abs).suffix}"
                 shutil.move(o_abs, o_temp)
-            
+
             f_temp = None
             if f_abs and os.path.exists(f_abs):
                 f_temp = cat_dir / f"temp_f_{uuid.uuid4().hex[:8]}{Path(f_abs).suffix}"
                 shutil.move(f_abs, f_temp)
-            
+
             if o_temp or f_temp:
                 temp_moves.append(((o_temp, f_temp), (o_rel, f_rel), path_str))
 
-        # Rename to final names
+        all_temp_moves[cat_name] = temp_moves
+
+    # Phase 2: Rename temp files to their final sequential names.
+    for cat_name, temp_moves in all_temp_moves.items():
+        cat_dir = alts_dir / main_stem / cat_name.lower()
         for i, ((o_temp, f_temp), (o_old_rel, f_old_rel), path_str) in enumerate(temp_moves):
             prefix = f"{cat_name.lower()}_{i + 1}"
-            
-            # Final original path
+
             o_final_rel = None
             if o_temp:
                 o_final_path = cat_dir / f"{prefix}{o_temp.suffix}"
                 shutil.move(o_temp, o_final_path)
                 o_final_rel = str(o_final_path.relative_to(chapter_dir)).replace('\\', '/')
-            
-            # Final fix path
+
             f_final_rel = None
             if f_temp:
-                # Retain _fix suffix if it exists
                 f_final_path = cat_dir / f"{prefix}_fix{f_temp.suffix}"
                 shutil.move(f_temp, f_final_path)
                 f_final_rel = str(f_final_path.relative_to(chapter_dir)).replace('\\', '/')
 
-            # Always store the original path in 'alts'; fix is tracked separately in 'alts_fix'
             if o_final_rel:
                 flat_new_paths.append(o_final_rel)
             elif f_final_rel:
                 flat_new_paths.append(f_final_rel)
-                
-            # Update alts_fix
+
             if o_final_rel and f_final_rel:
                 new_alts_fix[o_final_rel] = f_final_rel
-                
-            # Assign Note
+
             final_key = o_final_rel if o_final_rel else f_final_rel
             if final_key and new_notes and path_str in new_notes and new_notes[path_str].strip():
                 final_notes[final_key] = new_notes[path_str].strip()

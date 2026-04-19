@@ -710,6 +710,7 @@ class EditAltsDialog(QDialog):
         new_structure = {}
         additions = []
         moves = []
+        reorders = []
         new_notes_mapping = {}
 
         for cat_name, items in self._data.items():
@@ -720,7 +721,7 @@ class EditAltsDialog(QDialog):
                     new_notes_mapping[path] = d['note'].strip()
                 else:
                     new_notes_mapping[path] = ""
-                    
+
                 if d['is_new']:
                     additions.append((path, cat_name))
                 elif path not in self._pending_removal:
@@ -730,11 +731,19 @@ class EditAltsDialog(QDialog):
             if paths:
                 new_structure[cat_name] = paths
 
+        for cat, items in self._data.items():
+            staying = [d['path'] for d in items
+                       if not d['is_new'] and d['path'] not in self._pending_removal
+                       and d['orig_cat'] == cat]
+            orig = [p for p in self._orig_order.get(cat, []) if p in set(staying)]
+            if staying != orig:
+                reorders.append(cat)
+
         notes_changed = any(
             new_notes_mapping.get(d['path'], '') != d.get('_orig_note', '')
             for items in self._data.values() for d in items
         )
-        order_changed = any(
+        order_changed = bool(reorders) or any(
             [d['path'] for d in self._data.get(cat, [])] != self._orig_order.get(cat, [])
             for cat in self._data
         )
@@ -752,6 +761,11 @@ class EditAltsDialog(QDialog):
             lines.append(f"Moves ({len(moves)}):")
             for name, orig, dest in moves:
                 lines.append(f"  • {name}:  {orig}  →  {dest}")
+        if reorders:
+            if lines: lines.append("")
+            lines.append(f"Reorders ({len(reorders)}):")
+            for cat in reorders:
+                lines.append(f"  • {cat}")
         if removals:
             if lines: lines.append("")
             lines.append(f"Removals ({len(removals)}):")
