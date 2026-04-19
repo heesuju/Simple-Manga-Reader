@@ -586,4 +586,9 @@ class StripViewer(BaseViewer):
                               key=lambda i: abs(self.label_to_model[i] - page_index))
         if label_index is not None and 0 <= label_index < len(self.page_labels):
             label = self.page_labels[label_index]
-            self.reader_view.scroll_area.verticalScrollBar().setValue(label.y())
+            y = label.y()
+            # Qt layout may not have processed positions yet (y=0 for non-first labels).
+            # Fall back to summing label heights so the scroll is correct immediately.
+            if y == 0 and label_index > 0:
+                y = sum(lbl.height() for lbl in self.page_labels[:label_index])
+            self.reader_view.scroll_area.verticalScrollBar().setValue(y)

@@ -170,7 +170,7 @@ class MainWindow(QMainWindow):
         if chapter:
             self.current_series_has_chapters = True
             # Save the last read chapter
-            self.library_manager.update_last_read_chapter(series['id'], chapter['path'])
+            self.library_manager.update_last_read_chapter(series['id'], chapter['path'], start_page)
         else:
             self.current_series_has_chapters = False
 
@@ -231,10 +231,10 @@ class MainWindow(QMainWindow):
             model = self.reader_view.model
             chapter = model.manga_dir
             chapter_path = chapter.get('path') if isinstance(chapter, dict) else str(chapter) if chapter else None
-            if chapter_path and self.current_series:
+            if chapter_path and self.current_series and getattr(model, 'images', []):
                 page = getattr(model, 'current_index', 0)
-                images = getattr(model, 'images', [])
-                image_path = images[page].images[0] if images and page < len(images) else None
+                images = model.images
+                image_path = images[page].images[0] if page < len(images) else None
                 self.library_manager.update_last_read_chapter(self.current_series['id'], chapter_path, page, image_path)
 
         if self.current_series_has_chapters:
