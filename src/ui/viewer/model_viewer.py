@@ -64,13 +64,10 @@ class ModelViewer(BaseViewer):
             return
 
         ext = Path(path).suffix.lower()
-        mime = _MIME.get(ext, 'model/gltf-binary')
         try:
-            with open(path, 'rb') as f:
-                encoded = base64.b64encode(f.read()).decode('ascii')
-            model_url = f'data:{mime};base64,{encoded}'
+            model_url = QUrl.fromLocalFile(path).toString()
         except Exception as e:
-            print(f'ModelViewer: cannot read {path}: {e}')
+            print(f'ModelViewer: cannot process path {path}: {e}')
             return
 
         self._pending_url = model_url
