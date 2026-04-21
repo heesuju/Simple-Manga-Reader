@@ -31,7 +31,7 @@ import src.utils.app_settings as app_settings
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, ArchiveExtractionWorker, ImageInfoWorker, VideoExtractionWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, MODEL_EXTS, ArchiveExtractionWorker, ImageInfoWorker, VideoExtractionWorker
 from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
 from src.core.alt_manager import AltManager
@@ -39,6 +39,7 @@ from src.core.alt_manager import AltManager
 from src.ui.viewer.image_viewer import ImageViewer
 from src.ui.viewer.video_viewer import VideoViewer
 from src.ui.viewer.strip_viewer import StripViewer
+from src.ui.viewer.model_viewer import ModelViewer
 
 
 class ReaderView(QWidget):
@@ -105,6 +106,7 @@ class ReaderView(QWidget):
         self.image_viewer = ImageViewer(self)
         self.video_viewer = VideoViewer(self)
         self.strip_viewer = StripViewer(self)
+        self.model_viewer = ModelViewer(self)
         self.current_viewer = self.image_viewer
         self.current_viewer.set_active(True)
         
@@ -239,6 +241,21 @@ class ReaderView(QWidget):
         # Note: Connection to valueChanged handled by StripViewer now
         main_layout.addWidget(self.scroll_area, 0, 0)
         self.scroll_area.hide()
+
+        # 3D model viewer (QWebEngineView) — lazy-imported so the app still runs without pyqt6-webengine
+        self.model_web_view = None
+        try:
+            from PyQt6.QtWebEngineWidgets import QWebEngineView
+            from PyQt6.QtWebEngineCore import QWebEngineSettings
+            self.model_web_view = QWebEngineView(self)
+            _ws = self.model_web_view.page().settings()
+            _ws.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+            _ws.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+            main_layout.addWidget(self.model_web_view, 0, 0)
+            self.model_web_view.hide()
+        except Exception as e:
+            print(f'ModelViewer: QWebEngineView unavailable: {e}')
+            self.model_web_view = None
 
         # 1. Create all panel widgets first
         self.top_panel = TopPanel(self)
@@ -561,6 +578,8 @@ class ReaderView(QWidget):
                  ext = os.path.splitext(self.model.images[self.model.current_index].path)[1].lower()
                  if ext in VIDEO_EXTS:
                      new_viewer = self.video_viewer
+                 elif ext in MODEL_EXTS:
+                     new_viewer = self.model_viewer
                  else:
                      new_viewer = self.image_viewer
              else:
@@ -834,7 +853,8 @@ class ReaderView(QWidget):
         self._update_nav_buttons()
         ext = os.path.splitext(path)[1].lower()
         is_video = ext in VIDEO_EXTS
-        
+        is_model = ext in MODEL_EXTS
+
         if is_video and '|' in path:
             # Check if already extracted
             resolved = self.resolve_path(path)
@@ -849,9 +869,14 @@ class ReaderView(QWidget):
             return
 
         resolved_path = self.resolve_path(path)
-        
-        target_viewer = self.video_viewer if is_video else self.image_viewer
-        
+
+        if is_model:
+            target_viewer = self.model_viewer
+        elif is_video:
+            target_viewer = self.video_viewer
+        else:
+            target_viewer = self.image_viewer
+
         if self.model.view_mode != ViewMode.STRIP:
             self._switch_to_viewer(target_viewer)
 
@@ -1247,7 +1272,8 @@ class ReaderView(QWidget):
              
         self.image_viewer.reset()
         self.video_viewer.reset()
-        
+        self.model_viewer.reset()
+
         self.scene.clear()
         
         series_path = str(self.model.series['path'])

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a1a; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #hint {
+      position: absolute; bottom: 12px; left: 50%;
+      transform: translateX(-50%);
+      color: #555; font: 12px/1 sans-serif;
+      pointer-events: none; white-space: nowrap;
+    }
+    #error {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #f66; font: 14px sans-serif;
+      display: none; text-align: center; max-width: 80%; white-space: pre-wrap;
+    }
+    #loading {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #888; font: 14px sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="hint">Drag to orbit &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Right-drag to pan</div>
+  <div id="error"></div>
+  <div id="loading">Loading...</div>
+
+  <!-- Bundled locally — no internet required -->
+  <script src="three.min.js"></script>
+  <script src="OrbitControls.js"></script>
+  <script src="GLTFLoader.js"></script>
+
+  <script>
+    document.getElementById('loading').style.display = 'none';
+
+    var renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.insertBefore(renderer.domElement, document.body.firstChild);
+
+    var scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+
+    var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.001, 100000);
+    camera.position.set(3, 3, 3);
+
+    var controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.PAN
+    };
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    var sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    sun.position.set(5, 10, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    scene.add(sun);
+    var fill = new THREE.DirectionalLight(0x8090ff, 0.4);
+    fill.position.set(-5, 2, -5);
+    scene.add(fill);
+
+    var grid = new THREE.GridHelper(20, 40, 0x444444, 0x2a2a2a);
+    scene.add(grid);
+
+    var loader = new THREE.GLTFLoader();
+    var currentRoot = null;
+
+    window.loadModel = function(url) {
+      document.getElementById('error').style.display = 'none';
+      if (currentRoot) { scene.remove(currentRoot); currentRoot = null; }
+
+      loader.load(url, function(gltf) {
+        currentRoot = gltf.scene;
+        currentRoot.traverse(function(node) {
+          if (node.isMesh) { node.castShadow = true; node.receiveShadow = true; }
+        });
+        scene.add(currentRoot);
+
+        var box    = new THREE.Box3().setFromObject(currentRoot);
+        var size   = box.getSize(new THREE.Vector3()).length();
+        var center = box.getCenter(new THREE.Vector3());
+
+        currentRoot.position.y -= box.min.y;
+
+        // World-space center after grounding the model to y=0
+        var worldCenterY = center.y - box.min.y;
+
+        camera.near = size / 100;
+        camera.far  = size * 100;
+        camera.updateProjectionMatrix();
+        camera.position.set(center.x + size * 1.2, worldCenterY + size * 0.4, center.z + size * 1.2);
+        camera.lookAt(center.x, worldCenterY, center.z);
+
+        controls.target.set(center.x, worldCenterY, center.z);
+        controls.update();
+
+        grid.scale.setScalar(Math.max(size * 2, 1) / 20);
+      }, undefined, function(err) {
+        var el = document.getElementById('error');
+        el.textContent = 'Failed to load model:\n' + (err.message || String(err));
+        el.style.display = 'block';
+      });
+    };
+
+    window.addEventListener('resize', function() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    (function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>

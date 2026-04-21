@@ -1,4 +1,5 @@
-pyqt6
+pyqt6==6.11.0
+PyQt6-WebEngine==6.11.0
 opencv-python
 Pillow
 requests

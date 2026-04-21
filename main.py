@@ -306,6 +306,11 @@ if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
 
+    try:
+        import PyQt6.QtWebEngineWidgets  # must be imported before QApplication
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("assets/icons/app.png")))
 

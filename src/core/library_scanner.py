@@ -10,7 +10,8 @@ from src.utils.archive_utils import ARCHIVE_EXTS, ZIP_EXTS
 # prefer treating images and video separately for cover-selection vs listing
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.webp', '.bmp', '.gif', '.avif'}
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
-ALL_MEDIA_EXTS = IMAGE_EXTS.union(VIDEO_EXTS)
+MODEL_EXTS = {'.glb', '.gltf'}
+ALL_MEDIA_EXTS = IMAGE_EXTS.union(VIDEO_EXTS).union(MODEL_EXTS)
 
 def find_number(text:str)->float:
     numbers = re.findall(r'\d+(?:\.\d+)?', text)

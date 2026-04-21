@@ -1,0 +1,104 @@
+import base64
+import json
+from pathlib import Path
+
+from PyQt6.QtCore import QUrl
+
+from src.ui.viewer.base_viewer import BaseViewer
+from src.utils.resource_utils import resource_path
+
+_MIME = {'.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json'}
+
+
+class ModelViewer(BaseViewer):
+    def __init__(self, reader_view):
+        super().__init__(reader_view)
+        self._pending_url = None
+        self._page_ready = False
+
+    def set_active(self, active: bool):
+        super().set_active(active)
+        web_view = self.reader_view.model_web_view
+        if web_view is None:
+            return
+        if active:
+            self.reader_view.media_stack.hide()
+            self.reader_view.scroll_area.hide()
+            web_view.show()
+        else:
+            web_view.hide()
+            self.reader_view.media_stack.show()
+
+    def load(self, path: str):
+        web_view = self.reader_view.model_web_view
+        if web_view is None or not path:
+            return
+
+        ext = Path(path).suffix.lower()
+        mime = _MIME.get(ext, 'model/gltf-binary')
+        try:
+            with open(path, 'rb') as f:
+                encoded = base64.b64encode(f.read()).decode('ascii')
+            model_url = f'data:{mime};base64,{encoded}'
+        except Exception as e:
+            print(f'ModelViewer: cannot read {path}: {e}')
+            return
+
+        self._pending_url = model_url
+
+        if self._page_ready:
+            self._inject(web_view)
+        else:
+            # Disconnect any previous connection before reconnecting
+            try:
+                web_view.loadFinished.disconnect(self._on_load_finished)
+            except Exception:
+                pass
+            web_view.loadFinished.connect(self._on_load_finished)
+            html_path = resource_path('src/ui/viewer/model_viewer.html')
+            web_view.setUrl(QUrl.fromLocalFile(html_path))
+
+    def _inject(self, web_view):
+        if self._pending_url is None:
+            return
+        # Poll until the module script has assigned window.loadModel, then call it.
+        # loadFinished fires when the DOM is ready, but CDN module imports finish later.
+        url_json = json.dumps(self._pending_url)
+        js = (
+            '(function poll(){'
+            '  if(typeof window.loadModel==="function"){'
+            f'    window.loadModel({url_json});'
+            '  }else{'
+            '    setTimeout(poll,50);'
+            '  }'
+            '})();'
+        )
+        web_view.page().runJavaScript(js)
+        self._pending_url = None
+
+    def _on_load_finished(self, ok: bool):
+        web_view = self.reader_view.model_web_view
+        try:
+            web_view.loadFinished.disconnect(self._on_load_finished)
+        except Exception:
+            pass
+        if ok:
+            self._page_ready = True
+            self._inject(web_view)
+
+    def reset(self):
+        web_view = self.reader_view.model_web_view
+        if web_view:
+            try:
+                web_view.loadFinished.disconnect(self._on_load_finished)
+            except Exception:
+                pass
+            web_view.setHtml('')
+        self._page_ready = False
+        self._pending_url = None
+
+    def zoom(self, mode: str):
+        pass
+
+    def cleanup(self):
+        self.reset()
