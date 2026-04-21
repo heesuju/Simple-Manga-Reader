@@ -108,8 +108,10 @@ class ReaderView(QWidget):
         self.strip_viewer = StripViewer(self)
         self.model_viewer = ModelViewer(self)
         self.model_viewer.animations_loaded.connect(self._on_model_animations_loaded)
+        self.model_viewer.meshes_loaded.connect(self.top_strip.show_meshes)
         self.top_strip.anim_selected.connect(self.model_viewer.play_animation)
         self.top_strip.anim_paused.connect(self.model_viewer.set_anim_paused)
+        self.top_strip.mesh_toggled.connect(self.model_viewer.set_mesh_visible)
         self.current_viewer = self.image_viewer
         self.current_viewer.set_active(True)
 
@@ -837,12 +839,8 @@ class ReaderView(QWidget):
         self._update_image_info([path])
 
     def _on_model_animations_loaded(self, names: list):
-        if names:
-            self.top_strip.show_animations(names)
-            self.top_panel.set_has_animations(True)
-        else:
-            self.top_strip.hide_animations()
-            self.top_panel.set_has_animations(False)
+        self.top_strip.show_animations(names)
+        self.top_panel.set_has_animations(True)
 
     def resolve_path(self, path: str) -> str:
         """Resolves a virtual archive path to a real local file path if it exists in cache."""
@@ -887,10 +885,12 @@ class ReaderView(QWidget):
         elif is_video:
             target_viewer = self.video_viewer
             self.top_strip.hide_animations()
+            self.top_strip.hide_meshes()
             self.top_panel.set_has_animations(False)
         else:
             target_viewer = self.image_viewer
             self.top_strip.hide_animations()
+            self.top_strip.hide_meshes()
             self.top_panel.set_has_animations(False)
 
         if self.model.view_mode != ViewMode.STRIP:

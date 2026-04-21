@@ -93,15 +93,53 @@
       if (activeAction) activeAction.paused = paused;
     };
 
+    window.setMeshVisible = function(name, visible) {
+      if (!currentRoot) return;
+      currentRoot.traverse(function(node) {
+        if (node.isMesh && node.name === name) node.visible = visible;
+      });
+    };
+
+    function disposeNode(node) {
+      if (node.geometry) node.geometry.dispose();
+      if (node.material) {
+        var mats = Array.isArray(node.material) ? node.material : [node.material];
+        for (var i = 0; i < mats.length; i++) {
+          if (mats[i].map) mats[i].map.dispose();
+          mats[i].dispose();
+        }
+      }
+    }
+
+    function disposeHierarchy(root) {
+      if (!root) return;
+      root.traverse(function(node) {
+        if (node.isMesh) disposeNode(node);
+      });
+    }
+
+    var loadToken = 0;
+
     window.loadModel = function(url) {
       document.getElementById('error').style.display = 'none';
       if (mixer) { mixer.stopAllAction(); mixer = null; }
-      if (currentRoot) { scene.remove(currentRoot); currentRoot = null; }
+      if (currentRoot) { 
+        scene.remove(currentRoot);
+        disposeHierarchy(currentRoot);
+        currentRoot = null; 
+      }
       clips = [];
       activeAction = null;
       isPaused = false;
 
+      var currentToken = ++loadToken;
+
       loader.load(url, function(gltf) {
+        if (currentToken !== loadToken) {
+          disposeHierarchy(gltf.scene);
+          return;
+        }
+
         currentRoot = gltf.scene;
         currentRoot.traverse(function(node) {
           if (node.isMesh) { node.castShadow = true; node.receiveShadow = true; }
@@ -115,8 +153,8 @@
         currentRoot.position.y -= box.min.y;
         var worldCenterY = center.y - box.min.y;
 
-        camera.near = size / 100;
-        camera.far  = size * 100;
+        camera.near = size / 1000;
+        camera.far  = size * 1000;
         camera.updateProjectionMatrix();
         camera.position.set(center.x + size * 1.2, worldCenterY + size * 0.4, center.z + size * 1.2);
         camera.lookAt(center.x, worldCenterY, center.z);
@@ -126,14 +164,23 @@
         clips = gltf.animations || [];
         if (clips.length > 0) {
           mixer = new THREE.AnimationMixer(currentRoot);
-          var names = clips.map(function(c, i) { return c.name || ('Animation ' + (i + 1)); });
-          // Notify Python side via console — intercepted by ModelPage
-          console.log('MODEL_ANIMATIONS:' + JSON.stringify(names));
+          var animNames = clips.map(function(c, i) { return c.name || ('Animation ' + (i + 1)); });
+          console.log('MODEL_ANIMATIONS:' + JSON.stringify(animNames));
           window.playAnimation(0);
         } else {
           console.log('MODEL_ANIMATIONS:[]');
         }
+
+        var meshNames = [];
+        currentRoot.traverse(function(node) {
+          if (node.isMesh && node.name && meshNames.indexOf(node.name) === -1) {
+            meshNames.push(node.name);
+          }
+        });
+        console.log('MODEL_MESHES:' + JSON.stringify(meshNames));
       }, undefined, function(err) {
+        if (currentToken !== loadToken) return;
+
         var el = document.getElementById('error');
         el.textContent = 'Failed to load model:\n' + (err.message || String(err));
         el.style.display = 'block';

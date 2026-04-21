@@ -151,7 +151,7 @@ class TopStripPanel(QWidget):
     """Horizontal strip below the top panel: alt thumbnails (tab 0) or image info (tab 1)."""
     FIXED_HEIGHT  = 125
     HEIGHT_INFO   = 26
-    HEIGHT_ANIM   = 42
+    HEIGHT_ANIM   = 76
     HEIGHT_THUMBS = 91
     HEIGHT_CATS   = 30
 
@@ -161,6 +161,7 @@ class TopStripPanel(QWidget):
     seek_requested   = pyqtSignal(int)
     anim_selected    = pyqtSignal(int)   # animation clip index chosen
     anim_paused      = pyqtSignal(bool)  # True=pause, False=resume
+    mesh_toggled     = pyqtSignal(str, bool)  # mesh name, visible
 
     _BTN_STYLE = """
         QPushButton {
@@ -364,13 +365,20 @@ class TopStripPanel(QWidget):
 
         self._stack.addWidget(frames_page)
 
-        # ── Page 3: animations ────────────────────────────────────────────────
+        # ── Page 3: animations + mesh toggles ────────────────────────────────
         anim_page = QWidget()
         anim_page.setStyleSheet("background: transparent;")
-        anim_l = QHBoxLayout(anim_page)
-        anim_l.setContentsMargins(12, 0, 12, 0)
-        anim_l.setSpacing(8)
-        anim_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        anim_vl = QVBoxLayout(anim_page)
+        anim_vl.setContentsMargins(0, 4, 0, 4)
+        anim_vl.setSpacing(4)
+
+        # Row 1: animation controls
+        anim_row = QWidget()
+        anim_row.setStyleSheet("background: transparent;")
+        anim_rl = QHBoxLayout(anim_row)
+        anim_rl.setContentsMargins(12, 0, 12, 0)
+        anim_rl.setSpacing(8)
+        anim_rl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         anim_label = QLabel("Animation")
         anim_label.setStyleSheet("color: rgba(255,255,255,120); font-size: 10px; background: transparent;")
@@ -405,9 +413,37 @@ class TopStripPanel(QWidget):
         self._anim_play_btn.setToolTip("Pause / Resume")
         self._anim_play_btn.clicked.connect(self._on_anim_play_clicked)
 
-        anim_l.addWidget(anim_label)
-        anim_l.addWidget(self._anim_combo)
-        anim_l.addWidget(self._anim_play_btn)
+        anim_rl.addWidget(anim_label)
+        anim_rl.addWidget(self._anim_combo)
+        anim_rl.addWidget(self._anim_play_btn)
+        anim_vl.addWidget(anim_row)
+
+        # Row 2: mesh visibility chips
+        self._mesh_row = QWidget()
+        self._mesh_row.setStyleSheet("background: transparent;")
+        mesh_rl = QHBoxLayout(self._mesh_row)
+        mesh_rl.setContentsMargins(12, 0, 12, 0)
+        mesh_rl.setSpacing(6)
+
+        mesh_label = QLabel("Meshes")
+        mesh_label.setStyleSheet("color: rgba(255,255,255,120); font-size: 10px; background: transparent;")
+        mesh_label.setFixedWidth(48)
+
+        self._mesh_chips_scroll = HorizontalScrollArea()
+        self._mesh_chips_scroll.setFixedHeight(28)
+        self._mesh_chips_content = QWidget()
+        self._mesh_chips_content.setStyleSheet("background: transparent;")
+        self._mesh_chips_hl = QHBoxLayout(self._mesh_chips_content)
+        self._mesh_chips_hl.setContentsMargins(0, 0, 0, 0)
+        self._mesh_chips_hl.setSpacing(4)
+        self._mesh_chips_hl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._mesh_chips_scroll.setWidget(self._mesh_chips_content)
+        self._mesh_chip_btns: List[QPushButton] = []
+
+        mesh_rl.addWidget(mesh_label)
+        mesh_rl.addWidget(self._mesh_chips_scroll, 1)
+        self._mesh_row.hide()
+        anim_vl.addWidget(self._mesh_row)
 
         self._stack.addWidget(anim_page)
 
@@ -533,12 +569,12 @@ class TopStripPanel(QWidget):
         self._anim_combo.clear()
         self._anim_combo.addItem("Static Pose")
         self._anim_combo.addItems(names)
-        # Select first real animation by default
         if names:
             self._anim_combo.setCurrentIndex(1)
         self._anim_combo.blockSignals(False)
         self._anim_play_btn.setChecked(False)
         self._anim_play_btn.setText("⏸")
+        self._anim_play_btn.setVisible(bool(names))
         if self._tab != 3:
             self._tab = 3
             self._stack.setCurrentIndex(3)
@@ -556,6 +592,33 @@ class TopStripPanel(QWidget):
         paused = checked
         self._anim_play_btn.setText("▶" if paused else "⏸")
         self.anim_paused.emit(paused)
+
+    def show_meshes(self, names: list):
+        for btn in self._mesh_chip_btns:
+            btn.deleteLater()
+        self._mesh_chip_btns.clear()
+
+        if not names:
+            self._mesh_row.hide()
+            return
+
+        for name in names:
+            btn = QPushButton(name)
+            btn.setCheckable(True)
+            btn.setChecked(True)
+            btn.setFixedHeight(22)
+            btn.setStyleSheet(self._CHIP_STYLE)
+            btn.clicked.connect(lambda checked, n=name: self.mesh_toggled.emit(n, checked))
+            self._mesh_chips_hl.addWidget(btn)
+            self._mesh_chip_btns.append(btn)
+
+        self._mesh_row.show()
+
+    def hide_meshes(self):
+        for btn in self._mesh_chip_btns:
+            btn.deleteLater()
+        self._mesh_chip_btns.clear()
+        self._mesh_row.hide()
 
     def _update_frames_ui(self, initial_frames: dict = None):
         self._clear_frame_thumbs()
