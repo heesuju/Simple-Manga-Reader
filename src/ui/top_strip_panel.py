@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Set
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea,
-    QFrame, QStackedWidget, QPushButton, QMenu, QApplication,
+    QFrame, QStackedWidget, QPushButton, QMenu, QApplication, QComboBox,
 )
 from PyQt6.QtGui import QPixmap, QIcon, QImage
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
@@ -151,13 +151,16 @@ class TopStripPanel(QWidget):
     """Horizontal strip below the top panel: alt thumbnails (tab 0) or image info (tab 1)."""
     FIXED_HEIGHT  = 125
     HEIGHT_INFO   = 26
+    HEIGHT_ANIM   = 42
     HEIGHT_THUMBS = 91
     HEIGHT_CATS   = 30
 
     has_alts_changed = pyqtSignal(bool)
-    tab_changed      = pyqtSignal(int)   # -1=hidden, 0=alts, 1=info, 2=frames
+    tab_changed      = pyqtSignal(int)   # -1=hidden, 0=alts, 1=info, 2=frames, 3=anim
     reload_requested = pyqtSignal()
     seek_requested   = pyqtSignal(int)
+    anim_selected    = pyqtSignal(int)   # animation clip index chosen
+    anim_paused      = pyqtSignal(bool)  # True=pause, False=resume
 
     _BTN_STYLE = """
         QPushButton {
@@ -361,6 +364,53 @@ class TopStripPanel(QWidget):
 
         self._stack.addWidget(frames_page)
 
+        # ── Page 3: animations ────────────────────────────────────────────────
+        anim_page = QWidget()
+        anim_page.setStyleSheet("background: transparent;")
+        anim_l = QHBoxLayout(anim_page)
+        anim_l.setContentsMargins(12, 0, 12, 0)
+        anim_l.setSpacing(8)
+        anim_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        anim_label = QLabel("Animation")
+        anim_label.setStyleSheet("color: rgba(255,255,255,120); font-size: 10px; background: transparent;")
+
+        self._anim_combo = QComboBox()
+        self._anim_combo.setMinimumWidth(160)
+        self._anim_combo.setMaximumWidth(320)
+        self._anim_combo.setFixedHeight(24)
+        self._anim_combo.setStyleSheet("""
+            QComboBox {
+                background: rgba(255,255,255,20);
+                color: white;
+                border: 1px solid rgba(255,255,255,40);
+                border-radius: 3px;
+                padding: 0px 6px;
+                font-size: 11px;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView {
+                background: #2a2a2a;
+                color: white;
+                selection-background-color: rgba(74,134,232,180);
+            }
+        """)
+        self._anim_combo.currentIndexChanged.connect(lambda i: self.anim_selected.emit(i - 1))
+
+        self._anim_play_btn = QPushButton("⏸")
+        self._anim_play_btn.setFixedSize(28, 24)
+        self._anim_play_btn.setCheckable(True)
+        self._anim_play_btn.setChecked(False)
+        self._anim_play_btn.setStyleSheet(self._BTN_STYLE)
+        self._anim_play_btn.setToolTip("Pause / Resume")
+        self._anim_play_btn.clicked.connect(self._on_anim_play_clicked)
+
+        anim_l.addWidget(anim_label)
+        anim_l.addWidget(self._anim_combo)
+        anim_l.addWidget(self._anim_play_btn)
+
+        self._stack.addWidget(anim_page)
+
         root.addWidget(self._stack)
         self.hide()
 
@@ -378,7 +428,11 @@ class TopStripPanel(QWidget):
     def strip_height(self) -> int:
         if not self.isVisible():
             return 0
-        return self.HEIGHT_INFO if self._tab == 1 else self.HEIGHT
+        if self._tab == 1:
+            return self.HEIGHT_INFO
+        if self._tab == 3:
+            return self.HEIGHT_ANIM
+        return self.HEIGHT
 
     def toggle(self, tab: int):
         if self._tab == tab:
@@ -398,7 +452,12 @@ class TopStripPanel(QWidget):
 
     def update_geometry(self, top_h: int, width: int):
         if self._tab >= 0 and self.isVisible():
-            h = self.HEIGHT_INFO if self._tab == 1 else self.HEIGHT
+            if self._tab == 1:
+                h = self.HEIGHT_INFO
+            elif self._tab == 3:
+                h = self.HEIGHT_ANIM
+            else:
+                h = self.HEIGHT
             self.setGeometry(0, top_h, width, h)
             self.raise_()
         else:
@@ -466,6 +525,37 @@ class TopStripPanel(QWidget):
         self._current_frame_page = 0
         self._needs_frame_load = False
         self._clear_frame_thumbs()
+
+    # ── Animations ────────────────────────────────────────────────────────────
+
+    def show_animations(self, names: list):
+        self._anim_combo.blockSignals(True)
+        self._anim_combo.clear()
+        self._anim_combo.addItem("Static Pose")
+        self._anim_combo.addItems(names)
+        # Select first real animation by default
+        if names:
+            self._anim_combo.setCurrentIndex(1)
+        self._anim_combo.blockSignals(False)
+        self._anim_play_btn.setChecked(False)
+        self._anim_play_btn.setText("⏸")
+        if self._tab != 3:
+            self._tab = 3
+            self._stack.setCurrentIndex(3)
+            self.show()
+            self.raise_()
+            self.tab_changed.emit(3)
+
+    def hide_animations(self):
+        if self._tab == 3:
+            self._tab = -1
+            self.hide()
+            self.tab_changed.emit(-1)
+
+    def _on_anim_play_clicked(self, checked: bool):
+        paused = checked
+        self._anim_play_btn.setText("▶" if paused else "⏸")
+        self.anim_paused.emit(paused)
 
     def _update_frames_ui(self, initial_frames: dict = None):
         self._clear_frame_thumbs()

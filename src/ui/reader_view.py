@@ -107,9 +107,12 @@ class ReaderView(QWidget):
         self.video_viewer = VideoViewer(self)
         self.strip_viewer = StripViewer(self)
         self.model_viewer = ModelViewer(self)
+        self.model_viewer.animations_loaded.connect(self._on_model_animations_loaded)
+        self.top_strip.anim_selected.connect(self.model_viewer.play_animation)
+        self.top_strip.anim_paused.connect(self.model_viewer.set_anim_paused)
         self.current_viewer = self.image_viewer
         self.current_viewer.set_active(True)
-        
+
         # Connect signals that depend on viewers
         self.video_control_panel.mode_changed.connect(self._on_video_mode_changed)
         self.top_strip.seek_requested.connect(self.video_viewer._seek_to_frame)
@@ -356,6 +359,7 @@ class ReaderView(QWidget):
         self.top_panel.alts_clicked.connect(lambda: self.top_strip.toggle(0))
         self.top_panel.info_clicked.connect(lambda: self.top_strip.toggle(1))
         self.top_panel.frames_clicked.connect(lambda: self.top_strip.toggle(2))
+        self.top_panel.anim_clicked.connect(lambda: self.top_strip.toggle(3))
         self.top_strip.has_alts_changed.connect(self.top_panel.set_has_alts)
         self.top_strip.tab_changed.connect(self.top_panel.set_strip_tab)
         self.top_strip.tab_changed.connect(lambda _: self._sync_top_strip_visibility())
@@ -832,6 +836,14 @@ class ReaderView(QWidget):
         self.update_top_panel()
         self._update_image_info([path])
 
+    def _on_model_animations_loaded(self, names: list):
+        if names:
+            self.top_strip.show_animations(names)
+            self.top_panel.set_has_animations(True)
+        else:
+            self.top_strip.hide_animations()
+            self.top_panel.set_has_animations(False)
+
     def resolve_path(self, path: str) -> str:
         """Resolves a virtual archive path to a real local file path if it exists in cache."""
         if not path or '|' not in path:
@@ -874,8 +886,12 @@ class ReaderView(QWidget):
             target_viewer = self.model_viewer
         elif is_video:
             target_viewer = self.video_viewer
+            self.top_strip.hide_animations()
+            self.top_panel.set_has_animations(False)
         else:
             target_viewer = self.image_viewer
+            self.top_strip.hide_animations()
+            self.top_panel.set_has_animations(False)
 
         if self.model.view_mode != ViewMode.STRIP:
             self._switch_to_viewer(target_viewer)

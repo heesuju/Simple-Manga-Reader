@@ -26,6 +26,7 @@ class TopPanel(QWidget):
     info_clicked   = pyqtSignal()
     alts_clicked   = pyqtSignal()
     frames_clicked = pyqtSignal()
+    anim_clicked   = pyqtSignal()
     chapter_changed = pyqtSignal(int)
     chapter_panel_requested = pyqtSignal()
 
@@ -114,6 +115,14 @@ class TopPanel(QWidget):
         self.frames_btn.clicked.connect(self.frames_clicked.emit)
         self.frames_btn.hide()
 
+        self.anim_btn = QPushButton("ANIM")
+        self.anim_btn.setFixedSize(QSize(36, 26))
+        self.anim_btn.setProperty("active", "false")
+        self.anim_btn.setStyleSheet(_strip_btn_style)
+        self.anim_btn.setToolTip("Toggle Animations")
+        self.anim_btn.clicked.connect(self.anim_clicked.emit)
+        self.anim_btn.hide()
+
         self.info_btn = QPushButton()
         self.info_btn.setIcon(QIcon(resource_path("assets/icons/info.svg")))
         self.info_btn.setIconSize(ICON_SIZE)
@@ -150,6 +159,7 @@ class TopPanel(QWidget):
         self._row.addWidget(self.chapter_panel_btn)
         self._row.addWidget(self.alts_btn)
         self._row.addWidget(self.frames_btn)
+        self._row.addWidget(self.anim_btn)
         self._row.addWidget(self.info_btn)
         self._row.addWidget(self.fullscreen_button)
         self._row.addWidget(self.overflow_btn)
@@ -209,9 +219,12 @@ class TopPanel(QWidget):
     def set_has_frames(self, has: bool):
         self.frames_btn.setVisible(has)
 
+    def set_has_animations(self, has: bool):
+        self.anim_btn.setVisible(has)
+
     def set_strip_tab(self, tab: int):
-        """Update active state of strip toggle buttons. tab: 0=alts, 1=info, 2=frames, -1=none."""
-        for btn, idx in ((self.alts_btn, 0), (self.info_btn, 1), (self.frames_btn, 2)):
+        """Update active state of strip toggle buttons. tab: 0=alts, 1=info, 2=frames, 3=anim, -1=none."""
+        for btn, idx in ((self.alts_btn, 0), (self.info_btn, 1), (self.frames_btn, 2), (self.anim_btn, 3)):
             btn.setProperty("active", "true" if tab == idx else "false")
             btn.style().unpolish(btn)
             btn.style().polish(btn)

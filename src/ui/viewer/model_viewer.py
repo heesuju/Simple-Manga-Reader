@@ -2,7 +2,8 @@ import base64
 import json
 from pathlib import Path
 
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import QUrl, pyqtSignal
+from PyQt6.QtWebEngineCore import QWebEnginePage
 
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.resource_utils import resource_path
@@ -10,11 +11,32 @@ from src.utils.resource_utils import resource_path
 _MIME = {'.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json'}
 
 
+class ModelPage(QWebEnginePage):
+    """QWebEnginePage subclass that intercepts MODEL_ANIMATIONS console messages."""
+    animations_loaded = pyqtSignal(list)
+
+    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceId):
+        if message.startswith('MODEL_ANIMATIONS:'):
+            try:
+                names = json.loads(message[len('MODEL_ANIMATIONS:'):])
+                self.animations_loaded.emit(names)
+            except Exception:
+                pass
+
+
 class ModelViewer(BaseViewer):
+    animations_loaded = pyqtSignal(list)
+
     def __init__(self, reader_view):
         super().__init__(reader_view)
         self._pending_url = None
         self._page_ready = False
+
+        web_view = reader_view.model_web_view
+        if web_view is not None:
+            page = ModelPage(web_view)
+            web_view.setPage(page)
+            page.animations_loaded.connect(self.animations_loaded)
 
     def set_active(self, active: bool):
         super().set_active(active)
@@ -49,7 +71,6 @@ class ModelViewer(BaseViewer):
         if self._page_ready:
             self._inject(web_view)
         else:
-            # Disconnect any previous connection before reconnecting
             try:
                 web_view.loadFinished.disconnect(self._on_load_finished)
             except Exception:
@@ -61,8 +82,6 @@ class ModelViewer(BaseViewer):
     def _inject(self, web_view):
         if self._pending_url is None:
             return
-        # Poll until the module script has assigned window.loadModel, then call it.
-        # loadFinished fires when the DOM is ready, but CDN module imports finish later.
         url_json = json.dumps(self._pending_url)
         js = (
             '(function poll(){'
@@ -85,6 +104,19 @@ class ModelViewer(BaseViewer):
         if ok:
             self._page_ready = True
             self._inject(web_view)
+
+    def play_animation(self, index: int):
+        web_view = self.reader_view.model_web_view
+        if web_view:
+            web_view.page().runJavaScript(f'window.playAnimation({index})')
+            self.reader_view.top_strip._anim_play_btn.setChecked(False)
+            self.reader_view.top_strip._anim_play_btn.setText("⏸")
+
+    def set_anim_paused(self, paused: bool):
+        web_view = self.reader_view.model_web_view
+        if web_view:
+            val = 'true' if paused else 'false'
+            web_view.page().runJavaScript(f'window.setAnimPaused({val})')
 
     def reset(self):
         web_view = self.reader_view.model_web_view
