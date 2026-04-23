@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Set
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea,
-    QFrame, QStackedWidget, QPushButton, QMenu, QApplication, QComboBox,
+    QFrame, QStackedWidget, QPushButton, QMenu, QApplication, QComboBox, QSlider
 )
 from PyQt6.QtGui import QPixmap, QIcon, QImage
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
@@ -151,7 +151,7 @@ class TopStripPanel(QWidget):
     """Horizontal strip below the top panel: alt thumbnails (tab 0) or image info (tab 1)."""
     FIXED_HEIGHT  = 125
     HEIGHT_INFO   = 26
-    HEIGHT_ANIM   = 76
+    HEIGHT_ANIM   = 104
     HEIGHT_THUMBS = 91
     HEIGHT_CATS   = 30
 
@@ -162,6 +162,7 @@ class TopStripPanel(QWidget):
     anim_selected    = pyqtSignal(int)   # animation clip index chosen
     anim_paused      = pyqtSignal(bool)  # True=pause, False=resume
     mesh_toggled     = pyqtSignal(str, bool)  # mesh name, visible
+    brightness_changed = pyqtSignal(float)
 
     _BTN_STYLE = """
         QPushButton {
@@ -444,6 +445,31 @@ class TopStripPanel(QWidget):
         mesh_rl.addWidget(self._mesh_chips_scroll, 1)
         self._mesh_row.hide()
         anim_vl.addWidget(self._mesh_row)
+
+        self._light_row = QWidget()
+        self._light_row.setStyleSheet("background: transparent;")
+        light_rl = QHBoxLayout(self._light_row)
+        light_rl.setContentsMargins(12, 0, 12, 0)
+        light_rl.setSpacing(8)
+
+        light_label = QLabel("Brightness")
+        light_label.setStyleSheet("color: rgba(255,255,255,120); font-size: 10px; background: transparent;")
+        light_label.setFixedWidth(56)
+
+        self._bright_slider = QSlider(Qt.Orientation.Horizontal)
+        self._bright_slider.setRange(0, 200)
+        self._bright_slider.setValue(100)
+        self._bright_slider.setStyleSheet("""
+            QSlider { background: transparent; }
+            QSlider::groove:horizontal { background: rgba(255,255,255,40); height: 4px; border-radius: 2px; }
+            QSlider::sub-page:horizontal { background: rgba(255,255,255,100); border-radius: 2px; }
+            QSlider::handle:horizontal { background: white; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
+        """)
+        self._bright_slider.valueChanged.connect(lambda v: self.brightness_changed.emit(v / 100.0))
+
+        light_rl.addWidget(light_label)
+        light_rl.addWidget(self._bright_slider)
+        anim_vl.addWidget(self._light_row)
 
         self._stack.addWidget(anim_page)
 

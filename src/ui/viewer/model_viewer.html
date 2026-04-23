@@ -67,11 +67,15 @@
       RIGHT: THREE.MOUSE.PAN
     };
 
-    var hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2.0);
+    var BASE_HEMI = 2.0;
+    var BASE_SUN = 1.5;
+    var BASE_HEADLAMP = 1.5;
+
+    var hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, BASE_HEMI);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
 
-    var sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    var sun = new THREE.DirectionalLight(0xffffff, BASE_SUN);
     sun.position.set(5, 10, 5);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -79,9 +83,15 @@
 
     // Attach a headlamp to the camera so the side you're viewing is always lit
     scene.add(camera);
-    var headlamp = new THREE.DirectionalLight(0xffffff, 1.5);
+    var headlamp = new THREE.DirectionalLight(0xffffff, BASE_HEADLAMP);
     headlamp.position.set(0, 0, 1);
     camera.add(headlamp);
+
+    window.setLightBrightness = function(multiplier) {
+      hemiLight.intensity = BASE_HEMI * multiplier;
+      sun.intensity = BASE_SUN * multiplier;
+      headlamp.intensity = BASE_HEADLAMP * multiplier;
+    };
 
     var loader = new THREE.GLTFLoader();
     var currentRoot = null;

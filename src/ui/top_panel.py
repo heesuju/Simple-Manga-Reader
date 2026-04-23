@@ -115,11 +115,11 @@ class TopPanel(QWidget):
         self.frames_btn.clicked.connect(self.frames_clicked.emit)
         self.frames_btn.hide()
 
-        self.anim_btn = QPushButton("ANIM")
+        self.anim_btn = QPushButton("3D")
         self.anim_btn.setFixedSize(QSize(36, 26))
         self.anim_btn.setProperty("active", "false")
         self.anim_btn.setStyleSheet(_strip_btn_style)
-        self.anim_btn.setToolTip("Toggle Animations")
+        self.anim_btn.setToolTip("Toggle 3D Settings")
         self.anim_btn.clicked.connect(self.anim_clicked.emit)
         self.anim_btn.hide()
 

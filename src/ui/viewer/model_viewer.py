@@ -129,6 +129,11 @@ class ModelViewer(BaseViewer):
             val = 'true' if paused else 'false'
             web_view.page().runJavaScript(f'window.setAnimPaused({val})')
 
+    def set_brightness(self, value: float):
+        web_view = self.reader_view.model_web_view
+        if web_view:
+            web_view.page().runJavaScript(f'window.setLightBrightness({value})')
+
     def reset(self):
         web_view = self.reader_view.model_web_view
         if web_view:

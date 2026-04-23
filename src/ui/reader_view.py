@@ -112,6 +112,7 @@ class ReaderView(QWidget):
         self.top_strip.anim_selected.connect(self.model_viewer.play_animation)
         self.top_strip.anim_paused.connect(self.model_viewer.set_anim_paused)
         self.top_strip.mesh_toggled.connect(self.model_viewer.set_mesh_visible)
+        self.top_strip.brightness_changed.connect(self.model_viewer.set_brightness)
         self.current_viewer = self.image_viewer
         self.current_viewer.set_active(True)
 
