@@ -15,6 +15,7 @@ from src.core.alt_manager import AltManager
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.avif'}
 MODEL_EXTS = {'.glb', '.gltf'}
+L2D_EXTS = {'.skel', '.json', '.atlas'}
 
 class ArchiveExtractionSignals(QObject):
     finished = pyqtSignal(str, bool) # archive_path, success
@@ -78,7 +79,7 @@ class AnimationFrameLoaderWorker(QRunnable):
         ext = Path(internal if internal else path_lower).suffix.lower()
 
         # Skip video and 3D model formats (handled by their own viewers)
-        if ext in VIDEO_EXTS or ext in MODEL_EXTS:
+        if ext in VIDEO_EXTS or ext in MODEL_EXTS or ext in L2D_EXTS:
             result = {"path": self.path, "frames": [], "duration": duration}
             self.signals.finished.emit(result)
             return
@@ -336,7 +337,7 @@ class ChapterLoaderWorker(QRunnable):
             return []
             
         path_str = str(self.manga_dir)
-        valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS) + list(MODEL_EXTS))
+        valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS) + list(MODEL_EXTS) + list(L2D_EXTS))
         from src.utils.archive_utils import SevenZipHandler
         import zipfile
 

@@ -1,4 +1,3 @@
-import base64
 import json
 from pathlib import Path
 
@@ -8,30 +7,22 @@ from PyQt6.QtWebEngineCore import QWebEnginePage
 from src.ui.viewer.base_viewer import BaseViewer
 from src.utils.resource_utils import resource_path
 
-_MIME = {'.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json'}
 
-
-class ModelPage(QWebEnginePage):
-    """QWebEnginePage subclass that intercepts MODEL_ANIMATIONS/MODEL_MESHES console messages."""
+class L2DPage(QWebEnginePage):
+    """QWebEnginePage subclass that intercepts MODEL_ANIMATIONS console messages."""
     animations_loaded = pyqtSignal(list)
-    meshes_loaded     = pyqtSignal(list)
 
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceId):
+        print(f"L2D_JS [{lineNumber}]: {message}")
         if message.startswith('MODEL_ANIMATIONS:'):
             try:
                 self.animations_loaded.emit(json.loads(message[len('MODEL_ANIMATIONS:'):]))
             except Exception:
                 pass
-        elif message.startswith('MODEL_MESHES:'):
-            try:
-                self.meshes_loaded.emit(json.loads(message[len('MODEL_MESHES:'):]))
-            except Exception:
-                pass
 
 
-class ModelViewer(BaseViewer):
+class L2DViewer(BaseViewer):
     animations_loaded = pyqtSignal(list)
-    meshes_loaded     = pyqtSignal(list)
 
     def __init__(self, reader_view):
         super().__init__(reader_view)
@@ -40,7 +31,7 @@ class ModelViewer(BaseViewer):
 
         web_view = reader_view.model_web_view
         if web_view is not None:
-            self.page = ModelPage(web_view)
+            self.page = L2DPage(web_view)
 
     def set_active(self, active: bool):
         super().set_active(active)
@@ -53,13 +44,12 @@ class ModelViewer(BaseViewer):
             
             if web_view.page() is not self.page:
                 web_view.setPage(self.page)
+                # Disconnect any old connections first
                 try:
                     self.page.animations_loaded.disconnect(self.animations_loaded)
-                    self.page.meshes_loaded.disconnect(self.meshes_loaded)
                 except Exception:
                     pass
                 self.page.animations_loaded.connect(self.animations_loaded)
-                self.page.meshes_loaded.connect(self.meshes_loaded)
                 self._page_ready = False
                 
             web_view.show()
@@ -72,16 +62,15 @@ class ModelViewer(BaseViewer):
         if web_view is None or not path:
             return
 
-        ext = Path(path).suffix.lower()
         try:
             model_url = QUrl.fromLocalFile(path).toString()
         except Exception as e:
-            print(f'ModelViewer: cannot process path {path}: {e}')
+            print(f'L2DViewer: cannot process path {path}: {e}')
             return
 
         self._pending_url = model_url
 
-        if self._page_ready:
+        if self._page_ready and web_view.page() is self.page:
             self._inject(web_view)
         else:
             try:
@@ -89,7 +78,7 @@ class ModelViewer(BaseViewer):
             except Exception:
                 pass
             web_view.loadFinished.connect(self._on_load_finished)
-            html_path = resource_path('src/ui/viewer/model_viewer.html')
+            html_path = resource_path('src/ui/viewer/l2d_viewer.html')
             web_view.setUrl(QUrl.fromLocalFile(html_path))
 
     def _inject(self, web_view):
@@ -120,28 +109,16 @@ class ModelViewer(BaseViewer):
 
     def play_animation(self, index: int):
         web_view = self.reader_view.model_web_view
-        if web_view:
+        if web_view and web_view.page() is self.page:
             web_view.page().runJavaScript(f'window.playAnimation({index})')
             self.reader_view.top_strip._anim_play_btn.setChecked(False)
             self.reader_view.top_strip._anim_play_btn.setText("⏸")
 
-    def set_mesh_visible(self, name: str, visible: bool):
-        web_view = self.reader_view.model_web_view
-        if web_view:
-            val = 'true' if visible else 'false'
-            name_json = json.dumps(name)
-            web_view.page().runJavaScript(f'window.setMeshVisible({name_json},{val})')
-
     def set_anim_paused(self, paused: bool):
         web_view = self.reader_view.model_web_view
-        if web_view:
+        if web_view and web_view.page() is self.page:
             val = 'true' if paused else 'false'
             web_view.page().runJavaScript(f'window.setAnimPaused({val})')
-
-    def set_brightness(self, value: float):
-        web_view = self.reader_view.model_web_view
-        if web_view:
-            web_view.page().runJavaScript(f'window.setLightBrightness({value})')
 
     def reset(self):
         web_view = self.reader_view.model_web_view

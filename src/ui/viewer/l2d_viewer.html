@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a1a; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #hint {
+      position: absolute; bottom: 12px; left: 50%;
+      transform: translateX(-50%);
+      color: #555; font: 12px/1 sans-serif;
+      pointer-events: none; white-space: nowrap;
+    }
+    #error {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #f66; font: 14px sans-serif;
+      display: none; text-align: center; max-width: 80%; white-space: pre-wrap;
+    }
+    #loading {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #888; font: 14px sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Scroll to zoom</div>
+  <div id="error"></div>
+  <div id="loading">Loading...</div>
+
+  <script src="pixi.min.js"></script>
+  <script src="pixi-spine.js"></script>
+
+  <script>
+    document.getElementById('loading').style.display = 'none';
+
+    // Nikke models typically use Straight Alpha rather than Premultiplied Alpha.
+    // We configure PixiJS to handle this to prevent dark outlines on blended parts.
+    PIXI.BaseTexture.defaultOptions.alphaMode = PIXI.ALPHA_MODES.NO_PREMULTIPLIED_ALPHA;
+    PIXI.Assets.setPreferences({ preferCreateImageBitmap: false });
+
+    var app = new PIXI.Application({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      backgroundColor: 0x1a1a1a,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
+      resizeTo: window
+    });
+    document.body.appendChild(app.view);
+
+    var currentSpine = null;
+    var container = new PIXI.Container();
+    app.stage.addChild(container);
+
+    var isDragging = false;
+    var prevX = 0, prevY = 0;
+    var scaleTarget = 1.0;
+    var scaleCurrent = 1.0;
+
+    app.view.addEventListener('pointerdown', function(e) {
+      if (e.button === 0 || e.button === 2 || e.button === 1) {
+        isDragging = true;
+        prevX = e.clientX;
+        prevY = e.clientY;
+      }
+    });
+    window.addEventListener('pointerup', function() { isDragging = false; });
+    window.addEventListener('pointermove', function(e) {
+      if (isDragging) {
+        var dx = e.clientX - prevX;
+        var dy = e.clientY - prevY;
+        container.x += dx;
+        container.y += dy;
+        prevX = e.clientX;
+        prevY = e.clientY;
+      }
+    });
+
+    app.view.addEventListener('wheel', function(e) {
+      var ds = e.deltaY > 0 ? 0.9 : 1.1;
+      scaleTarget *= ds;
+      e.preventDefault();
+    }, {passive: false});
+
+    app.ticker.add(function() {
+      if (Math.abs(scaleTarget - scaleCurrent) > 0.001) {
+        scaleCurrent += (scaleTarget - scaleCurrent) * 0.1;
+        var cx = app.screen.width / 2;
+        var cy = app.screen.height / 2;
+        container.x = cx + (container.x - cx) * (scaleCurrent / container.scale.x);
+        container.y = cy + (container.y - cy) * (scaleCurrent / container.scale.y);
+        container.scale.set(scaleCurrent);
+      }
+    });
+
+    var loadToken = 0;
+    var availableAnimations = [];
+
+    window.playAnimation = function(index) {
+      if (!currentSpine || index < 0 || index >= availableAnimations.length) return;
+      var animName = availableAnimations[index];
+      currentSpine.state.setAnimation(0, animName, true);
+    };
+
+    window.setAnimPaused = function(paused) {
+      if (currentSpine) {
+        currentSpine.state.timeScale = paused ? 0 : 1;
+      }
+    };
+
+    window.loadModel = function(url) {
+      document.getElementById('error').style.display = 'none';
+      if (currentSpine) {
+        container.removeChild(currentSpine);
+        currentSpine.destroy();
+        currentSpine = null;
+      }
+
+      var currentToken = ++loadToken;
+
+      PIXI.Assets.load(url).then(function(resource) {
+        if (currentToken !== loadToken) return;
+
+        if (resource && resource.spineData) {
+          currentSpine = new PIXI.spine.Spine(resource.spineData);
+        } else {
+           throw new Error("Invalid spine data or missing resources (.atlas / .png).");
+        }
+
+        container.addChild(currentSpine);
+
+        var localRect = currentSpine.getLocalBounds();
+        currentSpine.position.set(-localRect.x - localRect.width / 2, -localRect.y - localRect.height / 2);
+
+        var sw = app.screen.width;
+        var sh = app.screen.height;
+        var s = Math.min(sw / localRect.width, sh / localRect.height) * 0.9;
+        if (!isFinite(s) || s === 0) s = 1.0;
+        
+        container.scale.set(s);
+        scaleTarget = s;
+        scaleCurrent = s;
+        container.x = sw / 2;
+        container.y = sh / 2;
+
+        availableAnimations = currentSpine.spineData.animations.map(function(a) { return a.name; });
+        console.log('MODEL_ANIMATIONS:' + JSON.stringify(availableAnimations));
+
+        if (availableAnimations.length > 0) {
+          window.playAnimation(0);
+        }
+      }).catch(function(err) {
+        if (currentToken !== loadToken) return;
+        var el = document.getElementById('error');
+        el.textContent = 'Failed to load model:\n' + (err.message || String(err));
+        el.style.display = 'block';
+      });
+    };
+  </script>
+</body>
+</html>

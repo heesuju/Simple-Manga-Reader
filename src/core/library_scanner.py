@@ -210,8 +210,127 @@ class LibraryScanner:
         }
         
         series_data["formats"] = self.detect_format(series_data)
+        
+        # Post-scan: auto-blacklist Spine assets and unrelated JSON files
+        self._auto_blacklist_spine_assets(str(item), sorted_chapters)
+        
         return series_data
         
+    def _auto_blacklist_spine_assets(self, series_path: str, chapters: list):
+        data = AltManager.load_alts(series_path)
+        changed = False
+        zip_caches = {}
+        
+        for chapter in chapters:
+            chapter_name = chapter['name']
+            cpath = chapter['path']
+            
+            if chapter_name not in data:
+                data[chapter_name] = {}
+            if '__meta__' not in data[chapter_name]:
+                data[chapter_name]['__meta__'] = {}
+                
+            if data[chapter_name]['__meta__'].get('spine_scanned'):
+                continue
+                
+            data[chapter_name]['__meta__']['spine_scanned'] = True
+            changed = True
+            
+            atlas_stems = set()
+            atlas_files = [] # tuples of (name, full_path)
+            all_files = []
+            
+            is_virtual = '|' in cpath
+            if not is_virtual:
+                p = Path(cpath)
+                if p.is_dir():
+                    try:
+                        for f in p.iterdir():
+                            if f.is_file():
+                                all_files.append(f.name)
+                                if f.suffix.lower() == '.atlas':
+                                    atlas_files.append((f.name, str(f)))
+                                    atlas_stems.add(f.stem.lower())
+                    except OSError:
+                        pass
+            else:
+                archive_path, internal_path = cpath.split('|', 1)
+                import zipfile
+                from src.utils.archive_utils import SevenZipHandler
+                
+                if archive_path not in zip_caches:
+                    zfiles = []
+                    ext = Path(archive_path).suffix.lower()
+                    if ext in {'.zip', '.cbz'}:
+                        try:
+                            with zipfile.ZipFile(archive_path, 'r') as zf:
+                                zfiles = zf.namelist()
+                        except Exception:
+                            pass
+                    if not zfiles and SevenZipHandler.is_available():
+                        zfiles = SevenZipHandler.list_files(archive_path)
+                    zip_caches[archive_path] = zfiles
+                    
+                chapter_prefix = internal_path + '/' if internal_path else ''
+                for f in zip_caches[archive_path]:
+                    if f.startswith(chapter_prefix):
+                        rel_name = f[len(chapter_prefix):]
+                        if '/' not in rel_name and rel_name:
+                            all_files.append(rel_name)
+                            if rel_name.lower().endswith('.atlas'):
+                                atlas_files.append((rel_name, f"{archive_path}|{f}"))
+                                atlas_stems.add(Path(rel_name).stem.lower())
+                                
+            spine_pngs = set()
+            for atlas_name, atlas_full_path in atlas_files:
+                content = ""
+                try:
+                    if '|' in atlas_full_path:
+                        from src.utils.img_utils import get_image_data_from_zip
+                        bdata = get_image_data_from_zip(atlas_full_path)
+                        if bdata:
+                            content = bdata.decode('utf-8', errors='ignore')
+                    else:
+                        with open(atlas_full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if line.lower().endswith('.png'):
+                            spine_pngs.add(line.lower())
+                except Exception:
+                    pass
+                    
+            spine_stems = set()
+            for fname in all_files:
+                ext = Path(fname).suffix.lower()
+                if ext in ('.skel', '.json', '.atlas'):
+                    spine_stems.add(Path(fname).stem.lower())
+                    
+            to_blacklist = []
+            for fname in all_files:
+                ext = Path(fname).suffix.lower()
+                name_lower = fname.lower()
+                stem_lower = Path(fname).stem.lower()
+                
+                if ext == '.json' and stem_lower not in atlas_stems:
+                    to_blacklist.append(fname)
+                elif ext == '.atlas':
+                    to_blacklist.append(fname)
+                elif ext == '.png':
+                    if name_lower in spine_pngs or stem_lower in spine_stems:
+                        to_blacklist.append(fname)
+                        
+            if to_blacklist:
+                blacklist = data.setdefault('__blacklist__', {})
+                pages = blacklist.setdefault('pages', {})
+                chapter_pages = pages.setdefault(chapter_name, [])
+                for b in to_blacklist:
+                    if b not in chapter_pages:
+                        chapter_pages.append(b)
+                        
+        if changed:
+            AltManager.save_alts(series_path, data)
+
     def detect_format(self, series_data: dict) -> list:
         from src.utils.img_utils import get_image_aspect_ratio, VIDEO_EXTS
         import statistics

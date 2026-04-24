@@ -31,7 +31,7 @@ import src.utils.app_settings as app_settings
 from src.data.reader_model import ReaderModel
 from src.utils.database_utils import get_db_connection
 from src.utils.img_utils import get_chapter_number
-from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, MODEL_EXTS, ArchiveExtractionWorker, ImageInfoWorker, VideoExtractionWorker
+from src.workers.view_workers import ChapterLoaderWorker, PixmapLoader, WorkerSignals, VIDEO_EXTS, IMAGE_EXTS, MODEL_EXTS, L2D_EXTS, ArchiveExtractionWorker, ImageInfoWorker, VideoExtractionWorker
 from src.workers.translate_worker import TranslateWorker
 from src.core.translation_service import TranslationService
 from src.core.alt_manager import AltManager
@@ -40,6 +40,7 @@ from src.ui.viewer.image_viewer import ImageViewer
 from src.ui.viewer.video_viewer import VideoViewer
 from src.ui.viewer.strip_viewer import StripViewer
 from src.ui.viewer.model_viewer import ModelViewer
+from src.ui.viewer.l2d_viewer import L2DViewer
 
 
 class ReaderView(QWidget):
@@ -107,10 +108,16 @@ class ReaderView(QWidget):
         self.video_viewer = VideoViewer(self)
         self.strip_viewer = StripViewer(self)
         self.model_viewer = ModelViewer(self)
+        self.l2d_viewer = L2DViewer(self)
+        
         self.model_viewer.animations_loaded.connect(self._on_model_animations_loaded)
         self.model_viewer.meshes_loaded.connect(self.top_strip.show_meshes)
+        self.l2d_viewer.animations_loaded.connect(self._on_model_animations_loaded)
+        
         self.top_strip.anim_selected.connect(self.model_viewer.play_animation)
+        self.top_strip.anim_selected.connect(self.l2d_viewer.play_animation)
         self.top_strip.anim_paused.connect(self.model_viewer.set_anim_paused)
+        self.top_strip.anim_paused.connect(self.l2d_viewer.set_anim_paused)
         self.top_strip.mesh_toggled.connect(self.model_viewer.set_mesh_visible)
         self.top_strip.brightness_changed.connect(self.model_viewer.set_brightness)
         self.current_viewer = self.image_viewer
@@ -587,6 +594,8 @@ class ReaderView(QWidget):
                      new_viewer = self.video_viewer
                  elif ext in MODEL_EXTS:
                      new_viewer = self.model_viewer
+                 elif ext in L2D_EXTS:
+                     new_viewer = self.l2d_viewer
                  else:
                      new_viewer = self.image_viewer
              else:
@@ -865,6 +874,7 @@ class ReaderView(QWidget):
         ext = os.path.splitext(path)[1].lower()
         is_video = ext in VIDEO_EXTS
         is_model = ext in MODEL_EXTS
+        is_l2d = ext in L2D_EXTS
 
         if is_video and '|' in path:
             # Check if already extracted
@@ -883,6 +893,8 @@ class ReaderView(QWidget):
 
         if is_model:
             target_viewer = self.model_viewer
+        elif is_l2d:
+            target_viewer = self.l2d_viewer
         elif is_video:
             target_viewer = self.video_viewer
             self.top_strip.hide_animations()

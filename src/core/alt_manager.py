@@ -2,7 +2,7 @@ import json
 import os
 import threading
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union
 
 from src.data.page import Page
 from src.utils.archive_utils import split_virtual_path
@@ -524,15 +524,25 @@ class AltManager:
         AltManager.save_alts(series_path, data)
 
     @staticmethod
-    def blacklist_page(series_path: str, chapter_name: str, page_filename: str):
-        """Add a page filename to the blacklist for a chapter in info.json."""
+    def blacklist_pages(series_path: str, chapter_name: str, page_filenames: Union[List[str], str]):
+        """Add page(s) to the blacklist for a chapter in info.json."""
         data = AltManager.load_alts(series_path)
         blacklist = data.setdefault('__blacklist__', {})
         pages = blacklist.setdefault('pages', {})
         chapter_pages = pages.setdefault(chapter_name, [])
-        if page_filename not in chapter_pages:
-            chapter_pages.append(page_filename)
-        AltManager.save_alts(series_path, data)
+        changed = False
+
+        if isinstance(page_filenames, list):
+            for page_filename in page_filenames:
+                if page_filename not in chapter_pages:
+                    chapter_pages.append(page_filename)
+                    changed = True
+        else:
+            if page_filenames not in chapter_pages:
+                chapter_pages.append(page_filenames)
+                changed = True
+        if changed:
+            AltManager.save_alts(series_path, data)
 
     @staticmethod
     def is_chapter_blacklisted(series_path: str, chapter_name: str) -> bool:

@@ -439,7 +439,7 @@ class PagePanel(CollapsiblePanel):
                 chapter_name = Path(md).name
 
         series_path = str(self.model.series['path']) if isinstance(self.model.series, dict) else str(self.model.series)
-        AltManager.blacklist_page(series_path, chapter_name, page_filename)
+        AltManager.blacklist_pages(series_path, chapter_name, page_filename)
         self.reload_requested.emit()
 
     def refresh_thumbnail(self, index: int):
