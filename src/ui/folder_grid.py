@@ -773,7 +773,25 @@ class FolderGrid(QWidget):
         if not series_data:
             QMessageBox.warning(self, "Invalid Folder", "Could not find any manga/media in the selected folder.")
             return
-            
+
+        if series_data.get('chapters'):
+            existing = self.library_manager.get_chapters({'id': series_id})
+            existing_paths = {ch['path'] for ch in existing}
+            had_flatten = any(ch.get('extra_paths') for ch in existing)
+
+            dialog = ChapterSelectionDialog(series_data['chapters'], self, series_path=new_path)
+            if existing_paths:
+                dialog._checked_paths = set(existing_paths)
+            if had_flatten:
+                dialog.flatten_checkbox.setChecked(True)
+            else:
+                dialog._rebuild_list()
+
+            if dialog.exec():
+                series_data['chapters'] = dialog.get_selected_chapters()
+            else:
+                return
+
         self.library_manager.rescan_series_from_data(series_id, new_path, series_data)
         self.load_items()
         self.load_recent_items()
@@ -962,7 +980,7 @@ class FolderGrid(QWidget):
 
         # 2. If chapters exist, prompt user
         if series_data.get('chapters'):
-            dialog = ChapterSelectionDialog(series_data['chapters'], self)
+            dialog = ChapterSelectionDialog(series_data['chapters'], self, series_path=series_data.get('path'))
             if dialog.exec():
                 selected_chapters = dialog.get_selected_chapters()
                 series_data['chapters'] = selected_chapters

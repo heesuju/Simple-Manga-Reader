@@ -126,6 +126,7 @@ def create_tables():
         ],
         'chapters': [
             ('cover_path', 'TEXT'),
+            ('extra_paths', 'TEXT'),
         ],
     }
     for table, cols in _MIGRATIONS.items():

@@ -1,8 +1,24 @@
+import json
 from pathlib import Path
 from datetime import datetime
 from src.utils.database_utils import create_tables, db_cursor
 from src.utils.img_utils import get_chapter_number
 from src.utils.str_utils import natural_sort_key
+
+
+def _serialize_extra_paths(chapter: dict):
+    extras = chapter.get('extra_paths') or []
+    return json.dumps(list(extras)) if extras else None
+
+
+def _deserialize_extra_paths(value):
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return [str(p) for p in parsed] if isinstance(parsed, list) else []
+    except (TypeError, ValueError):
+        return []
 
 class LibraryManager:
     _TAG_CONFIG = {
@@ -112,6 +128,8 @@ class LibraryManager:
         with db_cursor() as (_, cursor):
             cursor.execute("SELECT * FROM chapters WHERE series_id = ?", (series['id'],))
             chapters = [dict(row) for row in cursor.fetchall()]
+        for ch in chapters:
+            ch['extra_paths'] = _deserialize_extra_paths(ch.get('extra_paths'))
         chapters.sort(key=lambda x: get_chapter_number(x['path']))
         return chapters
 
@@ -135,8 +153,8 @@ class LibraryManager:
                 series_id = cursor.lastrowid
                 for chapter in series_data.get('chapters', []):
                     cursor.execute(
-                        "INSERT INTO chapters (series_id, name, path) VALUES (?, ?, ?)",
-                        (series_id, chapter['name'], chapter['path'])
+                        "INSERT INTO chapters (series_id, name, path, extra_paths) VALUES (?, ?, ?, ?)",
+                        (series_id, chapter['name'], chapter['path'], _serialize_extra_paths(chapter))
                     )
 
                 if metadata:
@@ -334,8 +352,8 @@ class LibraryManager:
                 cursor.execute("DELETE FROM chapters WHERE series_id = ?", (series_id,))
                 for chapter in series_data.get('chapters', []):
                     cursor.execute(
-                        "INSERT INTO chapters (series_id, name, path) VALUES (?, ?, ?)",
-                        (series_id, chapter['name'], chapter['path'])
+                        "INSERT INTO chapters (series_id, name, path, extra_paths) VALUES (?, ?, ?, ?)",
+                        (series_id, chapter['name'], chapter['path'], _serialize_extra_paths(chapter))
                     )
                 conn.commit()
             except Exception as e:
@@ -406,6 +424,7 @@ class LibraryManager:
                 all_chapters = [dict(row) for row in cursor.fetchall()]
 
                 for chapter in all_chapters:
+                    chapter['extra_paths'] = _deserialize_extra_paths(chapter.get('extra_paths'))
                     sid = chapter['series_id']
                     if sid in series_map:
                         series_map[sid]['chapters'].append(chapter)

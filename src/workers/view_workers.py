@@ -111,12 +111,13 @@ class ChapterLoaderSignals(QObject):
     finished = pyqtSignal(dict) # Contains initial_image: QImage
 
 class ChapterLoaderWorker(QRunnable):
-    def __init__(self, manga_dir: str, series_path: str, start_from_end: bool, sort_mode: str = 'name'):
+    def __init__(self, manga_dir: str, series_path: str, start_from_end: bool, sort_mode: str = 'name', extra_paths: list = None):
         super().__init__()
         self.manga_dir = manga_dir
         self.series_path = series_path
         self.start_from_end = start_from_end
         self.sort_mode = sort_mode
+        self.extra_paths = list(extra_paths) if extra_paths else []
         self.signals = ChapterLoaderSignals()
 
     @pyqtSlot()
@@ -335,8 +336,22 @@ class ChapterLoaderWorker(QRunnable):
     def _get_image_list(self):
         if not self.manga_dir:
             return []
-            
-        path_str = str(self.manga_dir)
+
+        roots = [str(self.manga_dir)]
+        for extra in self.extra_paths:
+            if extra and str(extra) not in roots:
+                roots.append(str(extra))
+
+        all_imgs = []
+        seen = set()
+        for root in roots:
+            for img in self._scan_root(root):
+                if img not in seen:
+                    seen.add(img)
+                    all_imgs.append(img)
+        return all_imgs
+
+    def _scan_root(self, path_str: str):
         valid_exts = tuple(list(IMAGE_EXTS) + list(VIDEO_EXTS) + list(MODEL_EXTS) + list(L2D_EXTS))
         from src.utils.archive_utils import SevenZipHandler
         import zipfile

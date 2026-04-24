@@ -19,15 +19,19 @@ class ReaderModel(QObject):
     layout_updated = pyqtSignal(ViewMode)
     page_updated = pyqtSignal(int)
 
-    def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None, language: str = 'ko'):
+    def __init__(self, series: object, manga_dirs: List[object], index:int, start_file: str = None, images: List[str] = None, language: str = 'ko', chapter_extras: dict = None):
         super().__init__()
-        
+
         self.series = series
         self.language = language
         self.start_file = start_file
         self.view_mode = ViewMode.SINGLE
-        self.images: List[Page] = [] 
+        self.images: List[Page] = []
         self._image_map = {} # Maps image path -> page_index
+        # Map of chapter_path -> list of additional folder paths whose contents
+        # should be loaded together with the chapter. Populated when the user
+        # checks "Treat subfolders as part of their parent chapter" at import.
+        self.chapter_extras = dict(chapter_extras) if chapter_extras else {}
         
         # Double Mode Virtual Layout Logic
         self._layout_pairs = []
@@ -82,6 +86,21 @@ class ReaderModel(QObject):
 
         if images:
             self.set_images(images)
+
+    def current_chapter_extras(self) -> List[str]:
+        """Extra folder paths bundled into the current chapter (flatten-on-import)."""
+        path = self.current_chapter_path()
+        if not path:
+            return []
+        return list(self.chapter_extras.get(path, []))
+
+    def current_chapter_path(self) -> str:
+        """Path string for the current chapter, regardless of dict/string storage."""
+        if self.manga_dir is None:
+            return ''
+        if isinstance(self.manga_dir, dict):
+            return self.manga_dir.get('path', '')
+        return str(self.manga_dir)
 
     def set_images(self, images: List[Union[str, Page]]):
         """

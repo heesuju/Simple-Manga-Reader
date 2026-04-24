@@ -174,6 +174,12 @@ class MainWindow(QMainWindow):
         else:
             self.current_series_has_chapters = False
 
+        chapter_extras = {
+            ch['path']: list(ch.get('extra_paths') or [])
+            for ch in series.get('chapters', [])
+            if ch.get('extra_paths')
+        }
+
         if chapter and chapter in series['chapters']:
             chapter_files = [ch['path'] for ch in series['chapters']]
             chapter_index = series['chapters'].index(chapter)
@@ -182,17 +188,23 @@ class MainWindow(QMainWindow):
             # Get all images in the chapter
             full_chapter_path_str = chapter['path']
             is_virtual = '|' in full_chapter_path_str
-            
+
             full_chapter_path = Path(full_chapter_path_str)
-            
+
             if is_virtual or (full_chapter_path.is_file() and full_chapter_path.suffix.lower() in {'.zip', '.cbz'}):
                 images = []
             else:
-                try:
-                    images = [str(p) for p in full_chapter_path.iterdir() if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.avif', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover']
-                    images = sorted(images, key=get_chapter_number)
-                except (NotADirectoryError, FileNotFoundError, OSError):
-                    images = []
+                roots = [full_chapter_path] + [Path(p) for p in chapter_extras.get(full_chapter_path_str, [])]
+                images = []
+                for root in roots:
+                    try:
+                        images.extend(
+                            str(p) for p in root.iterdir()
+                            if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.avif', '.mp4', '.webm', '.mkv', '.avi', '.mov'} and p.stem.lower() != 'cover'
+                        )
+                    except (NotADirectoryError, FileNotFoundError, OSError):
+                        continue
+                images = sorted(images, key=get_chapter_number)
         else: # No chapters, it's a series of images
             chapter_files = []
             chapter_index = 0
@@ -207,7 +219,7 @@ class MainWindow(QMainWindow):
                 except (NotADirectoryError, FileNotFoundError):
                     images = []
 
-        self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images, start_page=start_page)
+        self.reader_view = ReaderView(series, chapter_files, chapter_index, start_file=start_file, images=images, start_page=start_page, chapter_extras=chapter_extras)
         self.reader_view.back_pressed.connect(self.handle_reader_back)
         self.reader_view.request_fullscreen_toggle.connect(self.toggle_fullscreen)
         self.reader_view.current_chapter_changed.connect(self.on_reader_chapter_changed)
