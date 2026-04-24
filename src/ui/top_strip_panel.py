@@ -596,7 +596,7 @@ class TopStripPanel(QWidget):
         self._anim_combo.addItem("Static Pose")
         self._anim_combo.addItems(names)
         if names:
-            idle_idx = next((i for i, n in enumerate(names) if n.lower() == 'idle'), -1)
+            idle_idx = next((i for i, n in enumerate(names) if 'idle' in n.lower()), -1)
             self._anim_combo.setCurrentIndex(idle_idx + 1 if idle_idx >= 0 else 1)
         self._anim_combo.blockSignals(False)
         self._anim_play_btn.setChecked(False)

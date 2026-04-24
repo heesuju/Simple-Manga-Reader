@@ -150,7 +150,7 @@
         console.log('MODEL_ANIMATIONS:' + JSON.stringify(availableAnimations));
 
         if (availableAnimations.length > 0) {
-          var idleIdx = availableAnimations.findIndex(function(n) { return n.toLowerCase() === 'idle'; });
+          var idleIdx = availableAnimations.findIndex(function(n) { return n.toLowerCase().includes('idle'); });
           window.playAnimation(idleIdx >= 0 ? idleIdx : 0);
         }
       }).catch(function(err) {
