@@ -134,6 +134,22 @@ class L2DViewer(BaseViewer):
             val = 'true' if visible else 'false'
             web_view.page().runJavaScript(f'window.setSlotVisible({json.dumps(slot_name)},{val})')
 
+    def set_neighbor_count(self, n: int):
+        web_view = self.reader_view.model_web_view
+        if web_view and web_view.page() is self.page:
+            web_view.page().runJavaScript(f'window.setNeighborCount({n})')
+
+    def set_bounce_force(self, n: int):
+        web_view = self.reader_view.model_web_view
+        if web_view and web_view.page() is self.page:
+            web_view.page().runJavaScript(f'window.setBounceForce({n})')
+
+    def set_premultiplied_alpha(self, enabled: bool):
+        web_view = self.reader_view.model_web_view
+        if web_view and web_view.page() is self.page:
+            val = 'true' if enabled else 'false'
+            web_view.page().runJavaScript(f'window.setPremultipliedAlpha({val})')
+
     def highlight_slot(self, slot_name: str):
         web_view = self.reader_view.model_web_view
         if web_view and web_view.page() is self.page:

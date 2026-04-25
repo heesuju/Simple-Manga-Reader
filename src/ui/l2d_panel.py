@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QFrame, QSizePolicy, QCheckBox
+    QScrollArea, QFrame, QSizePolicy, QCheckBox, QSlider
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 
@@ -41,9 +41,12 @@ class L2DPanel(QWidget):
 
     anim_selected = pyqtSignal(int)
     anim_paused   = pyqtSignal(bool)
-    mesh_toggled   = pyqtSignal(str, bool)
-    slot_hovered   = pyqtSignal(str)
-    slot_unhovered = pyqtSignal()
+    mesh_toggled            = pyqtSignal(str, bool)
+    slot_hovered            = pyqtSignal(str)
+    slot_unhovered          = pyqtSignal()
+    alpha_mode_changed      = pyqtSignal(bool)
+    neighbor_count_changed  = pyqtSignal(int)
+    bounce_force_changed    = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,6 +62,43 @@ class L2DPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 10, 8, 10)
         layout.setSpacing(6)
+
+        # ── Settings ─────────────────────────────────────────────────────────
+        self._premult_cb = QCheckBox("Premultiplied Alpha")
+        self._premult_cb.setChecked(False)
+        self._premult_cb.setStyleSheet(
+            "QCheckBox { color: rgba(255,255,255,140); font-size: 10px; background: transparent; }"
+            "QCheckBox::indicator { width: 12px; height: 12px; }"
+        )
+        self._premult_cb.toggled.connect(self.alpha_mode_changed.emit)
+        layout.addWidget(self._premult_cb)
+
+        # ── Interaction ───────────────────────────────────────────────────────
+        interaction_label = QLabel("INTERACTION")
+        interaction_label.setStyleSheet(_SECTION_LABEL_STYLE)
+        layout.addWidget(interaction_label)
+
+        self._neighbor_label = QLabel("Neighbors: 6")
+        self._neighbor_label.setStyleSheet(
+            "color: rgba(255,255,255,160); font-size: 10px; background: transparent;"
+        )
+        self._neighbor_slider = QSlider(Qt.Orientation.Horizontal)
+        self._neighbor_slider.setRange(1, 10)
+        self._neighbor_slider.setValue(6)
+        self._neighbor_slider.valueChanged.connect(self._on_neighbor_changed)
+        layout.addWidget(self._neighbor_label)
+        layout.addWidget(self._neighbor_slider)
+
+        self._force_label = QLabel("Force: 1")
+        self._force_label.setStyleSheet(
+            "color: rgba(255,255,255,160); font-size: 10px; background: transparent;"
+        )
+        self._force_slider = QSlider(Qt.Orientation.Horizontal)
+        self._force_slider.setRange(1, 10)
+        self._force_slider.setValue(1)
+        self._force_slider.valueChanged.connect(self._on_force_changed)
+        layout.addWidget(self._force_label)
+        layout.addWidget(self._force_slider)
 
         # ── Animations ──────────────────────────────────────────────────────
         anim_header_row = QHBoxLayout()
@@ -197,6 +237,14 @@ class L2DPanel(QWidget):
         self._paused = checked
         self._play_btn.setText("▶" if checked else "⏸")
         self.anim_paused.emit(checked)
+
+    def _on_neighbor_changed(self, value: int):
+        self._neighbor_label.setText(f"Neighbors: {value}")
+        self.neighbor_count_changed.emit(value)
+
+    def _on_force_changed(self, value: int):
+        self._force_label.setText(f"Force: {value}")
+        self.bounce_force_changed.emit(value)
 
     def eventFilter(self, source, event):
         if isinstance(source, QCheckBox):

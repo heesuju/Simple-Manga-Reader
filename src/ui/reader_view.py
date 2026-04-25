@@ -127,6 +127,9 @@ class ReaderView(QWidget):
         self.l2d_panel.mesh_toggled.connect(self.l2d_viewer.set_slot_visible)
         self.l2d_panel.slot_hovered.connect(self.l2d_viewer.highlight_slot)
         self.l2d_panel.slot_unhovered.connect(self.l2d_viewer.clear_highlight)
+        self.l2d_panel.alpha_mode_changed.connect(self.l2d_viewer.set_premultiplied_alpha)
+        self.l2d_panel.neighbor_count_changed.connect(self.l2d_viewer.set_neighbor_count)
+        self.l2d_panel.bounce_force_changed.connect(self.l2d_viewer.set_bounce_force)
         self.top_strip.brightness_changed.connect(self.model_viewer.set_brightness)
         self.current_viewer = self.image_viewer
         self.current_viewer.set_active(True)

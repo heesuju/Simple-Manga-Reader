@@ -184,6 +184,7 @@
     var hiddenSlots = new Set();
     var originalAttachments = new Map(); // slotName -> attachment at load time
     var highlightedSlot = null;
+    var currentModelUrl = null;
 
     window.playAnimation = function(index) {
       if (!currentSpine) return;
@@ -230,7 +231,22 @@
       }
     };
 
+    window.setNeighborCount = function(n) { shakeNeighborCount = n; };
+    window.setBounceForce = function(n) { shakeBounceForce = n; };
+
+    window.setPremultipliedAlpha = function(enabled) {
+      PIXI.BaseTexture.defaultOptions.alphaMode = enabled
+        ? PIXI.ALPHA_MODES.PREMULTIPLIED_ALPHA
+        : PIXI.ALPHA_MODES.NO_PREMULTIPLIED_ALPHA;
+      if (currentModelUrl) {
+        PIXI.Assets.unload(currentModelUrl).catch(function() {}).finally(function() {
+          window.loadModel(currentModelUrl);
+        });
+      }
+    };
+
     window.loadModel = function(url) {
+      currentModelUrl = url;
       document.getElementById('error').style.display = 'none';
       if (currentSpine) {
         container.removeChild(currentSpine);
@@ -386,7 +402,8 @@
     // How many of the closest mesh-driving bones (to the clicked bone) to
     // shake. Density-independent, so it feels the same on small and complex
     // skeletons. Lower = more localized impact.
-    const SHAKE_NEIGHBOR_COUNT = 6;
+    var shakeNeighborCount = 6;
+    var shakeBounceForce = 1;
     // Hard cap so clicks in empty space don't reach across the whole figure.
     const SHAKE_RADIUS_FRAC = 0.08;
 
@@ -413,7 +430,7 @@
 
       // Closest first, then keep the top N.
       candidates.sort((a, b) => a.distSq - b.distSq);
-      const picked = candidates.slice(0, SHAKE_NEIGHBOR_COUNT);
+      const picked = candidates.slice(0, shakeNeighborCount);
 
       // Use the farthest picked bone's distance as the falloff radius — gives
       // smooth distance-based falloff regardless of how many bones we kept.
@@ -426,7 +443,7 @@
       for (let i = 0; i < picked.length; i++) {
         const dist = Math.sqrt(picked[i].distSq);
         const falloff = 1 - dist / falloffRadius;
-        applyShake(picked[i].bone, 2.5 * falloff);
+        applyShake(picked[i].bone, 2.5 * shakeBounceForce * falloff);
       }
     }
 
