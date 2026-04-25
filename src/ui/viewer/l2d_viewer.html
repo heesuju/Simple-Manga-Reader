@@ -26,7 +26,7 @@
   </style>
 </head>
 <body>
-  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Scroll to zoom</div>
+  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Press B to toggle bones</div>
   <div id="error"></div>
   <div id="loading">Loading...</div>
 
@@ -52,22 +52,77 @@
     document.body.appendChild(app.view);
 
     var currentSpine = null;
+    var spineShake = {
+      x: 0, y: 0,
+      vx: 0, vy: 0
+    };
+
     var container = new PIXI.Container();
     app.stage.addChild(container);
+
+    var boneOverlay = new PIXI.Graphics();
+    container.addChild(boneOverlay);
+    var showBones = false;
+    var lastClickPoint = null; // { x, y, radius, age } in skeleton-local space
+
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'b' || e.key === 'B') {
+        showBones = !showBones;
+        if (!showBones) boneOverlay.clear();
+      }
+    });
 
     var isDragging = false;
     var prevX = 0, prevY = 0;
     var scaleTarget = 1.0;
     var scaleCurrent = 1.0;
 
+    var boneShakes = new Map(); // bone -> { rotationOffset, velocity }
+    var meshBones = new Set();  // bones that actually drive a rendered slot/mesh
+
+    let downTime = 0;
+    let downPos = null;
+
     app.view.addEventListener('pointerdown', function(e) {
+      if (e.button === 0) {
+        downTime = Date.now();
+        downPos = { x: e.clientX, y: e.clientY };
+      }
+
+      // keep your drag logic
       if (e.button === 0 || e.button === 2 || e.button === 1) {
         isDragging = true;
         prevX = e.clientX;
         prevY = e.clientY;
       }
     });
-    window.addEventListener('pointerup', function() { isDragging = false; });
+
+    window.addEventListener('pointerup', function(e) {
+      isDragging = false;
+
+      // detect click (not drag)
+      if (!downPos) return;
+
+      const dx = e.clientX - downPos.x;
+      const dy = e.clientY - downPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dt = Date.now() - downTime;
+
+      if (dist < 5 && dt < 200) {
+        const c = clientToCanvas(e.clientX, e.clientY);
+        handleBoneClick(c.x, c.y);
+      }
+    });
+
+    // Map viewport (CSS pixel) coordinates to PIXI stage coordinates.
+    // Using getBoundingClientRect handles any DPI mismatch between the host
+    // (e.g. PyQt6 WebEngine) and the canvas's internal resolution.
+    function clientToCanvas(clientX, clientY) {
+      const rect = app.view.getBoundingClientRect();
+      const x = (clientX - rect.left) / rect.width * app.screen.width;
+      const y = (clientY - rect.top) / rect.height * app.screen.height;
+      return { x: x, y: y };
+    }
     window.addEventListener('pointermove', function(e) {
       if (isDragging) {
         var dx = e.clientX - prevX;
@@ -85,7 +140,7 @@
       e.preventDefault();
     }, {passive: false});
 
-    app.ticker.add(function() {
+    app.ticker.add(function() {     
       if (Math.abs(scaleTarget - scaleCurrent) > 0.001) {
         scaleCurrent += (scaleTarget - scaleCurrent) * 0.1;
         var cx = app.screen.width / 2;
@@ -94,6 +149,34 @@
         container.y = cy + (container.y - cy) * (scaleCurrent / container.scale.y);
         container.scale.set(scaleCurrent);
       }
+  
+      // Spring physics for shake — actual bone writes happen in the hook on
+      // state.apply (so they survive pixi-spine's per-frame animation pass).
+      if (boneShakes.size > 0) {
+        const stiffness = 0.25;
+        const damping = 0.85;
+
+        boneShakes.forEach((s, bone) => {
+          s.vel += -s.rot * stiffness;
+          s.vel *= damping;
+          s.rot += s.vel;
+
+          s.vx += -s.x * stiffness;
+          s.vy += -s.y * stiffness;
+          s.vx *= damping;
+          s.vy *= damping;
+          s.x += s.vx;
+          s.y += s.vy;
+
+          if (Math.abs(s.rot) < 0.01 && Math.abs(s.vel) < 0.01 &&
+              Math.abs(s.x) < 0.05 && Math.abs(s.vx) < 0.05 &&
+              Math.abs(s.y) < 0.05 && Math.abs(s.vy) < 0.05) {
+            boneShakes.delete(bone);
+          }
+        });
+      }
+
+      if (showBones) drawBoneOverlay();
     });
 
     var loadToken = 0;
@@ -126,11 +209,19 @@
 
         if (resource && resource.spineData) {
           currentSpine = new PIXI.spine.Spine(resource.spineData);
+          // Hook state.apply so shake offsets land AFTER animation, every
+          // frame, regardless of whether pixi-spine drives update or we do.
+          // This is what makes shake work for animation-keyed bones.
+          installShakeHook(currentSpine);
         } else {
            throw new Error("Invalid spine data or missing resources (.atlas / .png).");
         }
 
         container.addChild(currentSpine);
+        container.addChild(boneOverlay); // keep overlay on top of newly added spine
+
+        meshBones = computeMeshBones(currentSpine);
+        console.log('Mesh-driving bones: ' + meshBones.size + ' / ' + currentSpine.skeleton.bones.length);
 
         var localRect = currentSpine.getLocalBounds();
         currentSpine.position.set(-localRect.x - localRect.width / 2, -localRect.y - localRect.height / 2);
@@ -160,6 +251,233 @@
         el.style.display = 'block';
       });
     };
+
+    function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+
+      if (dx === 0 && dy === 0) {
+        return Math.hypot(px - x1, py - y1);
+      }
+
+      let t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+      t = Math.max(0, Math.min(1, t));
+
+      const cx = x1 + t * dx;
+      const cy = y1 + t * dy;
+
+      return Math.hypot(px - cx, py - cy);
+    };
+
+    // Build the set of bones that actually move visible geometry:
+    //   - the slot.bone of every slot with an attachment
+    //   - every bone weighted by a weighted-mesh attachment
+    // Bones outside this set are control/IK/parent rigs — shaking them moves
+    // nothing on screen.
+    function computeMeshBones(spine) {
+      const set = new Set();
+      const allBones = spine.skeleton.bones;
+      const slots = spine.skeleton.slots;
+      for (let si = 0; si < slots.length; si++) {
+        const slot = slots[si];
+        const att = slot.getAttachment ? slot.getAttachment() : slot.attachment;
+        if (!att) continue;
+
+        if (att.bones && att.bones.length) {
+          // Weighted mesh: bones array is [count, idx, idx, ..., count, idx, ...]
+          const arr = att.bones;
+          let i = 0;
+          while (i < arr.length) {
+            const count = arr[i++];
+            for (let j = 0; j < count; j++) {
+              const idx = arr[i++];
+              if (idx >= 0 && idx < allBones.length) set.add(allBones[idx]);
+            }
+          }
+        } else if (slot.bone) {
+          set.add(slot.bone);
+        }
+      }
+      return set;
+    }
+
+    function handleBoneClick(screenX, screenY) {
+      if (!currentSpine) return;
+
+      // toLocal on the spine (not the container) yields skeleton-space, which
+      // is what bone.worldX/worldY are in. Using container-space here was off
+      // by currentSpine.position — that's why the affected area was below the
+      // cursor.
+      const point = new PIXI.Point(screenX, screenY);
+      const local = currentSpine.toLocal(point);
+
+      const bones = currentSpine.skeleton.bones;
+
+      let bestBone = null;
+      let bestDist = Infinity;
+
+      for (let i = 0; i < bones.length; i++) {
+        const b = bones[i];
+        if (!b.parent) continue;       // never target the root
+        if (!meshBones.has(b)) continue; // skip control bones that don't drive geometry
+
+        const dx = local.x - b.worldX;
+        const dy = local.y - b.worldY;
+        const dist = dx * dx + dy * dy;
+
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestBone = b;
+        }
+      }
+
+      if (!bestBone) return;
+
+      applyShakeChain(bestBone, local);
+    }
+
+    function applyShakeChain(clickedBone, localPoint) {
+      // Radius = ~10% of the skeleton's diagonal, in skeleton-local units.
+      const bounds = currentSpine.getLocalBounds();
+      const radius = Math.hypot(bounds.width, bounds.height) * 0.1;
+      const radiusSq = radius * radius;
+
+      lastClickPoint = { x: localPoint.x, y: localPoint.y, radius: radius, age: 0 };
+
+      const bones = currentSpine.skeleton.bones;
+
+      for (let i = 0; i < bones.length; i++) {
+        const b = bones[i];
+        if (!b.parent) continue;
+        if (!meshBones.has(b)) continue;
+
+        const dx = b.worldX - clickedBone.worldX;
+        const dy = b.worldY - clickedBone.worldY;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > radiusSq) continue;
+
+        const falloff = 1 - Math.sqrt(distSq) / radius;
+        applyShake(b, 2.5 * falloff);
+      }
+    }
+
+    function drawBoneOverlay() {
+      boneOverlay.clear();
+      if (!currentSpine) return;
+
+      // Convert spine-local coords to container-local (spine has its own offset).
+      const ox = currentSpine.position.x;
+      const oy = currentSpine.position.y;
+      const sx = currentSpine.scale.x;
+      const sy = currentSpine.scale.y;
+      const tx = (x) => ox + x * sx;
+      const ty = (y) => oy + y * sy;
+
+      const bones = currentSpine.skeleton.bones;
+
+      // Bone segments from each bone to its parent.
+      boneOverlay.lineStyle(1 / container.scale.x, 0x4477aa, 0.6);
+      for (let i = 0; i < bones.length; i++) {
+        const b = bones[i];
+        if (!b.parent) continue;
+        boneOverlay.moveTo(tx(b.parent.worldX), ty(b.parent.worldY));
+        boneOverlay.lineTo(tx(b.worldX), ty(b.worldY));
+      }
+
+      // Click radius pulse.
+      if (lastClickPoint) {
+        lastClickPoint.age += 1;
+        const pulse = Math.max(0, 1 - lastClickPoint.age / 60);
+        if (pulse > 0) {
+          boneOverlay.lineStyle(2 / container.scale.x, 0xffff66, 0.4 * pulse);
+          boneOverlay.drawCircle(tx(lastClickPoint.x), ty(lastClickPoint.y), lastClickPoint.radius * sx);
+          boneOverlay.lineStyle(0);
+        } else {
+          lastClickPoint = null;
+        }
+      }
+
+      // Bone joints:
+      //   red + larger = currently shaking
+      //   green        = mesh-driving (slot bone or weighted-mesh bone) — clickable
+      //   gray         = control / IK / parent rig — shaking it has no visible effect
+      const dotR = 3 / container.scale.x;
+      for (let i = 0; i < bones.length; i++) {
+        const b = bones[i];
+        const affected = boneShakes.has(b);
+        if (affected) {
+          const s = boneShakes.get(b);
+          const intensity = Math.min(1, Math.abs(s.rot) * 4 + Math.abs(s.vel) * 8);
+          boneOverlay.beginFill(0xff5544, 0.9);
+          boneOverlay.drawCircle(tx(b.worldX), ty(b.worldY), dotR * (1.5 + intensity));
+          boneOverlay.endFill();
+        } else if (meshBones.has(b)) {
+          boneOverlay.beginFill(0x66dd88, 0.85);
+          boneOverlay.drawCircle(tx(b.worldX), ty(b.worldY), dotR);
+          boneOverlay.endFill();
+        } else {
+          boneOverlay.beginFill(0x666666, 0.4);
+          boneOverlay.drawCircle(tx(b.worldX), ty(b.worldY), dotR * 0.7);
+          boneOverlay.endFill();
+        }
+      }
+    }
+
+    // Patch this spine's state.apply so shake offsets are added immediately
+    // after animation is applied, every frame. This way the offsets are part
+    // of the state pixi-spine reads when it builds mesh geometry.
+    function installShakeHook(spine) {
+      const orig = spine.state.apply.bind(spine.state);
+      spine.state.apply = function(skeleton) {
+        const result = orig(skeleton);
+        if (boneShakes.size > 0) {
+          const EPS = 0.0001;
+          boneShakes.forEach((s, bone) => {
+            // Auto-detect per frame: did state.apply just overwrite our
+            // previous write? If yes, the bone is keyed by the animation and
+            // we add as a delta. If no, nothing animates this bone, so we
+            // anchor to the captured baseline. This stays correct regardless
+            // of pixi-spine version or timeline schema.
+            const keyedRot = s.lastRot === undefined ||
+                             Math.abs(bone.rotation - s.lastRot) > EPS;
+            const keyedX   = s.lastX === undefined ||
+                             Math.abs(bone.x - s.lastX) > EPS;
+            const keyedY   = s.lastY === undefined ||
+                             Math.abs(bone.y - s.lastY) > EPS;
+
+            bone.rotation = (keyedRot ? bone.rotation : s.baseRot) + s.rot;
+            bone.x        = (keyedX   ? bone.x        : s.baseX)   + s.x;
+            bone.y        = (keyedY   ? bone.y        : s.baseY)   + s.y;
+
+            s.lastRot = bone.rotation;
+            s.lastX   = bone.x;
+            s.lastY   = bone.y;
+          });
+        }
+        return result;
+      };
+    }
+
+    function applyShake(bone, strength = 1.0) {
+      if (!boneShakes.has(bone)) {
+        boneShakes.set(bone, {
+          baseRot: bone.rotation,
+          baseX: bone.x,
+          baseY: bone.y,
+          rot: 0, vel: 0,
+          x: 0, y: 0,
+          vx: 0, vy: 0
+        });
+      }
+
+      const s = boneShakes.get(bone);
+
+      // Bounce impulse — upward kick + sideways jiggle + rotation jitter.
+      s.vy += -8 * strength;
+      s.vx += (Math.random() - 0.5) * 6 * strength;
+      s.vel += (Math.random() - 0.5) * 4 * strength;
+    }
+    
   </script>
 </body>
 </html>
