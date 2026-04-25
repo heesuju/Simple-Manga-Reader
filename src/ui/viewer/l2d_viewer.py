@@ -12,6 +12,7 @@ class L2DPage(QWebEnginePage):
     """QWebEnginePage subclass that intercepts MODEL_ANIMATIONS/MODEL_SLOTS console messages."""
     animations_loaded = pyqtSignal(list)
     slots_loaded = pyqtSignal(list)
+    bones_toggled = pyqtSignal(bool)
 
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceId):
         print(f"L2D_JS [{lineNumber}]: {message}")
@@ -25,11 +26,14 @@ class L2DPage(QWebEnginePage):
                 self.slots_loaded.emit(json.loads(message[len('MODEL_SLOTS:'):]))
             except Exception:
                 pass
+        elif message.startswith('BONES_TOGGLED:'):
+            self.bones_toggled.emit(message.endswith('true'))
 
 
 class L2DViewer(BaseViewer):
     animations_loaded = pyqtSignal(list)
     slots_loaded = pyqtSignal(list)
+    bones_toggled = pyqtSignal(bool)
 
     def __init__(self, reader_view):
         super().__init__(reader_view)
@@ -54,10 +58,12 @@ class L2DViewer(BaseViewer):
                 try:
                     self.page.animations_loaded.disconnect(self.animations_loaded)
                     self.page.slots_loaded.disconnect(self.slots_loaded)
+                    self.page.bones_toggled.disconnect(self.bones_toggled)
                 except Exception:
                     pass
                 self.page.animations_loaded.connect(self.animations_loaded)
                 self.page.slots_loaded.connect(self.slots_loaded)
+                self.page.bones_toggled.connect(self.bones_toggled)
                 self._page_ready = False
                 
             web_view.show()
@@ -133,6 +139,12 @@ class L2DViewer(BaseViewer):
         if web_view and web_view.page() is self.page:
             val = 'true' if visible else 'false'
             web_view.page().runJavaScript(f'window.setSlotVisible({json.dumps(slot_name)},{val})')
+
+    def set_show_bones(self, visible: bool):
+        web_view = self.reader_view.model_web_view
+        if web_view and web_view.page() is self.page:
+            val = 'true' if visible else 'false'
+            web_view.page().runJavaScript(f'window.setShowBones({val})')
 
     def set_neighbor_count(self, n: int):
         web_view = self.reader_view.model_web_view

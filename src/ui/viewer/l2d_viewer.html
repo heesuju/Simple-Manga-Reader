@@ -69,6 +69,7 @@
       if (e.key === 'b' || e.key === 'B') {
         showBones = !showBones;
         if (!showBones) boneOverlay.clear();
+        console.log('BONES_TOGGLED:' + showBones);
       }
     });
 
@@ -233,6 +234,10 @@
 
     window.setNeighborCount = function(n) { shakeNeighborCount = n; };
     window.setBounceForce = function(n) { shakeBounceForce = n; };
+    window.setShowBones = function(visible) {
+      showBones = visible;
+      if (!showBones) boneOverlay.clear();
+    };
 
     window.setPremultipliedAlpha = function(enabled) {
       PIXI.BaseTexture.defaultOptions.alphaMode = enabled
@@ -295,6 +300,8 @@
         hiddenSlots.clear();
         originalAttachments.clear();
         highlightedSlot = null;
+        showBones = false;
+        boneOverlay.clear();
         currentSpine.skeleton.slots.forEach(function(s) {
           originalAttachments.set(s.data.name, s.getAttachment ? s.getAttachment() : s.attachment);
         });
@@ -403,7 +410,7 @@
     // shake. Density-independent, so it feels the same on small and complex
     // skeletons. Lower = more localized impact.
     var shakeNeighborCount = 6;
-    var shakeBounceForce = 1;
+    var shakeBounceForce = 4;
     // Hard cap so clicks in empty space don't reach across the whole figure.
     const SHAKE_RADIUS_FRAC = 0.08;
 
@@ -443,7 +450,7 @@
       for (let i = 0; i < picked.length; i++) {
         const dist = Math.sqrt(picked[i].distSq);
         const falloff = 1 - dist / falloffRadius;
-        applyShake(picked[i].bone, 2.5 * shakeBounceForce * falloff);
+        applyShake(picked[i].bone, (shakeBounceForce + 1) * 0.5 * falloff);
       }
     }
 

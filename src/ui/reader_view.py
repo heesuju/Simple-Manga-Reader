@@ -128,6 +128,8 @@ class ReaderView(QWidget):
         self.l2d_panel.slot_hovered.connect(self.l2d_viewer.highlight_slot)
         self.l2d_panel.slot_unhovered.connect(self.l2d_viewer.clear_highlight)
         self.l2d_panel.alpha_mode_changed.connect(self.l2d_viewer.set_premultiplied_alpha)
+        self.l2d_panel.bones_toggled.connect(self.l2d_viewer.set_show_bones)
+        self.l2d_viewer.bones_toggled.connect(self.l2d_panel.set_bones_checked)
         self.l2d_panel.neighbor_count_changed.connect(self.l2d_viewer.set_neighbor_count)
         self.l2d_panel.bounce_force_changed.connect(self.l2d_viewer.set_bounce_force)
         self.top_strip.brightness_changed.connect(self.model_viewer.set_brightness)
@@ -877,6 +879,7 @@ class ReaderView(QWidget):
 
     def _on_l2d_animations_loaded(self, names: list):
         self.l2d_panel.set_animations(names)
+        self.l2d_panel.reapply_settings()
         self.top_panel.set_has_animations(True)
         self.l2d_panel.show()
         self._update_side_panels_geometry()
