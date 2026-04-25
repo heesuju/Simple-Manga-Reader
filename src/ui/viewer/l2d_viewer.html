@@ -336,16 +336,21 @@
       applyShakeChain(bestBone, local);
     }
 
+    // How many of the closest mesh-driving bones (to the clicked bone) to
+    // shake. Density-independent, so it feels the same on small and complex
+    // skeletons. Lower = more localized impact.
+    const SHAKE_NEIGHBOR_COUNT = 6;
+    // Hard cap so clicks in empty space don't reach across the whole figure.
+    const SHAKE_RADIUS_FRAC = 0.08;
+
     function applyShakeChain(clickedBone, localPoint) {
-      // Radius = ~10% of the skeleton's diagonal, in skeleton-local units.
       const bounds = currentSpine.getLocalBounds();
-      const radius = Math.hypot(bounds.width, bounds.height) * 0.1;
-      const radiusSq = radius * radius;
+      const maxRadius = Math.hypot(bounds.width, bounds.height) * SHAKE_RADIUS_FRAC;
+      const maxRadiusSq = maxRadius * maxRadius;
 
-      lastClickPoint = { x: localPoint.x, y: localPoint.y, radius: radius, age: 0 };
-
+      // Collect mesh-driving bones with their squared distance from click.
       const bones = currentSpine.skeleton.bones;
-
+      const candidates = [];
       for (let i = 0; i < bones.length; i++) {
         const b = bones[i];
         if (!b.parent) continue;
@@ -354,10 +359,27 @@
         const dx = b.worldX - clickedBone.worldX;
         const dy = b.worldY - clickedBone.worldY;
         const distSq = dx * dx + dy * dy;
-        if (distSq > radiusSq) continue;
+        if (distSq > maxRadiusSq) continue;
 
-        const falloff = 1 - Math.sqrt(distSq) / radius;
-        applyShake(b, 2.5 * falloff);
+        candidates.push({ bone: b, distSq: distSq });
+      }
+
+      // Closest first, then keep the top N.
+      candidates.sort((a, b) => a.distSq - b.distSq);
+      const picked = candidates.slice(0, SHAKE_NEIGHBOR_COUNT);
+
+      // Use the farthest picked bone's distance as the falloff radius — gives
+      // smooth distance-based falloff regardless of how many bones we kept.
+      const falloffRadius = picked.length > 0
+        ? Math.max(Math.sqrt(picked[picked.length - 1].distSq), 1)
+        : maxRadius;
+
+      lastClickPoint = { x: localPoint.x, y: localPoint.y, radius: falloffRadius, age: 0 };
+
+      for (let i = 0; i < picked.length; i++) {
+        const dist = Math.sqrt(picked[i].distSq);
+        const falloff = 1 - dist / falloffRadius;
+        applyShake(picked[i].bone, 2.5 * falloff);
       }
     }
 
