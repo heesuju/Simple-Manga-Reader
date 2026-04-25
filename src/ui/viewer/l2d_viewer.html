@@ -183,7 +183,15 @@
     var availableAnimations = [];
 
     window.playAnimation = function(index) {
-      if (!currentSpine || index < 0 || index >= availableAnimations.length) return;
+      if (!currentSpine) return;
+      // Index -1 = "Static Pose" from the panel: clear any animation and
+      // snap bones/slots to the model's authored setup pose.
+      if (index === -1) {
+        currentSpine.state.clearTracks();
+        currentSpine.skeleton.setToSetupPose();
+        return;
+      }
+      if (index < 0 || index >= availableAnimations.length) return;
       var animName = availableAnimations[index];
       currentSpine.state.setAnimation(0, animName, true);
     };
