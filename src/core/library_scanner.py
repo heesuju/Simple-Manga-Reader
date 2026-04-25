@@ -236,10 +236,9 @@ class LibraryScanner:
             data[chapter_name]['__meta__']['spine_scanned'] = True
             changed = True
             
-            atlas_stems = set()
             atlas_files = [] # tuples of (name, full_path)
             all_files = []
-            
+
             is_virtual = '|' in cpath
             if not is_virtual:
                 p = Path(cpath)
@@ -250,14 +249,13 @@ class LibraryScanner:
                                 all_files.append(f.name)
                                 if f.suffix.lower() == '.atlas':
                                     atlas_files.append((f.name, str(f)))
-                                    atlas_stems.add(f.stem.lower())
                     except OSError:
                         pass
             else:
                 archive_path, internal_path = cpath.split('|', 1)
                 import zipfile
                 from src.utils.archive_utils import SevenZipHandler
-                
+
                 if archive_path not in zip_caches:
                     zfiles = []
                     ext = Path(archive_path).suffix.lower()
@@ -270,7 +268,7 @@ class LibraryScanner:
                     if not zfiles and SevenZipHandler.is_available():
                         zfiles = SevenZipHandler.list_files(archive_path)
                     zip_caches[archive_path] = zfiles
-                    
+
                 chapter_prefix = internal_path + '/' if internal_path else ''
                 for f in zip_caches[archive_path]:
                     if f.startswith(chapter_prefix):
@@ -279,7 +277,6 @@ class LibraryScanner:
                             all_files.append(rel_name)
                             if rel_name.lower().endswith('.atlas'):
                                 atlas_files.append((rel_name, f"{archive_path}|{f}"))
-                                atlas_stems.add(Path(rel_name).stem.lower())
                                 
             spine_pngs = set()
             for atlas_name, atlas_full_path in atlas_files:
@@ -302,21 +299,16 @@ class LibraryScanner:
                     
             spine_stems = set()
             for fname in all_files:
-                ext = Path(fname).suffix.lower()
-                if ext in ('.skel', '.json', '.atlas'):
+                if Path(fname).suffix.lower() == '.skel':
                     spine_stems.add(Path(fname).stem.lower())
-                    
+
             to_blacklist = []
             for fname in all_files:
                 ext = Path(fname).suffix.lower()
                 name_lower = fname.lower()
                 stem_lower = Path(fname).stem.lower()
-                
-                if ext == '.json' and stem_lower not in atlas_stems:
-                    to_blacklist.append(fname)
-                elif ext == '.atlas':
-                    to_blacklist.append(fname)
-                elif ext == '.png':
+
+                if ext == '.png':
                     if name_lower in spine_pngs or stem_lower in spine_stems:
                         to_blacklist.append(fname)
                         

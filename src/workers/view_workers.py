@@ -15,7 +15,7 @@ from src.core.alt_manager import AltManager
 VIDEO_EXTS = {'.mp4', '.webm', '.mkv', '.avi', '.mov'}
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.jpe', '.bmp', '.gif', '.webp', '.avif'}
 MODEL_EXTS = {'.glb', '.gltf'}
-L2D_EXTS = {'.skel', '.json', '.atlas'}
+L2D_EXTS = {'.skel'}
 
 class ArchiveExtractionSignals(QObject):
     finished = pyqtSignal(str, bool) # archive_path, success
