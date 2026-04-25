@@ -41,6 +41,7 @@ from src.ui.viewer.video_viewer import VideoViewer
 from src.ui.viewer.strip_viewer import StripViewer
 from src.ui.viewer.model_viewer import ModelViewer
 from src.ui.viewer.l2d_viewer import L2DViewer
+from src.ui.l2d_panel import L2DPanel
 
 
 class ReaderView(QWidget):
@@ -110,15 +111,22 @@ class ReaderView(QWidget):
         self.model_viewer = ModelViewer(self)
         self.l2d_viewer = L2DViewer(self)
         
+        self.l2d_panel = L2DPanel(self)
+        self.l2d_panel.setParent(self)
+
         self.model_viewer.animations_loaded.connect(self._on_model_animations_loaded)
         self.model_viewer.meshes_loaded.connect(self.top_strip.show_meshes)
-        self.l2d_viewer.animations_loaded.connect(self._on_model_animations_loaded)
-        
+        self.l2d_viewer.animations_loaded.connect(self._on_l2d_animations_loaded)
+
         self.top_strip.anim_selected.connect(self.model_viewer.play_animation)
-        self.top_strip.anim_selected.connect(self.l2d_viewer.play_animation)
         self.top_strip.anim_paused.connect(self.model_viewer.set_anim_paused)
-        self.top_strip.anim_paused.connect(self.l2d_viewer.set_anim_paused)
         self.top_strip.mesh_toggled.connect(self.model_viewer.set_mesh_visible)
+        self.l2d_viewer.slots_loaded.connect(self.l2d_panel.set_meshes)
+        self.l2d_panel.anim_selected.connect(self.l2d_viewer.play_animation)
+        self.l2d_panel.anim_paused.connect(self.l2d_viewer.set_anim_paused)
+        self.l2d_panel.mesh_toggled.connect(self.l2d_viewer.set_slot_visible)
+        self.l2d_panel.slot_hovered.connect(self.l2d_viewer.highlight_slot)
+        self.l2d_panel.slot_unhovered.connect(self.l2d_viewer.clear_highlight)
         self.top_strip.brightness_changed.connect(self.model_viewer.set_brightness)
         self.current_viewer = self.image_viewer
         self.current_viewer.set_active(True)
@@ -369,7 +377,7 @@ class ReaderView(QWidget):
         self.top_panel.alts_clicked.connect(lambda: self.top_strip.toggle(0))
         self.top_panel.info_clicked.connect(lambda: self.top_strip.toggle(1))
         self.top_panel.frames_clicked.connect(lambda: self.top_strip.toggle(2))
-        self.top_panel.anim_clicked.connect(lambda: self.top_strip.toggle(3))
+        self.top_panel.anim_clicked.connect(self._on_anim_btn_clicked)
         self.top_strip.has_alts_changed.connect(self.top_panel.set_has_alts)
         self.top_strip.tab_changed.connect(self.top_panel.set_strip_tab)
         self.top_strip.tab_changed.connect(lambda _: self._sync_top_strip_visibility())
@@ -466,6 +474,18 @@ class ReaderView(QWidget):
             self.layout().activate()
         if self.bottom_container.layout():
             self.bottom_container.layout().activate()
+
+        if hasattr(self, 'l2d_panel') and self.l2d_panel.isVisible():
+            total_h = self.height()
+            total_w = self.width()
+            top_h = self.top_panel.sizeHint().height() if self.top_panel.isVisible() else 0
+            if hasattr(self, 'top_strip') and self.top_strip.isVisible():
+                top_h += self.top_strip.strip_height
+            bottom_h = self.bottom_container.sizeHint().height() if self.bottom_container.isVisible() else 0
+            available_h = max(100, total_h - top_h - bottom_h)
+            panel_w = self.l2d_panel.width()
+            self.l2d_panel.setGeometry(total_w - panel_w, top_h, panel_w, available_h)
+            self.l2d_panel.raise_()
 
         self.top_panel.raise_()
         self.bottom_container.raise_()
@@ -852,6 +872,18 @@ class ReaderView(QWidget):
         self.top_strip.show_animations(names)
         self.top_panel.set_has_animations(True)
 
+    def _on_l2d_animations_loaded(self, names: list):
+        self.l2d_panel.set_animations(names)
+        self.top_panel.set_has_animations(True)
+        self.l2d_panel.show()
+        self._update_side_panels_geometry()
+
+    def _on_anim_btn_clicked(self):
+        if self.current_viewer == self.l2d_viewer:
+            self.l2d_panel.toggle()
+        else:
+            self.top_strip.toggle(3)
+
     def resolve_path(self, path: str) -> str:
         """Resolves a virtual archive path to a real local file path if it exists in cache."""
         if not path or '|' not in path:
@@ -893,18 +925,24 @@ class ReaderView(QWidget):
 
         if is_model:
             target_viewer = self.model_viewer
+            self.l2d_panel.hide()
         elif is_l2d:
             target_viewer = self.l2d_viewer
+            self.top_strip.hide_animations()
+            self.top_strip.hide_meshes()
+            self.l2d_panel.clear()
         elif is_video:
             target_viewer = self.video_viewer
             self.top_strip.hide_animations()
             self.top_strip.hide_meshes()
             self.top_panel.set_has_animations(False)
+            self.l2d_panel.hide()
         else:
             target_viewer = self.image_viewer
             self.top_strip.hide_animations()
             self.top_strip.hide_meshes()
             self.top_panel.set_has_animations(False)
+            self.l2d_panel.hide()
 
         if self.model.view_mode != ViewMode.STRIP:
             self._switch_to_viewer(target_viewer)

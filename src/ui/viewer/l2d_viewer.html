@@ -181,6 +181,9 @@
 
     var loadToken = 0;
     var availableAnimations = [];
+    var hiddenSlots = new Set();
+    var originalAttachments = new Map(); // slotName -> attachment at load time
+    var highlightedSlot = null;
 
     window.playAnimation = function(index) {
       if (!currentSpine) return;
@@ -199,6 +202,31 @@
     window.setAnimPaused = function(paused) {
       if (currentSpine) {
         currentSpine.state.timeScale = paused ? 0 : 1;
+      }
+    };
+
+    window.highlightSlot = function(slotName) {
+      highlightedSlot = slotName;
+    };
+
+    window.clearHighlight = function() {
+      highlightedSlot = null;
+      if (!currentSpine) return;
+      currentSpine.skeleton.slots.forEach(function(s) {
+        s.color.r = 1; s.color.g = 1; s.color.b = 1; s.color.a = 1;
+      });
+    };
+
+    window.setSlotVisible = function(slotName, visible) {
+      if (!currentSpine) return;
+      var slot = currentSpine.skeleton.findSlot(slotName);
+      if (!slot) return;
+      if (visible) {
+        hiddenSlots.delete(slotName);
+        slot.attachment = originalAttachments.get(slotName) || null;
+      } else {
+        hiddenSlots.add(slotName);
+        slot.attachment = null;
       }
     };
 
@@ -247,6 +275,17 @@
 
         availableAnimations = currentSpine.spineData.animations.map(function(a) { return a.name; });
         console.log('MODEL_ANIMATIONS:' + JSON.stringify(availableAnimations));
+
+        hiddenSlots.clear();
+        originalAttachments.clear();
+        highlightedSlot = null;
+        currentSpine.skeleton.slots.forEach(function(s) {
+          originalAttachments.set(s.data.name, s.getAttachment ? s.getAttachment() : s.attachment);
+        });
+        var slotNames = currentSpine.skeleton.slots
+          .filter(function(s) { return originalAttachments.get(s.data.name); })
+          .map(function(s) { return s.data.name; });
+        console.log('MODEL_SLOTS:' + JSON.stringify(slotNames));
 
         if (availableAnimations.length > 0) {
           var idleIdx = availableAnimations.findIndex(function(n) { return n.toLowerCase().includes('idle'); });
@@ -460,6 +499,21 @@
       const orig = spine.state.apply.bind(spine.state);
       spine.state.apply = function(skeleton) {
         const result = orig(skeleton);
+        if (hiddenSlots.size > 0) {
+          hiddenSlots.forEach(function(name) {
+            var slot = skeleton.findSlot(name);
+            if (slot) slot.attachment = null;
+          });
+        }
+        if (highlightedSlot !== null) {
+          skeleton.slots.forEach(function(s) {
+            if (s.data.name === highlightedSlot) {
+              s.color.r = 0.67; s.color.g = 0.87; s.color.b = 1.0;
+            } else {
+              s.color.r = 0.4; s.color.g = 0.4; s.color.b = 0.4;
+            }
+          });
+        }
         if (boneShakes.size > 0) {
           const EPS = 0.0001;
           boneShakes.forEach((s, bone) => {

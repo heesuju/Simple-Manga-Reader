@@ -9,8 +9,9 @@ from src.utils.resource_utils import resource_path
 
 
 class L2DPage(QWebEnginePage):
-    """QWebEnginePage subclass that intercepts MODEL_ANIMATIONS console messages."""
+    """QWebEnginePage subclass that intercepts MODEL_ANIMATIONS/MODEL_SLOTS console messages."""
     animations_loaded = pyqtSignal(list)
+    slots_loaded = pyqtSignal(list)
 
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceId):
         print(f"L2D_JS [{lineNumber}]: {message}")
@@ -19,10 +20,16 @@ class L2DPage(QWebEnginePage):
                 self.animations_loaded.emit(json.loads(message[len('MODEL_ANIMATIONS:'):]))
             except Exception:
                 pass
+        elif message.startswith('MODEL_SLOTS:'):
+            try:
+                self.slots_loaded.emit(json.loads(message[len('MODEL_SLOTS:'):]))
+            except Exception:
+                pass
 
 
 class L2DViewer(BaseViewer):
     animations_loaded = pyqtSignal(list)
+    slots_loaded = pyqtSignal(list)
 
     def __init__(self, reader_view):
         super().__init__(reader_view)
@@ -44,12 +51,13 @@ class L2DViewer(BaseViewer):
             
             if web_view.page() is not self.page:
                 web_view.setPage(self.page)
-                # Disconnect any old connections first
                 try:
                     self.page.animations_loaded.disconnect(self.animations_loaded)
+                    self.page.slots_loaded.disconnect(self.slots_loaded)
                 except Exception:
                     pass
                 self.page.animations_loaded.connect(self.animations_loaded)
+                self.page.slots_loaded.connect(self.slots_loaded)
                 self._page_ready = False
                 
             web_view.show()
@@ -119,6 +127,22 @@ class L2DViewer(BaseViewer):
         if web_view and web_view.page() is self.page:
             val = 'true' if paused else 'false'
             web_view.page().runJavaScript(f'window.setAnimPaused({val})')
+
+    def set_slot_visible(self, slot_name: str, visible: bool):
+        web_view = self.reader_view.model_web_view
+        if web_view and web_view.page() is self.page:
+            val = 'true' if visible else 'false'
+            web_view.page().runJavaScript(f'window.setSlotVisible({json.dumps(slot_name)},{val})')
+
+    def highlight_slot(self, slot_name: str):
+        web_view = self.reader_view.model_web_view
+        if web_view and web_view.page() is self.page:
+            web_view.page().runJavaScript(f'window.highlightSlot({json.dumps(slot_name)})')
+
+    def clear_highlight(self):
+        web_view = self.reader_view.model_web_view
+        if web_view and web_view.page() is self.page:
+            web_view.page().runJavaScript('window.clearHighlight()')
 
     def reset(self):
         web_view = self.reader_view.model_web_view
