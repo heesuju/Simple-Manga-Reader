@@ -14,6 +14,14 @@ class L2DPage(QWebEnginePage):
     slots_loaded = pyqtSignal(list)
     bones_toggled = pyqtSignal(bool)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.featurePermissionRequested.connect(self.handle_feature_permission)
+
+    def handle_feature_permission(self, url, feature):
+        if feature == QWebEnginePage.Feature.MouseLock:
+            self.setFeaturePermission(url, feature, QWebEnginePage.PermissionPolicy.PermissionGrantedByUser)
+
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceId):
         print(f"L2D_JS [{lineNumber}]: {message}")
         if message.startswith('MODEL_ANIMATIONS:'):

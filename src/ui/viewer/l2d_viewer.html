@@ -1,32 +1,64 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a1a; overflow: hidden; }
-    canvas { display: block; width: 100vw; height: 100vh; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #1a1a1a;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
     #hint {
-      position: absolute; bottom: 12px; left: 50%;
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
       transform: translateX(-50%);
-      color: #555; font: 12px/1 sans-serif;
-      pointer-events: none; white-space: nowrap;
+      color: #555;
+      font: 12px/1 sans-serif;
+      pointer-events: none;
+      white-space: nowrap;
     }
+
     #error {
-      position: absolute; top: 50%; left: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
       transform: translate(-50%, -50%);
-      color: #f66; font: 14px sans-serif;
-      display: none; text-align: center; max-width: 80%; white-space: pre-wrap;
+      color: #f66;
+      font: 14px sans-serif;
+      display: none;
+      text-align: center;
+      max-width: 80%;
+      white-space: pre-wrap;
     }
+
     #loading {
-      position: absolute; top: 50%; left: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
       transform: translate(-50%, -50%);
-      color: #888; font: 14px sans-serif;
+      color: #888;
+      font: 14px sans-serif;
     }
   </style>
 </head>
+
 <body>
-  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Press B to toggle bones</div>
+  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Right-drag to lean left/right &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp;
+    Press B to toggle bones</div>
   <div id="error"></div>
   <div id="loading">Loading...</div>
 
@@ -66,7 +98,7 @@
     var showBones = false;
     var lastClickPoint = null; // { x, y, radius, age } in skeleton-local space
 
-    window.addEventListener('keydown', function(e) {
+    window.addEventListener('keydown', function (e) {
       if (e.key === 'b' || e.key === 'B') {
         showBones = !showBones;
         if (!showBones) boneOverlay.clear();
@@ -75,9 +107,13 @@
     });
 
     var isDragging = false;
+    var isRightDragging = false;
     var prevX = 0, prevY = 0;
     var scaleTarget = 1.0;
     var scaleCurrent = 1.0;
+
+    var targetTurnX = 0;
+    var currentTurnX = 0;
 
     var boneShakes = new Map(); // bone -> { rotationOffset, velocity }
     var meshBones = new Set();  // bones that actually drive a rendered slot/mesh
@@ -85,22 +121,31 @@
     let downTime = 0;
     let downPos = null;
 
-    app.view.addEventListener('pointerdown', function(e) {
-      if (e.button === 0) {
+    app.view.addEventListener('pointerdown', function (e) {
+      if (e.button === 0 || e.button === 2) {
         downTime = Date.now();
         downPos = { x: e.clientX, y: e.clientY };
       }
 
-      // keep your drag logic
-      if (e.button === 0 || e.button === 2 || e.button === 1) {
+      if (e.button === 0 || e.button === 1) {
         isDragging = true;
         prevX = e.clientX;
         prevY = e.clientY;
+      } else if (e.button === 2) {
+        isRightDragging = true;
+        prevX = e.clientX;
+        prevY = e.clientY;
+        try { app.view.requestPointerLock(); } catch(err) {}
       }
     });
 
-    window.addEventListener('pointerup', function(e) {
-      isDragging = false;
+    window.addEventListener('pointerup', function (e) {
+      if (e.button === 0 || e.button === 1) isDragging = false;
+      if (e.button === 2) {
+        isRightDragging = false;
+        targetTurnX = 0;
+        try { document.exitPointerLock(); } catch(err) {}
+      }
 
       // detect click (not drag)
       if (!downPos) return;
@@ -111,9 +156,17 @@
       const dt = Date.now() - downTime;
 
       if (dist < 5 && dt < 200) {
-        const c = clientToCanvas(e.clientX, e.clientY);
-        handleBoneClick(c.x, c.y);
+        if (e.button === 0) {
+          const c = clientToCanvas(e.clientX, e.clientY);
+          handleBoneClick(c.x, c.y);
+        } else if (e.button === 2) {
+          targetTurnX = 0; // reset lean on right click
+        }
       }
+    });
+
+    window.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
     });
 
     // Map viewport (CSS pixel) coordinates to PIXI stage coordinates.
@@ -125,7 +178,7 @@
       const y = (clientY - rect.top) / rect.height * app.screen.height;
       return { x: x, y: y };
     }
-    window.addEventListener('pointermove', function(e) {
+    window.addEventListener('pointermove', function (e) {
       if (isDragging) {
         var dx = e.clientX - prevX;
         var dy = e.clientY - prevY;
@@ -133,16 +186,29 @@
         container.y += dy;
         prevX = e.clientX;
         prevY = e.clientY;
+      } else if (isRightDragging) {
+        // Use movementX if pointer lock is active, otherwise fallback to clientX diff
+        var dx = (document.pointerLockElement === app.view && e.movementX !== undefined) 
+                 ? e.movementX 
+                 : (e.clientX - prevX);
+
+        targetTurnX += dx;
+        
+        var maxTurn = app.screen.width * 0.5;
+        targetTurnX = Math.max(-maxTurn, Math.min(maxTurn, targetTurnX));
+        
+        prevX = e.clientX;
+        prevY = e.clientY;
       }
     });
 
-    app.view.addEventListener('wheel', function(e) {
+    app.view.addEventListener('wheel', function (e) {
       var ds = e.deltaY > 0 ? 0.9 : 1.1;
       scaleTarget *= ds;
       e.preventDefault();
-    }, {passive: false});
+    }, { passive: false });
 
-    app.ticker.add(function() {     
+    app.ticker.add(function () {
       if (Math.abs(scaleTarget - scaleCurrent) > 0.001) {
         scaleCurrent += (scaleTarget - scaleCurrent) * 0.1;
         var cx = app.screen.width / 2;
@@ -151,7 +217,35 @@
         container.y = cy + (container.y - cy) * (scaleCurrent / container.scale.y);
         container.scale.set(scaleCurrent);
       }
-  
+
+      if (Math.abs(targetTurnX - currentTurnX) > 0.1) {
+        currentTurnX += (targetTurnX - currentTurnX) * 0.25; // made snappier
+      }
+
+      // Ensure all bones are participating in physics if turning
+      if (Math.abs(currentTurnX) > 0.1 && currentSpine) {
+        if (!currentSpine._maxDepth) {
+          let maxD = 1;
+          currentSpine.skeleton.bones.forEach(b => {
+            let d = 0, c = b;
+            while (c.parent) { d++; c = c.parent; }
+            b._hDepth = d;
+            if (d > maxD) maxD = d;
+          });
+          currentSpine._maxDepth = maxD;
+        }
+
+        currentSpine.skeleton.bones.forEach(bone => {
+          if (!bone.parent) return; // Don't tilt the root bone so character stays anchored
+          if (!boneShakes.has(bone)) {
+            boneShakes.set(bone, {
+              baseRot: bone.rotation, baseX: bone.x, baseY: bone.y,
+              rot: 0, vel: 0, x: 0, y: 0, vx: 0, vy: 0
+            });
+          }
+        });
+      }
+
       // Spring physics for shake — actual bone writes happen in the hook on
       // state.apply (so they survive pixi-spine's per-frame animation pass).
       if (boneShakes.size > 0) {
@@ -159,9 +253,67 @@
         const damping = 0.85;
 
         boneShakes.forEach((s, bone) => {
-          s.vel += -s.rot * stiffness;
-          s.vel *= damping;
+          let isHeadDescendant = false;
+          if (currentSpine && !currentSpine._descCounts) {
+            currentSpine._descCounts = new Map();
+            function countDesc(b) {
+              let count = 0;
+              for (let i = 0; i < b.children.length; i++) {
+                count += 1 + countDesc(b.children[i]);
+              }
+              currentSpine._descCounts.set(b, count);
+              return count;
+            }
+            let rootBone = currentSpine.skeleton.getRootBone();
+            countDesc(rootBone);
+
+            // Topological Head Finder (No names used!)
+            // The Head is universally the bone with the highest number of direct children
+            // because all facial features (eyes, mouth, nose, ears) and hair roots attach to it.
+            let maxChildren = -1;
+            let hubBone = null;
+            // The head is almost never at depth 0 or 1. It's usually at least 30% deep into the skeleton tree.
+            let minDepth = Math.max(1, Math.floor(currentSpine._maxDepth * 0.3));
+            
+            currentSpine.skeleton.bones.forEach(b => {
+               // Exclude the root and master bones from being the hub
+               if (b._hDepth >= minDepth && b.children.length > maxChildren) {
+                 maxChildren = b.children.length;
+                 hubBone = b;
+               }
+            });
+            
+            currentSpine._headDescendants = new Set();
+            function markDescendants(b) {
+              currentSpine._headDescendants.add(b);
+              for (let c of b.children) markDescendants(c);
+            }
+            if (hubBone) {
+              for (let c of hubBone.children) markDescendants(c);
+            }
+          }
+
+          let factor = 0;
+          if (currentSpine && bone._hDepth && bone._hDepth >= 1) {
+            let descCount = currentSpine._descCounts.get(bone) || 0;
+            let isHubDescendant = currentSpine._headDescendants && currentSpine._headDescendants.has(bone);
+            
+            // Topological lock: Lock hub descendants and leaf nodes (< 3 descendants) to prevent facial distortion
+            if (isHubDescendant || descCount < 3) {
+              factor = 0; 
+            } else {
+              // Smooth exponential curve for structural bones
+              factor = Math.pow(bone._hDepth / currentSpine._maxDepth, 1.5);
+            }
+          }
+
+          // compound small rotation scaled by hierarchy depth
+          const targetRot = currentTurnX * 0.02 * factor;
+
+          // Interpolate rotation and damp velocity
           s.rot += s.vel;
+          s.vel *= damping;
+          s.rot += (targetRot - s.rot) * 0.2;
 
           s.vx += -s.x * stiffness;
           s.vy += -s.y * stiffness;
@@ -170,9 +322,10 @@
           s.x += s.vx;
           s.y += s.vy;
 
-          if (Math.abs(s.rot) < 0.01 && Math.abs(s.vel) < 0.01 &&
-              Math.abs(s.x) < 0.05 && Math.abs(s.vx) < 0.05 &&
-              Math.abs(s.y) < 0.05 && Math.abs(s.vy) < 0.05) {
+          if (Math.abs(targetTurnX) < 0.1 &&
+            Math.abs(s.rot) < 0.01 && Math.abs(s.vel) < 0.01 &&
+            Math.abs(s.x) < 0.05 && Math.abs(s.vx) < 0.05 &&
+            Math.abs(s.y) < 0.05 && Math.abs(s.vy) < 0.05) {
             boneShakes.delete(bone);
           }
         });
@@ -189,7 +342,7 @@
     var currentModelUrl = null;
     var currentAtlasUrl = null;
 
-    window.playAnimation = function(index) {
+    window.playAnimation = function (index) {
       if (!currentSpine) return;
       // Index -1 = "Static Pose" from the panel: clear any animation and
       // snap bones/slots to the model's authored setup pose.
@@ -203,25 +356,25 @@
       currentSpine.state.setAnimation(0, animName, true);
     };
 
-    window.setAnimPaused = function(paused) {
+    window.setAnimPaused = function (paused) {
       if (currentSpine) {
         currentSpine.state.timeScale = paused ? 0 : 1;
       }
     };
 
-    window.highlightSlot = function(slotName) {
+    window.highlightSlot = function (slotName) {
       highlightedSlot = slotName;
     };
 
-    window.clearHighlight = function() {
+    window.clearHighlight = function () {
       highlightedSlot = null;
       if (!currentSpine) return;
-      currentSpine.skeleton.slots.forEach(function(s) {
+      currentSpine.skeleton.slots.forEach(function (s) {
         s.color.r = 1; s.color.g = 1; s.color.b = 1; s.color.a = 1;
       });
     };
 
-    window.setSlotVisible = function(slotName, visible) {
+    window.setSlotVisible = function (slotName, visible) {
       if (!currentSpine) return;
       var slot = currentSpine.skeleton.findSlot(slotName);
       if (!slot) return;
@@ -234,14 +387,14 @@
       }
     };
 
-    window.setNeighborCount = function(n) { shakeNeighborCount = n; };
-    window.setBounceForce = function(n) { shakeBounceForce = n; };
-    window.setShowBones = function(visible) {
+    window.setNeighborCount = function (n) { shakeNeighborCount = n; };
+    window.setBounceForce = function (n) { shakeBounceForce = n; };
+    window.setShowBones = function (visible) {
       showBones = visible;
       if (!showBones) boneOverlay.clear();
     };
 
-    window.setPremultipliedAlpha = function(enabled) {
+    window.setPremultipliedAlpha = function (enabled) {
       // The atlas loader's per-page choice (driven by `pma:` in the .atlas
       // file) wins over the global default. This toggle still flips the
       // global default and forces a reload — only matters when the atlas
@@ -266,10 +419,10 @@
       var urls = [];
       if (skelUrl) urls.push(skelUrl);
       if (atlasUrl) urls.push(atlasUrl);
-      try { await PIXI.Assets.unload(urls); } catch (e) {}
+      try { await PIXI.Assets.unload(urls); } catch (e) { }
     }
 
-    window.loadModel = async function(url) {
+    window.loadModel = async function (url) {
       var prevSkelUrl = currentModelUrl;
       var prevAtlasUrl = currentAtlasUrl;
       currentModelUrl = url;
@@ -324,24 +477,35 @@
         container.x = sw / 2;
         container.y = sh / 2;
 
-        availableAnimations = currentSpine.skeleton.data.animations.map(function(a) { return a.name; });
+        availableAnimations = currentSpine.skeleton.data.animations.map(function (a) { return a.name; });
         console.log('MODEL_ANIMATIONS:' + JSON.stringify(availableAnimations));
+
+        var sortedBones = currentSpine.skeleton.bones.slice().sort(function (a, b) {
+          function getDepth(bone) {
+            var d = 0, c = bone;
+            while (c.parent) { d++; c = c.parent; }
+            return d;
+          }
+          return getDepth(a) - getDepth(b);
+        });
+        var allBoneNames = sortedBones.map(function (b) { return b.data.name; });
+        console.log('ALL_BONES:' + JSON.stringify(allBoneNames));
 
         hiddenSlots.clear();
         originalAttachments.clear();
         highlightedSlot = null;
         showBones = false;
         boneOverlay.clear();
-        currentSpine.skeleton.slots.forEach(function(s) {
+        currentSpine.skeleton.slots.forEach(function (s) {
           originalAttachments.set(s.data.name, s.getAttachment());
         });
         var slotNames = currentSpine.skeleton.slots
-          .filter(function(s) { return originalAttachments.get(s.data.name); })
-          .map(function(s) { return s.data.name; });
+          .filter(function (s) { return originalAttachments.get(s.data.name); })
+          .map(function (s) { return s.data.name; });
         console.log('MODEL_SLOTS:' + JSON.stringify(slotNames));
 
         if (availableAnimations.length > 0) {
-          var idleIdx = availableAnimations.findIndex(function(n) { return n.toLowerCase().includes('idle'); });
+          var idleIdx = availableAnimations.findIndex(function (n) { return n.toLowerCase().includes('idle'); });
           window.playAnimation(idleIdx >= 0 ? idleIdx : 0);
         }
       } catch (err) {
@@ -551,16 +715,29 @@
     // of the state pixi-spine reads when it builds mesh geometry.
     function installShakeHook(spine) {
       const orig = spine.state.apply.bind(spine.state);
-      spine.state.apply = function(skeleton) {
+      spine.state.apply = function (skeleton) {
+        // Remove previous frame's manual offsets before animation runs
+        if (window._lastAppliedShakes) {
+          window._lastAppliedShakes.forEach((s, bone) => {
+            bone.rotation -= s.rot;
+            bone.x -= s.x;
+            bone.y -= s.y;
+          });
+          window._lastAppliedShakes.clear();
+        } else {
+          window._lastAppliedShakes = new Map();
+        }
+
         const result = orig(skeleton);
+        
         if (hiddenSlots.size > 0) {
-          hiddenSlots.forEach(function(name) {
+          hiddenSlots.forEach(function (name) {
             var slot = skeleton.findSlot(name);
             if (slot) slot.attachment = null;
           });
         }
         if (highlightedSlot !== null) {
-          skeleton.slots.forEach(function(s) {
+          skeleton.slots.forEach(function (s) {
             if (s.data.name === highlightedSlot) {
               s.color.r = 0.67; s.color.g = 0.87; s.color.b = 1.0;
             } else {
@@ -568,28 +745,14 @@
             }
           });
         }
+        
+        // Apply current frame's manual offsets
         if (boneShakes.size > 0) {
-          const EPS = 0.0001;
           boneShakes.forEach((s, bone) => {
-            // Auto-detect per frame: did state.apply just overwrite our
-            // previous write? If yes, the bone is keyed by the animation and
-            // we add as a delta. If no, nothing animates this bone, so we
-            // anchor to the captured baseline. This stays correct regardless
-            // of pixi-spine version or timeline schema.
-            const keyedRot = s.lastRot === undefined ||
-                             Math.abs(bone.rotation - s.lastRot) > EPS;
-            const keyedX   = s.lastX === undefined ||
-                             Math.abs(bone.x - s.lastX) > EPS;
-            const keyedY   = s.lastY === undefined ||
-                             Math.abs(bone.y - s.lastY) > EPS;
-
-            bone.rotation = (keyedRot ? bone.rotation : s.baseRot) + s.rot;
-            bone.x        = (keyedX   ? bone.x        : s.baseX)   + s.x;
-            bone.y        = (keyedY   ? bone.y        : s.baseY)   + s.y;
-
-            s.lastRot = bone.rotation;
-            s.lastX   = bone.x;
-            s.lastY   = bone.y;
+            bone.rotation += s.rot;
+            bone.x += s.x;
+            bone.y += s.y;
+            window._lastAppliedShakes.set(bone, { rot: s.rot, x: s.x, y: s.y });
           });
         }
         return result;
@@ -615,7 +778,8 @@
       s.vx += (Math.random() - 0.5) * 6 * strength;
       s.vel += (Math.random() - 0.5) * 4 * strength;
     }
-    
+
   </script>
 </body>
+
 </html>
