@@ -39,6 +39,7 @@ class L2DViewer(BaseViewer):
         super().__init__(reader_view)
         self._pending_url = None
         self._page_ready = False
+        self._current_version = None
 
         web_view = reader_view.model_web_view
         if web_view is not None:
@@ -71,6 +72,18 @@ class L2DViewer(BaseViewer):
             web_view.hide()
             self.reader_view.media_stack.show()
 
+    def _detect_spine_version(self, path: str) -> str:
+        try:
+            with open(path, 'rb') as f:
+                data = f.read(100)
+                if b'3.8.' in data or b'4.0.' in data:
+                    return '4.0'
+                if b'4.1.' in data or b'4.2.' in data:
+                    return '4.1'
+        except Exception:
+            pass
+        return '4.1'  # Default to newer
+
     def load(self, path: str):
         web_view = self.reader_view.model_web_view
         if web_view is None or not path:
@@ -83,16 +96,21 @@ class L2DViewer(BaseViewer):
             return
 
         self._pending_url = model_url
+        version = self._detect_spine_version(path)
+        print(version)
 
-        if self._page_ready and web_view.page() is self.page:
+        if self._page_ready and web_view.page() is self.page and self._current_version == version:
             self._inject(web_view)
         else:
+            self._current_version = version
+            self._page_ready = False
             try:
                 web_view.loadFinished.disconnect(self._on_load_finished)
             except Exception:
                 pass
             web_view.loadFinished.connect(self._on_load_finished)
-            html_path = resource_path('src/ui/viewer/l2d_viewer.html')
+            html_file = 'src/ui/viewer/l2d_viewer_old.html' if version == '4.0' else 'src/ui/viewer/l2d_viewer.html'
+            html_path = resource_path(html_file)
             web_view.setUrl(QUrl.fromLocalFile(html_path))
 
     def _inject(self, web_view):
@@ -182,6 +200,7 @@ class L2DViewer(BaseViewer):
             web_view.setHtml('')
         self._page_ready = False
         self._pending_url = None
+        self._current_version = None
 
     def zoom(self, mode: str):
         pass

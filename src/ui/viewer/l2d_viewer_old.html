@@ -31,15 +31,14 @@
   <div id="loading">Loading...</div>
 
   <script src="pixi.min.js"></script>
-  <script src="spine-pixi-v7.min.js"></script>
+  <script src="pixi-spine.js"></script>
 
   <script>
     document.getElementById('loading').style.display = 'none';
 
-    // The spine-pixi-v7 atlas loader picks the right alphaMode per page from
-    // the atlas's pma flag (pma:true -> PMA, otherwise UNPACK = premultiply
-    // on upload). preferCreateImageBitmap:false is required so PMA pages
-    // upload through the path the atlas loader expects.
+    // Nikke models typically use Straight Alpha rather than Premultiplied Alpha.
+    // We configure PixiJS to handle this to prevent dark outlines on blended parts.
+    PIXI.BaseTexture.defaultOptions.alphaMode = PIXI.ALPHA_MODES.NO_PREMULTIPLIED_ALPHA;
     PIXI.Assets.setPreferences({ preferCreateImageBitmap: false });
 
     var app = new PIXI.Application({
@@ -152,7 +151,7 @@
         container.scale.set(scaleCurrent);
       }
   
-      // Spring physics for shake — actual bone writes happen in the hook on
+      // Spring physics for shake - actual bone writes happen in the hook on
       // state.apply (so they survive pixi-spine's per-frame animation pass).
       if (boneShakes.size > 0) {
         const stiffness = 0.25;
@@ -187,7 +186,7 @@
     var originalAttachments = new Map(); // slotName -> attachment at load time
     var highlightedSlot = null;
     var currentModelUrl = null;
-    var currentAtlasUrl = null;
+    var currentResource = null; // resource from PIXI.Assets, kept for cleanup on next load
 
     window.playAnimation = function(index) {
       if (!currentSpine) return;
@@ -227,10 +226,10 @@
       if (!slot) return;
       if (visible) {
         hiddenSlots.delete(slotName);
-        slot.setAttachment(originalAttachments.get(slotName) || null);
+        slot.attachment = originalAttachments.get(slotName) || null;
       } else {
         hiddenSlots.add(slotName);
-        slot.setAttachment(null);
+        slot.attachment = null;
       }
     };
 
@@ -242,67 +241,65 @@
     };
 
     window.setPremultipliedAlpha = function(enabled) {
-      // The atlas loader's per-page choice (driven by `pma:` in the .atlas
-      // file) wins over the global default. This toggle still flips the
-      // global default and forces a reload — only matters when the atlas
-      // doesn't declare pma. Spine.from rebuilds SkeletonData against the
-      // freshly-uploaded textures.
       PIXI.BaseTexture.defaultOptions.alphaMode = enabled
-        ? PIXI.ALPHA_MODES.PMA
-        : PIXI.ALPHA_MODES.UNPACK;
-      if (currentModelUrl) window.loadModel(currentModelUrl);
+        ? PIXI.ALPHA_MODES.PREMULTIPLIED_ALPHA
+        : PIXI.ALPHA_MODES.NO_PREMULTIPLIED_ALPHA;
+      if (currentModelUrl) {
+        window.loadModel(currentModelUrl);
+      }
     };
 
-    // spine-pixi-v7 caches parsed SkeletonData in Spine.skeletonCache keyed
-    // by `${skeleton}-${atlas}-${scale}`. The cached data references atlas
-    // regions by identity, so a re-load (e.g. alpha-mode toggle) MUST drop
-    // this entry too — otherwise the new atlas's textures are loaded but
-    // unused while the old, destroyed regions are still referenced.
-    async function unloadPreviousModel(skelUrl, atlasUrl) {
-      if (!skelUrl && !atlasUrl) return;
-      if (skelUrl && atlasUrl) {
-        delete spine.Spine.skeletonCache[skelUrl + '-' + atlasUrl + '-1'];
-      }
+    function unloadPreviousModel(skelUrl, resource) {
       var urls = [];
-      if (skelUrl) urls.push(skelUrl);
-      if (atlasUrl) urls.push(atlasUrl);
-      try { await PIXI.Assets.unload(urls); } catch (e) {}
+      if (skelUrl) {
+        urls.push(skelUrl);
+        var dot = skelUrl.lastIndexOf('.');
+        if (dot >= 0) urls.push(skelUrl.substring(0, dot) + '.atlas');
+      }
+      if (resource && resource.spineAtlas && resource.spineAtlas.pages) {
+        resource.spineAtlas.pages.forEach(function(p) {
+          var bt = p.baseTexture;
+          if (bt) {
+            var src = bt.resource && (bt.resource.url || bt.resource.src);
+            if (src) urls.push(src);
+            try { bt.destroy(); } catch (e) {}
+          }
+        });
+      }
+      if (urls.length === 0) return Promise.resolve();
+      return PIXI.Assets.unload(urls).catch(function() {});
     }
 
-    window.loadModel = async function(url) {
-      var prevSkelUrl = currentModelUrl;
-      var prevAtlasUrl = currentAtlasUrl;
+    window.loadModel = function(url) {
+      var prevUrl = currentModelUrl;
+      var prevResource = currentResource;
       currentModelUrl = url;
-
-      var dot = url.lastIndexOf('.');
-      var atlasUrl = (dot >= 0 ? url.substring(0, dot) : url) + '.atlas';
-      currentAtlasUrl = atlasUrl;
-
+      currentResource = null;
       document.getElementById('error').style.display = 'none';
       if (currentSpine) {
         container.removeChild(currentSpine);
-        currentSpine.destroy({ children: true });
+        currentSpine.destroy();
         currentSpine = null;
       }
 
       var currentToken = ++loadToken;
 
-      try {
-        await unloadPreviousModel(prevSkelUrl, prevAtlasUrl);
+      unloadPreviousModel(prevUrl, prevResource).then(function() {
+        if (currentToken !== loadToken) return null;
+        return PIXI.Assets.load(url);
+      }).then(function(resource) {
         if (currentToken !== loadToken) return;
 
-        await PIXI.Assets.load([url, atlasUrl]);
-        if (currentToken !== loadToken) return;
-
-        // Spine 4.1's Spine.from uses positional args (skeleton, atlas, options).
-        // Spine 4.2's variant accepts an object too but we're locked to 4.1
-        // because the 4.2 binary parser reads a `referenceScale` float that
-        // doesn't exist in 4.1 .skel files, misaligning the stream.
-        currentSpine = spine.Spine.from(url, atlasUrl);
-        // Hook state.apply so shake offsets land AFTER animation, every
-        // frame. spine-pixi-v7 also exposes beforeUpdateWorldTransforms,
-        // but wrapping state.apply keeps the existing logic verbatim.
-        installShakeHook(currentSpine);
+        if (resource && resource.spineData) {
+          currentResource = resource;
+          currentSpine = new PIXI.spine.Spine(resource.spineData);
+          // Hook state.apply so shake offsets land AFTER animation, every
+          // frame, regardless of whether pixi-spine drives update or we do.
+          // This is what makes shake work for animation-keyed bones.
+          installShakeHook(currentSpine);
+        } else {
+           throw new Error("Invalid spine data or missing resources (.atlas / .png).");
+        }
 
         container.addChild(currentSpine);
         container.addChild(boneOverlay); // keep overlay on top of newly added spine
@@ -317,14 +314,14 @@
         var sh = app.screen.height;
         var s = Math.min(sw / localRect.width, sh / localRect.height) * 0.9;
         if (!isFinite(s) || s === 0) s = 1.0;
-
+        
         container.scale.set(s);
         scaleTarget = s;
         scaleCurrent = s;
         container.x = sw / 2;
         container.y = sh / 2;
 
-        availableAnimations = currentSpine.skeleton.data.animations.map(function(a) { return a.name; });
+        availableAnimations = currentSpine.spineData.animations.map(function(a) { return a.name; });
         console.log('MODEL_ANIMATIONS:' + JSON.stringify(availableAnimations));
 
         hiddenSlots.clear();
@@ -333,7 +330,7 @@
         showBones = false;
         boneOverlay.clear();
         currentSpine.skeleton.slots.forEach(function(s) {
-          originalAttachments.set(s.data.name, s.getAttachment());
+          originalAttachments.set(s.data.name, s.getAttachment ? s.getAttachment() : s.attachment);
         });
         var slotNames = currentSpine.skeleton.slots
           .filter(function(s) { return originalAttachments.get(s.data.name); })
@@ -344,12 +341,12 @@
           var idleIdx = availableAnimations.findIndex(function(n) { return n.toLowerCase().includes('idle'); });
           window.playAnimation(idleIdx >= 0 ? idleIdx : 0);
         }
-      } catch (err) {
+      }).catch(function(err) {
         if (currentToken !== loadToken) return;
         var el = document.getElementById('error');
         el.textContent = 'Failed to load model:\n' + (err.message || String(err));
         el.style.display = 'block';
-      }
+      });
     };
 
     function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
@@ -372,7 +369,7 @@
     // Build the set of bones that actually move visible geometry:
     //   - the slot.bone of every slot with an attachment
     //   - every bone weighted by a weighted-mesh attachment
-    // Bones outside this set are control/IK/parent rigs — shaking them moves
+    // Bones outside this set are control/IK/parent rigs - shaking them moves
     // nothing on screen.
     function computeMeshBones(spine) {
       const set = new Set();
@@ -406,7 +403,7 @@
 
       // toLocal on the spine (not the container) yields skeleton-space, which
       // is what bone.worldX/worldY are in. Using container-space here was off
-      // by currentSpine.position — that's why the affected area was below the
+      // by currentSpine.position - that's why the affected area was below the
       // cursor.
       const point = new PIXI.Point(screenX, screenY);
       const local = currentSpine.toLocal(point);
@@ -469,7 +466,7 @@
       candidates.sort((a, b) => a.distSq - b.distSq);
       const picked = candidates.slice(0, shakeNeighborCount);
 
-      // Use the farthest picked bone's distance as the falloff radius — gives
+      // Use the farthest picked bone's distance as the falloff radius - gives
       // smooth distance-based falloff regardless of how many bones we kept.
       const falloffRadius = picked.length > 0
         ? Math.max(Math.sqrt(picked[picked.length - 1].distSq), 1)
@@ -522,8 +519,8 @@
 
       // Bone joints:
       //   red + larger = currently shaking
-      //   green        = mesh-driving (slot bone or weighted-mesh bone) — clickable
-      //   gray         = control / IK / parent rig — shaking it has no visible effect
+      //   green        = mesh-driving (slot bone or weighted-mesh bone) - clickable
+      //   gray         = control / IK / parent rig - shaking it has no visible effect
       const dotR = 3 / container.scale.x;
       for (let i = 0; i < bones.length; i++) {
         const b = bones[i];
@@ -610,7 +607,7 @@
 
       const s = boneShakes.get(bone);
 
-      // Bounce impulse — upward kick + sideways jiggle + rotation jitter.
+      // Bounce impulse - upward kick + sideways jiggle + rotation jitter.
       s.vy += -8 * strength;
       s.vx += (Math.random() - 0.5) * 6 * strength;
       s.vel += (Math.random() - 0.5) * 4 * strength;
