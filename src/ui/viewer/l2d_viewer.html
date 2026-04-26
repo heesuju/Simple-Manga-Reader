@@ -186,6 +186,7 @@
     var originalAttachments = new Map(); // slotName -> attachment at load time
     var highlightedSlot = null;
     var currentModelUrl = null;
+    var currentResource = null; // resource from PIXI.Assets, kept for cleanup on next load
 
     window.playAnimation = function(index) {
       if (!currentSpine) return;
@@ -244,14 +245,36 @@
         ? PIXI.ALPHA_MODES.PREMULTIPLIED_ALPHA
         : PIXI.ALPHA_MODES.NO_PREMULTIPLIED_ALPHA;
       if (currentModelUrl) {
-        PIXI.Assets.unload(currentModelUrl).catch(function() {}).finally(function() {
-          window.loadModel(currentModelUrl);
-        });
+        window.loadModel(currentModelUrl);
       }
     };
 
+    function unloadPreviousModel(skelUrl, resource) {
+      var urls = [];
+      if (skelUrl) {
+        urls.push(skelUrl);
+        var dot = skelUrl.lastIndexOf('.');
+        if (dot >= 0) urls.push(skelUrl.substring(0, dot) + '.atlas');
+      }
+      if (resource && resource.spineAtlas && resource.spineAtlas.pages) {
+        resource.spineAtlas.pages.forEach(function(p) {
+          var bt = p.baseTexture;
+          if (bt) {
+            var src = bt.resource && (bt.resource.url || bt.resource.src);
+            if (src) urls.push(src);
+            try { bt.destroy(); } catch (e) {}
+          }
+        });
+      }
+      if (urls.length === 0) return Promise.resolve();
+      return PIXI.Assets.unload(urls).catch(function() {});
+    }
+
     window.loadModel = function(url) {
+      var prevUrl = currentModelUrl;
+      var prevResource = currentResource;
       currentModelUrl = url;
+      currentResource = null;
       document.getElementById('error').style.display = 'none';
       if (currentSpine) {
         container.removeChild(currentSpine);
@@ -261,10 +284,14 @@
 
       var currentToken = ++loadToken;
 
-      PIXI.Assets.load(url).then(function(resource) {
+      unloadPreviousModel(prevUrl, prevResource).then(function() {
+        if (currentToken !== loadToken) return null;
+        return PIXI.Assets.load(url);
+      }).then(function(resource) {
         if (currentToken !== loadToken) return;
 
         if (resource && resource.spineData) {
+          currentResource = resource;
           currentSpine = new PIXI.spine.Spine(resource.spineData);
           // Hook state.apply so shake offsets land AFTER animation, every
           // frame, regardless of whether pixi-spine drives update or we do.
