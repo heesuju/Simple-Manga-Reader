@@ -393,12 +393,24 @@
     }
 
     // Patch state.apply so shake offsets land AFTER animation runs every
-    // frame. Auto-detects per bone whether the animation keyed it: if yes,
-    // add as delta; if no, anchor against the captured baseline.
+    // frame. Subtract the previous frame's offset BEFORE animation, then
+    // re-add the current offset AFTER. For keyed bones, animation overwrites
+    // the cleaned value; for non-keyed bones, the cleaned value persists.
+    // Either way, offsets compose cleanly without the heuristic-keyed-detect
+    // that caused stack/reset oscillation (the lean-induced flashing).
     function installShakeHook(state) {
       var orig = state.apply.bind(state);
+      var lastAppliedShakes = new Map();
       state.apply = function (skeleton) {
+        lastAppliedShakes.forEach(function (s, bone) {
+          bone.rotation -= s.rot;
+          bone.x -= s.x;
+          bone.y -= s.y;
+        });
+        lastAppliedShakes.clear();
+
         var result = orig(skeleton);
+
         if (hiddenSlots.size > 0) {
           hiddenSlots.forEach(function (name) {
             var slot = skeleton.findSlot(name);
@@ -415,17 +427,11 @@
           });
         }
         if (boneShakes.size > 0) {
-          var EPS = 0.0001;
           boneShakes.forEach(function (s, bone) {
-            var keyedRot = s.lastRot === undefined || Math.abs(bone.rotation - s.lastRot) > EPS;
-            var keyedX   = s.lastX   === undefined || Math.abs(bone.x        - s.lastX)   > EPS;
-            var keyedY   = s.lastY   === undefined || Math.abs(bone.y        - s.lastY)   > EPS;
-            bone.rotation = (keyedRot ? bone.rotation : s.baseRot) + s.rot;
-            bone.x        = (keyedX   ? bone.x        : s.baseX)   + s.x;
-            bone.y        = (keyedY   ? bone.y        : s.baseY)   + s.y;
-            s.lastRot = bone.rotation;
-            s.lastX   = bone.x;
-            s.lastY   = bone.y;
+            bone.rotation += s.rot;
+            bone.x += s.x;
+            bone.y += s.y;
+            lastAppliedShakes.set(bone, { rot: s.rot, x: s.x, y: s.y });
           });
         }
         return result;
