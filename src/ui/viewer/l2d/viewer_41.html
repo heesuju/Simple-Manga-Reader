@@ -64,6 +64,7 @@
 
   <script src="pixi.min.js"></script>
   <script src="spine-pixi-v7.min.js"></script>
+  <script src="common.js"></script>
 
   <script>
     document.getElementById('loading').style.display = 'none';
@@ -224,7 +225,7 @@
 
       // Ensure all bones are participating in physics if turning
       if (Math.abs(currentTurnX) > 0.1 && currentSpine) {
-        computeHeadStructure(currentSpine);
+        L2D.computeHeadStructure(currentSpine.skeleton);
 
         currentSpine.skeleton.bones.forEach(bone => {
           if (!bone.parent) return; // Don't tilt the root bone so character stays anchored
@@ -244,19 +245,20 @@
         const damping = 0.85;
 
         boneShakes.forEach((s, bone) => {
-          if (currentSpine) computeHeadStructure(currentSpine);
+          if (currentSpine) L2D.computeHeadStructure(currentSpine.skeleton);
 
           let factor = 0;
           if (currentSpine && bone._hDepth && bone._hDepth >= 1) {
-            let descCount = currentSpine._descCounts.get(bone) || 0;
-            let isHubDescendant = currentSpine._headDescendants && currentSpine._headDescendants.has(bone);
-            
+            const sk = currentSpine.skeleton;
+            let descCount = sk._descCounts.get(bone) || 0;
+            let isHubDescendant = sk._headDescendants && sk._headDescendants.has(bone);
+
             // Topological lock: Lock hub descendants and leaf nodes (< 3 descendants) to prevent facial distortion
             if (isHubDescendant || descCount < 3) {
-              factor = 0; 
+              factor = 0;
             } else {
               // Smooth exponential curve for structural bones
-              factor = Math.pow(bone._hDepth / currentSpine._maxDepth, 1.5);
+              factor = Math.pow(bone._hDepth / sk._maxDepth, 1.5);
             }
           }
 
@@ -409,12 +411,12 @@
         // frame. spine-pixi-v7 also exposes beforeUpdateWorldTransforms,
         // but wrapping state.apply keeps the existing logic verbatim.
         installShakeHook(currentSpine);
-        computeHeadStructure(currentSpine);
+        L2D.computeHeadStructure(currentSpine.skeleton);
 
         container.addChild(currentSpine);
         container.addChild(boneOverlay); // keep overlay on top of newly added spine
 
-        meshBones = computeMeshBones(currentSpine);
+        meshBones = L2D.computeMeshBones(currentSpine.skeleton);
         console.log('Mesh-driving bones: ' + meshBones.size + ' / ' + currentSpine.skeleton.bones.length);
 
         var localRect = currentSpine.getLocalBounds();
@@ -459,8 +461,7 @@
         console.log('MODEL_SLOTS:' + JSON.stringify(slotNames));
 
         if (availableAnimations.length > 0) {
-          var idleIdx = availableAnimations.findIndex(function (n) { return n.toLowerCase().includes('idle'); });
-          window.playAnimation(idleIdx >= 0 ? idleIdx : 0);
+          window.playAnimation(L2D.pickDefaultAnim(availableAnimations));
         }
       } catch (err) {
         if (currentToken !== loadToken) return;
@@ -486,94 +487,6 @@
 
       return Math.hypot(px - cx, py - cy);
     };
-
-    // Detect bones whose descendants should not lean (head/face). Combines:
-    //   1. Topological hub: bone with the most direct children below 30% depth
-    //      (all facial features attach there, so it's usually the head).
-    //   2. Name fallback: any bone whose name contains "head" or "face" —
-    //      catches rigs where another bone has more children than the head.
-    // Caches results on the spine instance; safe to call repeatedly.
-    function computeHeadStructure(spine) {
-      if (spine._headDescendants) return;
-
-      let maxD = 1;
-      spine.skeleton.bones.forEach(b => {
-        let d = 0, c = b;
-        while (c.parent) { d++; c = c.parent; }
-        b._hDepth = d;
-        if (d > maxD) maxD = d;
-      });
-      spine._maxDepth = maxD;
-
-      spine._descCounts = new Map();
-      function countDesc(b) {
-        let count = 0;
-        for (let i = 0; i < b.children.length; i++) {
-          count += 1 + countDesc(b.children[i]);
-        }
-        spine._descCounts.set(b, count);
-        return count;
-      }
-      countDesc(spine.skeleton.getRootBone());
-
-      let maxChildren = -1;
-      let hubBone = null;
-      const minDepth = Math.max(1, Math.floor(spine._maxDepth * 0.3));
-      spine.skeleton.bones.forEach(b => {
-        if (b._hDepth >= minDepth && b.children.length > maxChildren) {
-          maxChildren = b.children.length;
-          hubBone = b;
-        }
-      });
-
-      const headDescendants = new Set();
-      function markDescendants(b) {
-        headDescendants.add(b);
-        for (let c of b.children) markDescendants(c);
-      }
-      if (hubBone) {
-        for (let c of hubBone.children) markDescendants(c);
-      }
-      spine.skeleton.bones.forEach(b => {
-        const name = b.data && b.data.name ? b.data.name.toLowerCase() : '';
-        if (name.includes('head') || name.includes('face')) {
-          for (let c of b.children) markDescendants(c);
-        }
-      });
-      spine._headDescendants = headDescendants;
-    }
-
-    // Build the set of bones that actually move visible geometry:
-    //   - the slot.bone of every slot with an attachment
-    //   - every bone weighted by a weighted-mesh attachment
-    // Bones outside this set are control/IK/parent rigs — shaking them moves
-    // nothing on screen.
-    function computeMeshBones(spine) {
-      const set = new Set();
-      const allBones = spine.skeleton.bones;
-      const slots = spine.skeleton.slots;
-      for (let si = 0; si < slots.length; si++) {
-        const slot = slots[si];
-        const att = slot.getAttachment ? slot.getAttachment() : slot.attachment;
-        if (!att) continue;
-
-        if (att.bones && att.bones.length) {
-          // Weighted mesh: bones array is [count, idx, idx, ..., count, idx, ...]
-          const arr = att.bones;
-          let i = 0;
-          while (i < arr.length) {
-            const count = arr[i++];
-            for (let j = 0; j < count; j++) {
-              const idx = arr[i++];
-              if (idx >= 0 && idx < allBones.length) set.add(allBones[idx]);
-            }
-          }
-        } else if (slot.bone) {
-          set.add(slot.bone);
-        }
-      }
-      return set;
-    }
 
     function handleBoneClick(screenX, screenY) {
       if (!currentSpine) return;
@@ -654,7 +567,7 @@
       for (let i = 0; i < picked.length; i++) {
         const dist = Math.sqrt(picked[i].distSq);
         const falloff = 1 - dist / falloffRadius;
-        applyShake(picked[i].bone, (shakeBounceForce + 1) * 0.5 * falloff);
+        L2D.applyShake(picked[i].bone, (shakeBounceForce + 1) * 0.5 * falloff, boneShakes);
       }
     }
 
@@ -699,7 +612,7 @@
       //   purple       = head/face descendant — locked out of lean rotation
       //   green        = mesh-driving (slot bone or weighted-mesh bone) — clickable
       //   gray         = control / IK / parent rig — shaking it has no visible effect
-      const headDescendants = currentSpine._headDescendants;
+      const headDescendants = currentSpine.skeleton._headDescendants;
       const dotR = 3 / container.scale.x;
       for (let i = 0; i < bones.length; i++) {
         const b = bones[i];
@@ -774,26 +687,6 @@
         }
         return result;
       };
-    }
-
-    function applyShake(bone, strength = 1.0) {
-      if (!boneShakes.has(bone)) {
-        boneShakes.set(bone, {
-          baseRot: bone.rotation,
-          baseX: bone.x,
-          baseY: bone.y,
-          rot: 0, vel: 0,
-          x: 0, y: 0,
-          vx: 0, vy: 0
-        });
-      }
-
-      const s = boneShakes.get(bone);
-
-      // Bounce impulse — upward kick + sideways jiggle + rotation jitter.
-      s.vy += -8 * strength;
-      s.vx += (Math.random() - 0.5) * 6 * strength;
-      s.vel += (Math.random() - 0.5) * 4 * strength;
     }
 
   </script>

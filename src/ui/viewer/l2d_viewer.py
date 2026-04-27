@@ -120,11 +120,11 @@ class L2DViewer(BaseViewer):
                 pass
             web_view.loadFinished.connect(self._on_load_finished)
             if version == '3.8':
-                html_file = 'src/ui/viewer/l2d_viewer_38.html'
+                html_file = 'src/ui/viewer/l2d/viewer_38.html'
             elif version == '4.0':
-                html_file = 'src/ui/viewer/l2d_viewer_old.html'
+                html_file = 'src/ui/viewer/l2d/viewer_40.html'
             else:
-                html_file = 'src/ui/viewer/l2d_viewer.html'
+                html_file = 'src/ui/viewer/l2d/viewer_41.html'
             html_path = resource_path(html_file)
             web_view.setUrl(QUrl.fromLocalFile(html_path))
 

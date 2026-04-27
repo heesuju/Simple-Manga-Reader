@@ -26,12 +26,13 @@
   </style>
 </head>
 <body>
-  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Press B to toggle bones</div>
+  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Right-drag to lean left/right &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Press B to toggle bones</div>
   <div id="error"></div>
   <div id="loading">Loading...</div>
   <canvas id="canvas"></canvas>
 
-  <script src="spine-webgl-4.0.js"></script>
+  <script src="spine-webgl-3.8.js"></script>
+  <script src="common.js"></script>
   <script>
     document.getElementById('loading').style.display = 'none';
 
@@ -48,14 +49,24 @@
       throw new Error('WebGL unavailable');
     }
 
-    // Force explicit non-premultiply-on-upload so textures land on the GPU
-    // exactly as the bytes on disk — otherwise QtWebEngine/Chromium may
-    // auto-premultiply, and PMA-on-disk atlases end up double-PMA on the GPU
-    // (no blend-mode toggle can recover from that).
-    spine.GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = true;
+    // 3.8 atlases don't declare a pma flag, so we standardize on "always PMA
+    // on the GPU": premultiply during texImage2D regardless of disk format.
+    // This is required for Screen/Multiply slot blend modes to render
+    // correctly — spine-webgl-3.8 uses a single BlendFunc and hardcodes
+    // src=ONE for Screen, which only works if the texture is PMA. Monkey-
+    // patch GLTexture.update so the pixelStorei flag is reapplied before
+    // every texImage2D (a single startup call could be reset by a context
+    // loss restore).
+    (function () {
+      var origUpdate = spine.webgl.GLTexture.prototype.update;
+      spine.webgl.GLTexture.prototype.update = function (useMipMaps) {
+        this.context.gl.pixelStorei(this.context.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        return origUpdate.call(this, useMipMaps);
+      };
+    })();
 
-    var assetManager = new spine.AssetManager(gl);
-    var renderer = new spine.SceneRenderer(canvas, gl);
+    var assetManager = new spine.webgl.AssetManager(gl);
+    var renderer = new spine.webgl.SceneRenderer(canvas, gl);
 
     var currentSkeleton = null;
     var currentState = null;
@@ -78,47 +89,82 @@
     const SHAKE_RADIUS_FRAC = 0.08;
 
     var isDragging = false;
+    var isRightDragging = false;
     var prevX = 0, prevY = 0;
     var downTime = 0, downPos = null;
+    var targetTurnX = 0;
+    var currentTurnX = 0;
+    var lastClickPoint = null;
+
+    var BONE_LINE_COLOR = new spine.Color(0.27, 0.47, 0.67, 0.6);
+    var BONE_RED       = new spine.Color(1, 0.33, 0.27, 0.9);
+    var BONE_PURPLE    = new spine.Color(0.8, 0.4, 1, 0.85);
+    var BONE_GREEN     = new spine.Color(0.4, 0.87, 0.53, 0.85);
+    var BONE_GRAY      = new spine.Color(0.4, 0.4, 0.4, 0.4);
+    var BONE_PULSE     = new spine.Color(1, 1, 0.4, 0.4);
 
     canvas.addEventListener('pointerdown', function (e) {
-      if (e.button === 0) {
+      if (e.button === 0 || e.button === 2) {
         downTime = Date.now();
         downPos = { x: e.clientX, y: e.clientY };
       }
-      if (e.button === 0 || e.button === 1 || e.button === 2) {
+      if (e.button === 0 || e.button === 1) {
         isDragging = true;
         prevX = e.clientX;
         prevY = e.clientY;
+      } else if (e.button === 2) {
+        isRightDragging = true;
+        prevX = e.clientX;
+        prevY = e.clientY;
+        try { canvas.requestPointerLock(); } catch (err) {}
       }
     });
 
     window.addEventListener('pointerup', function (e) {
-      isDragging = false;
+      if (e.button === 0 || e.button === 1) isDragging = false;
+      if (e.button === 2) {
+        isRightDragging = false;
+        targetTurnX = 0;
+        try { document.exitPointerLock(); } catch (err) {}
+      }
       if (!downPos) return;
       var dx = e.clientX - downPos.x;
       var dy = e.clientY - downPos.y;
       var dt = Date.now() - downTime;
-      if (Math.hypot(dx, dy) < 5 && dt < 200 && e.button === 0) {
-        var w = clientToWorld(e.clientX, e.clientY);
-        handleBoneClick(w.x, w.y);
+      if (Math.hypot(dx, dy) < 5 && dt < 200) {
+        if (e.button === 0) {
+          var w = clientToWorld(e.clientX, e.clientY);
+          handleBoneClick(w.x, w.y);
+        } else if (e.button === 2) {
+          targetTurnX = 0;
+        }
       }
       downPos = null;
     });
 
     window.addEventListener('pointermove', function (e) {
-      if (!isDragging) return;
-      var rect = canvas.getBoundingClientRect();
-      var cam = renderer.camera;
-      // Convert pixel delta to world delta via camera projection. Mirrors
-      // spine-webgl's CameraController so the same gesture moves the same
-      // distance regardless of zoom/DPR.
-      var origin = cam.screenToWorld(new spine.Vector3(0, 0, 0), rect.width, rect.height);
-      var moved = cam.screenToWorld(new spine.Vector3(e.clientX - prevX, e.clientY - prevY, 0), rect.width, rect.height);
-      cam.position.x -= (moved.x - origin.x);
-      cam.position.y -= (moved.y - origin.y);
-      prevX = e.clientX;
-      prevY = e.clientY;
+      if (isDragging) {
+        var rect = canvas.getBoundingClientRect();
+        var cam = renderer.camera;
+        // Convert pixel delta to world delta via camera projection. Mirrors
+        // spine-webgl's CameraController so the same gesture moves the same
+        // distance regardless of zoom/DPR.
+        var origin = cam.screenToWorld(new spine.webgl.Vector3(0, 0, 0), rect.width, rect.height);
+        var moved = cam.screenToWorld(new spine.webgl.Vector3(e.clientX - prevX, e.clientY - prevY, 0), rect.width, rect.height);
+        cam.position.x -= (moved.x - origin.x);
+        cam.position.y -= (moved.y - origin.y);
+        prevX = e.clientX;
+        prevY = e.clientY;
+      } else if (isRightDragging) {
+        var dx = (document.pointerLockElement === canvas && e.movementX !== undefined)
+                 ? e.movementX
+                 : (e.clientX - prevX);
+        targetTurnX += dx;
+        var maxTurn = canvas.clientWidth * 0.5;
+        targetTurnX = Math.max(-maxTurn, Math.min(maxTurn, targetTurnX));
+        prevX = e.clientX;
+        prevY = e.clientY;
+      }
     });
 
     canvas.addEventListener('wheel', function (e) {
@@ -136,9 +182,19 @@
       }
     });
 
+    function waitForAssets() {
+      return new Promise(function (resolve) {
+        function check() {
+          if (assetManager.isLoadingComplete()) resolve();
+          else requestAnimationFrame(check);
+        }
+        requestAnimationFrame(check);
+      });
+    }
+
     function clientToWorld(clientX, clientY) {
       var rect = canvas.getBoundingClientRect();
-      var v = new spine.Vector3(clientX - rect.left, clientY - rect.top, 0);
+      var v = new spine.webgl.Vector3(clientX - rect.left, clientY - rect.top, 0);
       renderer.camera.screenToWorld(v, rect.width, rect.height);
       return { x: v.x, y: v.y };
     }
@@ -156,6 +212,9 @@
       currentSkeleton = null;
       currentState = null;
       boneShakes.clear();
+      targetTurnX = 0;
+      currentTurnX = 0;
+      lastClickPoint = null;
 
       var token = ++loadToken;
       currentSkelUrl = url;
@@ -166,7 +225,7 @@
         else assetManager.loadText(url);
         assetManager.loadTextureAtlas(atlasUrl);
 
-        await assetManager.loadAll();
+        await waitForAssets();
         if (token !== loadToken) return;
         if (assetManager.hasErrors()) {
           throw new Error(JSON.stringify(assetManager.getErrors()));
@@ -190,19 +249,25 @@
         currentState = new spine.AnimationState(stateData);
         installShakeHook(currentState);
 
-        // Default PMA flag from atlas pages[0]; user toggle overrides later.
-        pma = atlas.pages.length > 0 && atlas.pages[0].pma === true;
+        // 3.8 atlases don't declare pma, and we always premultiply on upload
+        // (see GLTexture.update monkey-patch above), so the GPU texture is
+        // always PMA — pma=true blend matches that uniformly across all slot
+        // blend modes (Normal/Additive/Multiply/Screen).
+        pma = true;
 
-        meshBones = computeMeshBones(currentSkeleton);
+        meshBones = L2D.computeMeshBones(currentSkeleton);
+        L2D.computeHeadStructure(currentSkeleton);
         console.log('Mesh-driving bones: ' + meshBones.size + ' / ' + currentSkeleton.bones.length);
 
         var rect = canvas.getBoundingClientRect();
-        var bounds = currentSkeleton.getBoundsRect();
-        if (isFinite(bounds.width) && bounds.width > 0 && isFinite(bounds.height) && bounds.height > 0) {
-          renderer.camera.position.x = bounds.x + bounds.width / 2;
-          renderer.camera.position.y = bounds.y + bounds.height / 2;
-          var fitX = bounds.width / rect.width;
-          var fitY = bounds.height / rect.height;
+        var bOff = new spine.Vector2();
+        var bSize = new spine.Vector2();
+        currentSkeleton.getBounds(bOff, bSize, []);
+        if (isFinite(bSize.x) && bSize.x > 0 && isFinite(bSize.y) && bSize.y > 0) {
+          renderer.camera.position.x = bOff.x + bSize.x / 2;
+          renderer.camera.position.y = bOff.y + bSize.y / 2;
+          var fitX = bSize.x / rect.width;
+          var fitY = bSize.y / rect.height;
           renderer.camera.zoom = Math.max(fitX, fitY) / 0.9;
         } else {
           renderer.camera.position.x = 0;
@@ -226,8 +291,7 @@
         console.log('MODEL_SLOTS:' + JSON.stringify(slotNames));
 
         if (availableAnimations.length > 0) {
-          var idleIdx = availableAnimations.findIndex(function (n) { return n.toLowerCase().includes('idle'); });
-          currentState.setAnimation(0, availableAnimations[idleIdx >= 0 ? idleIdx : 0], true);
+          currentState.setAnimation(0, availableAnimations[L2D.pickDefaultAnim(availableAnimations)], true);
         }
       } catch (err) {
         if (token !== loadToken) return;
@@ -280,31 +344,6 @@
     window.setShowBones = function (visible) { showBones = !!visible; };
     window.setPremultipliedAlpha = function (enabled) { pma = !!enabled; };
 
-    function computeMeshBones(skeleton) {
-      var set = new Set();
-      var bones = skeleton.bones;
-      var slots = skeleton.slots;
-      for (var si = 0; si < slots.length; si++) {
-        var slot = slots[si];
-        var att = slot.getAttachment ? slot.getAttachment() : slot.attachment;
-        if (!att) continue;
-        if (att.bones && att.bones.length) {
-          var arr = att.bones;
-          var i = 0;
-          while (i < arr.length) {
-            var count = arr[i++];
-            for (var j = 0; j < count; j++) {
-              var idx = arr[i++];
-              if (idx >= 0 && idx < bones.length) set.add(bones[idx]);
-            }
-          }
-        } else if (slot.bone) {
-          set.add(slot.bone);
-        }
-      }
-      return set;
-    }
-
     function handleBoneClick(worldX, worldY) {
       if (!currentSkeleton) return;
       var bones = currentSkeleton.bones;
@@ -319,12 +358,14 @@
         var d = dx * dx + dy * dy;
         if (d < bestDist) { bestDist = d; bestBone = b; }
       }
-      if (bestBone) applyShakeChain(bestBone);
+      if (bestBone) applyShakeChain(bestBone, worldX, worldY);
     }
 
-    function applyShakeChain(clickedBone) {
-      var bounds = currentSkeleton.getBoundsRect();
-      var maxRadius = Math.hypot(bounds.width, bounds.height) * SHAKE_RADIUS_FRAC;
+    function applyShakeChain(clickedBone, clickX, clickY) {
+      var bOff = new spine.Vector2();
+      var bSize = new spine.Vector2();
+      currentSkeleton.getBounds(bOff, bSize, []);
+      var maxRadius = Math.hypot(bSize.x, bSize.y) * SHAKE_RADIUS_FRAC;
       var maxRadiusSq = maxRadius * maxRadius;
       var bones = currentSkeleton.bones;
       var candidates = [];
@@ -343,25 +384,12 @@
       var falloffRadius = picked.length > 0
         ? Math.max(Math.sqrt(picked[picked.length - 1].distSq), 1)
         : maxRadius;
+      lastClickPoint = { x: clickX, y: clickY, radius: falloffRadius, age: 0 };
       for (var k = 0; k < picked.length; k++) {
         var dist = Math.sqrt(picked[k].distSq);
         var falloff = 1 - dist / falloffRadius;
-        applyShake(picked[k].bone, (shakeBounceForce + 1) * 0.5 * falloff);
+        L2D.applyShake(picked[k].bone, (shakeBounceForce + 1) * 0.5 * falloff, boneShakes);
       }
-    }
-
-    function applyShake(bone, strength) {
-      if (strength === undefined) strength = 1.0;
-      if (!boneShakes.has(bone)) {
-        boneShakes.set(bone, {
-          baseRot: bone.rotation, baseX: bone.x, baseY: bone.y,
-          rot: 0, vel: 0, x: 0, y: 0, vx: 0, vy: 0
-        });
-      }
-      var s = boneShakes.get(bone);
-      s.vy += -8 * strength;
-      s.vx += (Math.random() - 0.5) * 6 * strength;
-      s.vel += (Math.random() - 0.5) * 4 * strength;
     }
 
     // Patch state.apply so shake offsets land AFTER animation runs every
@@ -404,29 +432,112 @@
       };
     }
 
+    function drawCustomBoneOverlay() {
+      if (!currentSkeleton) return;
+      // World units per CSS pixel: spine-webgl 3.8's renderer.resize() sets
+      // camera viewport to canvas.clientWidth (no DPR factor), so 1 CSS px =
+      // zoom world units. (Note: 4.0 uses clientWidth*dpr, hence the *dpr in
+      // viewer_40.html — keep these formulas in sync per file.)
+      var px = renderer.camera.zoom;
+      var bones = currentSkeleton.bones;
+
+      for (var i = 0; i < bones.length; i++) {
+        var b = bones[i];
+        if (!b.parent) continue;
+        renderer.line(b.parent.worldX, b.parent.worldY, b.worldX, b.worldY, BONE_LINE_COLOR);
+      }
+
+      if (lastClickPoint) {
+        lastClickPoint.age += 1;
+        var pulse = Math.max(0, 1 - lastClickPoint.age / 60);
+        if (pulse > 0) {
+          BONE_PULSE.a = 0.4 * pulse;
+          renderer.circle(false, lastClickPoint.x, lastClickPoint.y, lastClickPoint.radius, BONE_PULSE, 32);
+        } else {
+          lastClickPoint = null;
+        }
+      }
+
+      var dotR = 3 * px;
+      var headDescendants = currentSkeleton._headDescendants;
+      for (var j = 0; j < bones.length; j++) {
+        var bone = bones[j];
+        var s = boneShakes.get(bone);
+        var isHead = headDescendants && headDescendants.has(bone);
+        if (s) {
+          var intensity = Math.min(1, Math.abs(s.rot) * 4 + Math.abs(s.vel) * 8);
+          renderer.circle(true, bone.worldX, bone.worldY, dotR * (1.5 + intensity), BONE_RED, 12);
+        } else if (isHead) {
+          renderer.circle(true, bone.worldX, bone.worldY, dotR, BONE_PURPLE, 12);
+        } else if (meshBones.has(bone)) {
+          renderer.circle(true, bone.worldX, bone.worldY, dotR, BONE_GREEN, 12);
+        } else {
+          renderer.circle(true, bone.worldX, bone.worldY, dotR * 0.7, BONE_GRAY, 12);
+        }
+      }
+    }
+
     function render(now) {
       var dt = lastTime ? (now - lastTime) / 1000 : 0;
       lastTime = now;
 
-      renderer.resize(spine.ResizeMode.Expand);
+      renderer.resize(spine.webgl.ResizeMode.Expand);
       gl.clearColor(0.102, 0.102, 0.102, 1.0);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
       if (currentSkeleton && currentState) {
+        if (Math.abs(targetTurnX - currentTurnX) > 0.1) {
+          currentTurnX += (targetTurnX - currentTurnX) * 0.25;
+        }
+
+        // Pre-populate every (non-root) bone in boneShakes so the lean target
+        // rotation can be driven through the same state.apply hook used by
+        // the click-shake.
+        if (Math.abs(currentTurnX) > 0.1) {
+          L2D.computeHeadStructure(currentSkeleton);
+          currentSkeleton.bones.forEach(function (bone) {
+            if (!bone.parent) return;
+            if (!boneShakes.has(bone)) {
+              boneShakes.set(bone, {
+                baseRot: bone.rotation, baseX: bone.x, baseY: bone.y,
+                rot: 0, vel: 0, x: 0, y: 0, vx: 0, vy: 0
+              });
+            }
+          });
+        }
+
         if (boneShakes.size > 0) {
           var stiffness = 0.25;
           var damping = 0.85;
+          var maxDepth = currentSkeleton._maxDepth || 0;
+          var headDescendants = currentSkeleton._headDescendants;
+          var descCounts = currentSkeleton._descCounts;
           boneShakes.forEach(function (s, bone) {
-            s.vel += -s.rot * stiffness;
-            s.vel *= damping;
+            // Lean target: scale by depth^1.5, but lock head descendants and
+            // leaf-ish bones (<3 descendants) to prevent facial distortion.
+            var factor = 0;
+            if (maxDepth && bone._hDepth >= 1) {
+              var descCount = descCounts ? (descCounts.get(bone) || 0) : 0;
+              var isHubDescendant = headDescendants && headDescendants.has(bone);
+              if (!(isHubDescendant || descCount < 3)) {
+                factor = Math.pow(bone._hDepth / maxDepth, 1.5);
+              }
+            }
+            var targetRot = currentTurnX * 0.02 * factor;
+
             s.rot += s.vel;
+            s.vel *= damping;
+            s.rot += (targetRot - s.rot) * 0.2;
+
             s.vx += -s.x * stiffness;
             s.vy += -s.y * stiffness;
             s.vx *= damping;
             s.vy *= damping;
             s.x += s.vx;
             s.y += s.vy;
-            if (Math.abs(s.rot) < 0.01 && Math.abs(s.vel) < 0.01 &&
+
+            if (Math.abs(targetTurnX) < 0.1 &&
+                Math.abs(s.rot) < 0.01 && Math.abs(s.vel) < 0.01 &&
                 Math.abs(s.x) < 0.05 && Math.abs(s.vx) < 0.05 &&
                 Math.abs(s.y) < 0.05 && Math.abs(s.vy) < 0.05) {
               boneShakes.delete(bone);
@@ -440,7 +551,7 @@
 
         renderer.begin();
         renderer.drawSkeleton(currentSkeleton, pma);
-        if (showBones) renderer.drawSkeletonDebug(currentSkeleton, pma, null);
+        if (showBones) drawCustomBoneOverlay();
         renderer.end();
       }
 
