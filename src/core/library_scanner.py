@@ -336,14 +336,24 @@ class LibraryScanner:
         # 1. Video Check
         video_count = 0
         total_media = 0
+        skel_count = 0
+        atlas_count = 0
+
         if '|' not in first_chap_path and Path(first_chap_path).is_dir():
             for f in Path(first_chap_path).iterdir():
                 if self.is_media_file(f):
                     total_media += 1
                     if any(str(f).lower().endswith(ext) for ext in VIDEO_EXTS):
                         video_count += 1
+                elif f.is_file() and f.suffix.lower() == '.skel':
+                    skel_count += 1
+                elif f.is_file() and f.suffix.lower() == '.atlas':
+                    atlas_count += 1
+
             if total_media > 0 and video_count / total_media >= 0.5:
                 return ["Video"]
+            elif skel_count > 0 and atlas_count > 0:
+                return ["Live2D"]
 
         # 2. Check Naming Patterns
         chapter_keywords = {'ch', 'chapter', 'vol', 'volume', 'ep', 'episode'}
@@ -392,10 +402,10 @@ class LibraryScanner:
 
         # Fallbacks
         if is_likely_serialized:
-             return ["Manga"]
+            return ["Manga"]
 
         if len(chapters) == 1 and keyword_hits == 0:
-             return ["Image Set"]
+            return ["Image Set"]
 
         return ["Manga"] # General Default
     
