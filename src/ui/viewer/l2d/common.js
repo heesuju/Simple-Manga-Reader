@@ -9,12 +9,31 @@
   // broken by natural (numerical) sort so "Idle_02" < "Idle_10".
   L2D.pickDefaultAnim = function (names) {
     if (!names || names.length === 0) return -1;
-    var idle = names.filter(function (n) { return n.toLowerCase().includes('idle'); });
-    if (idle.length === 0) return 0;
-    idle.sort(function (a, b) {
-      if (a.length !== b.length) return a.length - b.length;
-      return a.localeCompare(b, undefined, { numeric: true });
+
+    var idle = names.filter(function (n) {
+      return n.toLowerCase().includes('idle');
     });
+
+    if (idle.length === 0) return 0;
+
+    function extractNumber(str) {
+      var match = str.match(/\d+/);
+      return match ? parseInt(match[0], 10) : Infinity;
+    }
+
+    idle.sort(function (a, b) {
+      // 1. Shortest length first
+      if (a.length !== b.length) return a.length - b.length;
+
+      // 2. Numeric comparison (if numbers exist)
+      var numA = extractNumber(a);
+      var numB = extractNumber(b);
+      if (numA !== numB) return numA - numB;
+
+      // 3. Final fallback: lexicographic
+      return a.localeCompare(b);
+    });
+
     return names.indexOf(idle[0]);
   };
 

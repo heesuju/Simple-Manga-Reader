@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy, QCheckBox, QSlider, QComboBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+import re
 
 PANEL_W = 200
 
@@ -180,9 +181,20 @@ class L2DPanel(QWidget):
         self._anim_combo.clear()
         self._anim_combo.addItem("Static Pose")
         self._anim_combo.addItems(names)
+
+        idle_idx = -1
         if names:
-            idle_idx = next((i for i, n in enumerate(names) if 'idle' in n.lower()), -1)
-            self._anim_combo.setCurrentIndex(idle_idx + 1 if idle_idx >= 0 else 1)
+            # Match JS logic in common.js: shortest 'idle' string, then natural sort
+            idles = [n for n in names if 'idle' in n.lower()]
+            if idles:
+                def extract_num(s):
+                    m = re.search(r'\d+', s)
+                    return int(m.group()) if m else float('inf')
+                idles.sort(key=lambda x: (len(x), extract_num(x), x.lower()))
+                idle_idx = names.index(idles[0])
+            else:
+                idle_idx = 0
+            self._anim_combo.setCurrentIndex(idle_idx + 1)
         self._anim_combo.blockSignals(False)
 
         self._play_btn.setChecked(False)
@@ -190,8 +202,7 @@ class L2DPanel(QWidget):
         self._paused = False
 
         if names:
-            idle_idx = next((i for i, n in enumerate(names) if 'idle' in n.lower()), -1)
-            self.anim_selected.emit(idle_idx if idle_idx >= 0 else 0)
+            self.anim_selected.emit(idle_idx)
 
     def set_meshes(self, names: list):
         while self._mesh_layout.count():
