@@ -84,7 +84,9 @@ class L2DViewer(BaseViewer):
         try:
             with open(path, 'rb') as f:
                 data = f.read(100)
-                if b'3.8.' in data or b'4.0.' in data:
+                if b'3.8.' in data:
+                    return '3.8'
+                if b'4.0.' in data:
                     return '4.0'
                 if b'4.1.' in data or b'4.2.' in data:
                     return '4.1'
@@ -117,7 +119,12 @@ class L2DViewer(BaseViewer):
             except Exception:
                 pass
             web_view.loadFinished.connect(self._on_load_finished)
-            html_file = 'src/ui/viewer/l2d_viewer_old.html' if version == '4.0' else 'src/ui/viewer/l2d_viewer.html'
+            if version == '3.8':
+                html_file = 'src/ui/viewer/l2d_viewer_38.html'
+            elif version == '4.0':
+                html_file = 'src/ui/viewer/l2d_viewer_old.html'
+            else:
+                html_file = 'src/ui/viewer/l2d_viewer.html'
             html_path = resource_path(html_file)
             web_view.setUrl(QUrl.fromLocalFile(html_path))
 

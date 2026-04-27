@@ -224,16 +224,7 @@
 
       // Ensure all bones are participating in physics if turning
       if (Math.abs(currentTurnX) > 0.1 && currentSpine) {
-        if (!currentSpine._maxDepth) {
-          let maxD = 1;
-          currentSpine.skeleton.bones.forEach(b => {
-            let d = 0, c = b;
-            while (c.parent) { d++; c = c.parent; }
-            b._hDepth = d;
-            if (d > maxD) maxD = d;
-          });
-          currentSpine._maxDepth = maxD;
-        }
+        computeHeadStructure(currentSpine);
 
         currentSpine.skeleton.bones.forEach(bone => {
           if (!bone.parent) return; // Don't tilt the root bone so character stays anchored
@@ -253,45 +244,7 @@
         const damping = 0.85;
 
         boneShakes.forEach((s, bone) => {
-          let isHeadDescendant = false;
-          if (currentSpine && !currentSpine._descCounts) {
-            currentSpine._descCounts = new Map();
-            function countDesc(b) {
-              let count = 0;
-              for (let i = 0; i < b.children.length; i++) {
-                count += 1 + countDesc(b.children[i]);
-              }
-              currentSpine._descCounts.set(b, count);
-              return count;
-            }
-            let rootBone = currentSpine.skeleton.getRootBone();
-            countDesc(rootBone);
-
-            // Topological Head Finder (No names used!)
-            // The Head is universally the bone with the highest number of direct children
-            // because all facial features (eyes, mouth, nose, ears) and hair roots attach to it.
-            let maxChildren = -1;
-            let hubBone = null;
-            // The head is almost never at depth 0 or 1. It's usually at least 30% deep into the skeleton tree.
-            let minDepth = Math.max(1, Math.floor(currentSpine._maxDepth * 0.3));
-            
-            currentSpine.skeleton.bones.forEach(b => {
-               // Exclude the root and master bones from being the hub
-               if (b._hDepth >= minDepth && b.children.length > maxChildren) {
-                 maxChildren = b.children.length;
-                 hubBone = b;
-               }
-            });
-            
-            currentSpine._headDescendants = new Set();
-            function markDescendants(b) {
-              currentSpine._headDescendants.add(b);
-              for (let c of b.children) markDescendants(c);
-            }
-            if (hubBone) {
-              for (let c of hubBone.children) markDescendants(c);
-            }
-          }
+          if (currentSpine) computeHeadStructure(currentSpine);
 
           let factor = 0;
           if (currentSpine && bone._hDepth && bone._hDepth >= 1) {
@@ -456,6 +409,7 @@
         // frame. spine-pixi-v7 also exposes beforeUpdateWorldTransforms,
         // but wrapping state.apply keeps the existing logic verbatim.
         installShakeHook(currentSpine);
+        computeHeadStructure(currentSpine);
 
         container.addChild(currentSpine);
         container.addChild(boneOverlay); // keep overlay on top of newly added spine
@@ -532,6 +486,62 @@
 
       return Math.hypot(px - cx, py - cy);
     };
+
+    // Detect bones whose descendants should not lean (head/face). Combines:
+    //   1. Topological hub: bone with the most direct children below 30% depth
+    //      (all facial features attach there, so it's usually the head).
+    //   2. Name fallback: any bone whose name contains "head" or "face" —
+    //      catches rigs where another bone has more children than the head.
+    // Caches results on the spine instance; safe to call repeatedly.
+    function computeHeadStructure(spine) {
+      if (spine._headDescendants) return;
+
+      let maxD = 1;
+      spine.skeleton.bones.forEach(b => {
+        let d = 0, c = b;
+        while (c.parent) { d++; c = c.parent; }
+        b._hDepth = d;
+        if (d > maxD) maxD = d;
+      });
+      spine._maxDepth = maxD;
+
+      spine._descCounts = new Map();
+      function countDesc(b) {
+        let count = 0;
+        for (let i = 0; i < b.children.length; i++) {
+          count += 1 + countDesc(b.children[i]);
+        }
+        spine._descCounts.set(b, count);
+        return count;
+      }
+      countDesc(spine.skeleton.getRootBone());
+
+      let maxChildren = -1;
+      let hubBone = null;
+      const minDepth = Math.max(1, Math.floor(spine._maxDepth * 0.3));
+      spine.skeleton.bones.forEach(b => {
+        if (b._hDepth >= minDepth && b.children.length > maxChildren) {
+          maxChildren = b.children.length;
+          hubBone = b;
+        }
+      });
+
+      const headDescendants = new Set();
+      function markDescendants(b) {
+        headDescendants.add(b);
+        for (let c of b.children) markDescendants(c);
+      }
+      if (hubBone) {
+        for (let c of hubBone.children) markDescendants(c);
+      }
+      spine.skeleton.bones.forEach(b => {
+        const name = b.data && b.data.name ? b.data.name.toLowerCase() : '';
+        if (name.includes('head') || name.includes('face')) {
+          for (let c of b.children) markDescendants(c);
+        }
+      });
+      spine._headDescendants = headDescendants;
+    }
 
     // Build the set of bones that actually move visible geometry:
     //   - the slot.bone of every slot with an attachment
@@ -686,17 +696,24 @@
 
       // Bone joints:
       //   red + larger = currently shaking
+      //   purple       = head/face descendant — locked out of lean rotation
       //   green        = mesh-driving (slot bone or weighted-mesh bone) — clickable
       //   gray         = control / IK / parent rig — shaking it has no visible effect
+      const headDescendants = currentSpine._headDescendants;
       const dotR = 3 / container.scale.x;
       for (let i = 0; i < bones.length; i++) {
         const b = bones[i];
         const affected = boneShakes.has(b);
+        const isHead = headDescendants && headDescendants.has(b);
         if (affected) {
           const s = boneShakes.get(b);
           const intensity = Math.min(1, Math.abs(s.rot) * 4 + Math.abs(s.vel) * 8);
           boneOverlay.beginFill(0xff5544, 0.9);
           boneOverlay.drawCircle(tx(b.worldX), ty(b.worldY), dotR * (1.5 + intensity));
+          boneOverlay.endFill();
+        } else if (isHead) {
+          boneOverlay.beginFill(0xcc66ff, 0.85);
+          boneOverlay.drawCircle(tx(b.worldX), ty(b.worldY), dotR);
           boneOverlay.endFill();
         } else if (meshBones.has(b)) {
           boneOverlay.beginFill(0x66dd88, 0.85);

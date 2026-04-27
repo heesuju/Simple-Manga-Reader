@@ -31,7 +31,7 @@
   <div id="loading">Loading...</div>
   <canvas id="canvas"></canvas>
 
-  <script src="spine-webgl-4.0.js"></script>
+  <script src="spine-webgl-3.8.js"></script>
   <script>
     document.getElementById('loading').style.display = 'none';
 
@@ -48,14 +48,24 @@
       throw new Error('WebGL unavailable');
     }
 
-    // Force explicit non-premultiply-on-upload so textures land on the GPU
-    // exactly as the bytes on disk — otherwise QtWebEngine/Chromium may
-    // auto-premultiply, and PMA-on-disk atlases end up double-PMA on the GPU
-    // (no blend-mode toggle can recover from that).
-    spine.GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = true;
+    // 3.8 atlases don't declare a pma flag, so we standardize on "always PMA
+    // on the GPU": premultiply during texImage2D regardless of disk format.
+    // This is required for Screen/Multiply slot blend modes to render
+    // correctly — spine-webgl-3.8 uses a single BlendFunc and hardcodes
+    // src=ONE for Screen, which only works if the texture is PMA. Monkey-
+    // patch GLTexture.update so the pixelStorei flag is reapplied before
+    // every texImage2D (a single startup call could be reset by a context
+    // loss restore).
+    (function () {
+      var origUpdate = spine.webgl.GLTexture.prototype.update;
+      spine.webgl.GLTexture.prototype.update = function (useMipMaps) {
+        this.context.gl.pixelStorei(this.context.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        return origUpdate.call(this, useMipMaps);
+      };
+    })();
 
-    var assetManager = new spine.AssetManager(gl);
-    var renderer = new spine.SceneRenderer(canvas, gl);
+    var assetManager = new spine.webgl.AssetManager(gl);
+    var renderer = new spine.webgl.SceneRenderer(canvas, gl);
 
     var currentSkeleton = null;
     var currentState = null;
@@ -113,8 +123,8 @@
       // Convert pixel delta to world delta via camera projection. Mirrors
       // spine-webgl's CameraController so the same gesture moves the same
       // distance regardless of zoom/DPR.
-      var origin = cam.screenToWorld(new spine.Vector3(0, 0, 0), rect.width, rect.height);
-      var moved = cam.screenToWorld(new spine.Vector3(e.clientX - prevX, e.clientY - prevY, 0), rect.width, rect.height);
+      var origin = cam.screenToWorld(new spine.webgl.Vector3(0, 0, 0), rect.width, rect.height);
+      var moved = cam.screenToWorld(new spine.webgl.Vector3(e.clientX - prevX, e.clientY - prevY, 0), rect.width, rect.height);
       cam.position.x -= (moved.x - origin.x);
       cam.position.y -= (moved.y - origin.y);
       prevX = e.clientX;
@@ -136,9 +146,19 @@
       }
     });
 
+    function waitForAssets() {
+      return new Promise(function (resolve) {
+        function check() {
+          if (assetManager.isLoadingComplete()) resolve();
+          else requestAnimationFrame(check);
+        }
+        requestAnimationFrame(check);
+      });
+    }
+
     function clientToWorld(clientX, clientY) {
       var rect = canvas.getBoundingClientRect();
-      var v = new spine.Vector3(clientX - rect.left, clientY - rect.top, 0);
+      var v = new spine.webgl.Vector3(clientX - rect.left, clientY - rect.top, 0);
       renderer.camera.screenToWorld(v, rect.width, rect.height);
       return { x: v.x, y: v.y };
     }
@@ -166,7 +186,7 @@
         else assetManager.loadText(url);
         assetManager.loadTextureAtlas(atlasUrl);
 
-        await assetManager.loadAll();
+        await waitForAssets();
         if (token !== loadToken) return;
         if (assetManager.hasErrors()) {
           throw new Error(JSON.stringify(assetManager.getErrors()));
@@ -190,19 +210,24 @@
         currentState = new spine.AnimationState(stateData);
         installShakeHook(currentState);
 
-        // Default PMA flag from atlas pages[0]; user toggle overrides later.
-        pma = atlas.pages.length > 0 && atlas.pages[0].pma === true;
+        // 3.8 atlases don't declare pma, and we always premultiply on upload
+        // (see GLTexture.update monkey-patch above), so the GPU texture is
+        // always PMA — pma=true blend matches that uniformly across all slot
+        // blend modes (Normal/Additive/Multiply/Screen).
+        pma = true;
 
         meshBones = computeMeshBones(currentSkeleton);
         console.log('Mesh-driving bones: ' + meshBones.size + ' / ' + currentSkeleton.bones.length);
 
         var rect = canvas.getBoundingClientRect();
-        var bounds = currentSkeleton.getBoundsRect();
-        if (isFinite(bounds.width) && bounds.width > 0 && isFinite(bounds.height) && bounds.height > 0) {
-          renderer.camera.position.x = bounds.x + bounds.width / 2;
-          renderer.camera.position.y = bounds.y + bounds.height / 2;
-          var fitX = bounds.width / rect.width;
-          var fitY = bounds.height / rect.height;
+        var bOff = new spine.Vector2();
+        var bSize = new spine.Vector2();
+        currentSkeleton.getBounds(bOff, bSize, []);
+        if (isFinite(bSize.x) && bSize.x > 0 && isFinite(bSize.y) && bSize.y > 0) {
+          renderer.camera.position.x = bOff.x + bSize.x / 2;
+          renderer.camera.position.y = bOff.y + bSize.y / 2;
+          var fitX = bSize.x / rect.width;
+          var fitY = bSize.y / rect.height;
           renderer.camera.zoom = Math.max(fitX, fitY) / 0.9;
         } else {
           renderer.camera.position.x = 0;
@@ -323,8 +348,10 @@
     }
 
     function applyShakeChain(clickedBone) {
-      var bounds = currentSkeleton.getBoundsRect();
-      var maxRadius = Math.hypot(bounds.width, bounds.height) * SHAKE_RADIUS_FRAC;
+      var bOff = new spine.Vector2();
+      var bSize = new spine.Vector2();
+      currentSkeleton.getBounds(bOff, bSize, []);
+      var maxRadius = Math.hypot(bSize.x, bSize.y) * SHAKE_RADIUS_FRAC;
       var maxRadiusSq = maxRadius * maxRadius;
       var bones = currentSkeleton.bones;
       var candidates = [];
@@ -408,7 +435,7 @@
       var dt = lastTime ? (now - lastTime) / 1000 : 0;
       lastTime = now;
 
-      renderer.resize(spine.ResizeMode.Expand);
+      renderer.resize(spine.webgl.ResizeMode.Expand);
       gl.clearColor(0.102, 0.102, 0.102, 1.0);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
