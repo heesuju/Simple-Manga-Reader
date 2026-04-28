@@ -1,32 +1,64 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a1a; overflow: hidden; }
-    canvas { display: block; width: 100vw; height: 100vh; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #1a1a1a;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
     #hint {
-      position: absolute; bottom: 12px; left: 50%;
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
       transform: translateX(-50%);
-      color: #555; font: 12px/1 sans-serif;
-      pointer-events: none; white-space: nowrap;
+      color: #555;
+      font: 12px/1 sans-serif;
+      pointer-events: none;
+      white-space: nowrap;
     }
+
     #error {
-      position: absolute; top: 50%; left: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
       transform: translate(-50%, -50%);
-      color: #f66; font: 14px sans-serif;
-      display: none; text-align: center; max-width: 80%; white-space: pre-wrap;
+      color: #f66;
+      font: 14px sans-serif;
+      display: none;
+      text-align: center;
+      max-width: 80%;
+      white-space: pre-wrap;
     }
+
     #loading {
-      position: absolute; top: 50%; left: 50%;
+      position: absolute;
+      top: 50%;
+      left: 50%;
       transform: translate(-50%, -50%);
-      color: #888; font: 14px sans-serif;
+      color: #888;
+      font: 14px sans-serif;
     }
   </style>
 </head>
+
 <body>
-  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Right-drag to lean left/right &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Press B to toggle bones</div>
+  <div id="hint">Left-drag to pan &nbsp;|&nbsp; Right-drag to lean left/right &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp;
+    Press B to toggle bones</div>
   <div id="error"></div>
   <div id="loading">Loading...</div>
   <canvas id="canvas"></canvas>
@@ -72,6 +104,7 @@
     var currentState = null;
     var currentSkelUrl = null;
     var currentAtlasUrl = null;
+    var currentAtlasPageUrls = null;
     var pma = false;
     var lastTime = 0;
     var loadToken = 0;
@@ -97,11 +130,11 @@
     var lastClickPoint = null;
 
     var BONE_LINE_COLOR = new spine.Color(0.27, 0.47, 0.67, 0.6);
-    var BONE_RED       = new spine.Color(1, 0.33, 0.27, 0.9);
-    var BONE_PURPLE    = new spine.Color(0.8, 0.4, 1, 0.85);
-    var BONE_GREEN     = new spine.Color(0.4, 0.87, 0.53, 0.85);
-    var BONE_GRAY      = new spine.Color(0.4, 0.4, 0.4, 0.4);
-    var BONE_PULSE     = new spine.Color(1, 1, 0.4, 0.4);
+    var BONE_RED = new spine.Color(1, 0.33, 0.27, 0.9);
+    var BONE_PURPLE = new spine.Color(0.8, 0.4, 1, 0.85);
+    var BONE_GREEN = new spine.Color(0.4, 0.87, 0.53, 0.85);
+    var BONE_GRAY = new spine.Color(0.4, 0.4, 0.4, 0.4);
+    var BONE_PULSE = new spine.Color(1, 1, 0.4, 0.4);
 
     canvas.addEventListener('pointerdown', function (e) {
       if (e.button === 0 || e.button === 2) {
@@ -116,7 +149,7 @@
         isRightDragging = true;
         prevX = e.clientX;
         prevY = e.clientY;
-        try { canvas.requestPointerLock(); } catch (err) {}
+        try { canvas.requestPointerLock(); } catch (err) { }
       }
     });
 
@@ -125,7 +158,7 @@
       if (e.button === 2) {
         isRightDragging = false;
         targetTurnX = 0;
-        try { document.exitPointerLock(); } catch (err) {}
+        try { document.exitPointerLock(); } catch (err) { }
       }
       if (!downPos) return;
       var dx = e.clientX - downPos.x;
@@ -192,6 +225,22 @@
       });
     }
 
+    // Extract the PNG page filenames from raw atlas text. Page names appear on
+    // lines that immediately follow a blank line and contain no colon (region
+    // key:value lines always have a colon).
+    function parseAtlasPageNames(atlasText) {
+      var names = [];
+      var lines = atlasText.split(/\r\n|\r|\n/);
+      var afterBlank = true;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line.length === 0) { afterBlank = true; continue; }
+        if (afterBlank && line.indexOf(':') === -1) names.push(line);
+        afterBlank = false;
+      }
+      return names;
+    }
+
     function clientToWorld(clientX, clientY) {
       var rect = canvas.getBoundingClientRect();
       var v = new spine.webgl.Vector3(clientX - rect.left, clientY - rect.top, 0);
@@ -207,8 +256,15 @@
       document.getElementById('error').style.display = 'none';
 
       // Drop previous model assets so a reload (e.g. PMA toggle) re-fetches.
-      if (currentSkelUrl) { try { assetManager.remove(currentSkelUrl); } catch (_) {} }
-      if (currentAtlasUrl) { try { assetManager.remove(currentAtlasUrl); } catch (_) {} }
+      if (currentSkelUrl) { try { assetManager.remove(currentSkelUrl); } catch (_) { } }
+      if (currentAtlasUrl) {
+        // Remove the atlas text entry and all page textures loaded for it.
+        try { assetManager.remove(currentAtlasUrl); } catch (_) { }
+        if (currentAtlasPageUrls) {
+          currentAtlasPageUrls.forEach(function (u) { try { assetManager.remove(u); } catch (_) { } });
+          currentAtlasPageUrls = null;
+        }
+      }
       currentSkeleton = null;
       currentState = null;
       boneShakes.clear();
@@ -221,9 +277,10 @@
       currentAtlasUrl = atlasUrl;
 
       try {
+        // Phase 1: load the skeleton and atlas text in parallel.
         if (isBinary) assetManager.loadBinary(url);
         else assetManager.loadText(url);
-        assetManager.loadTextureAtlas(atlasUrl);
+        assetManager.loadText(atlasUrl);
 
         await waitForAssets();
         if (token !== loadToken) return;
@@ -231,7 +288,30 @@
           throw new Error(JSON.stringify(assetManager.getErrors()));
         }
 
-        var atlas = assetManager.get(atlasUrl);
+        // Phase 2: discover atlas pages and load each texture explicitly.
+        // The built-in loadTextureAtlas does a double-parse that is unreliable
+        // with multi-page atlases in Qt WebEngine; this mirrors the spine 4.0
+        // approach of loading page textures independently then wiring them in.
+        var atlasText = assetManager.get(atlasUrl);
+        var atlasParent = atlasUrl.lastIndexOf('/') >= 0
+          ? atlasUrl.substring(0, atlasUrl.lastIndexOf('/'))
+          : '';
+        var pageNames = parseAtlasPageNames(atlasText);
+        currentAtlasPageUrls = pageNames.map(function (name) {
+          return atlasParent ? atlasParent + '/' + name : name;
+        });
+        currentAtlasPageUrls.forEach(function (u) { assetManager.loadTexture(u); });
+
+        await waitForAssets();
+        if (token !== loadToken) return;
+        if (assetManager.hasErrors()) {
+          throw new Error(JSON.stringify(assetManager.getErrors()));
+        }
+
+        // Phase 3: construct the atlas from the already-loaded textures.
+        var atlas = new spine.TextureAtlas(atlasText, function (pageName) {
+          return assetManager.get(atlasParent ? atlasParent + '/' + pageName : pageName);
+        });
         var atlasLoader = new spine.AtlasAttachmentLoader(atlas);
         var skelLoader = isBinary
           ? new spine.SkeletonBinary(atlasLoader)
@@ -566,4 +646,5 @@
     requestAnimationFrame(render);
   </script>
 </body>
+
 </html>
